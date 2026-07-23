@@ -1,0 +1,17 @@
+{
+  "name": "ledgame-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LED Game central membership platform",
+  "scripts": {
+    "dev": "concurrently -k \"pnpm dev:registration\" \"pnpm dev:member-admin\" \"mvn -f server/pom.xml spring-boot:run\"",
+    "dev:registration": "pnpm --dir apps/registration-kiosk exec vite -- --host 127.0.0.1 --port 5176",
+    "dev:member-admin": "pnpm --dir apps/member-admin exec vite -- --host 127.0.0.1 --port 5177",
+    "build": "pnpm build:registration && pnpm build:member-admin",
+    "build:registration": "pnpm --dir apps/registration-kiosk exec vite build",
+    "build:member-admin": "pnpm --dir apps/member-admin exec vite build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

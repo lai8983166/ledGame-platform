@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: ledgame-platform-server
+
+server:
+  port: 8090
+
