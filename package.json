@@ -9,9 +9,16 @@
     "dev:member-admin": "pnpm --dir apps/member-admin exec vite -- --host 127.0.0.1 --port 5177",
     "build": "pnpm build:registration && pnpm build:member-admin",
     "build:registration": "pnpm --dir apps/registration-kiosk exec vite build",
-    "build:member-admin": "pnpm --dir apps/member-admin exec vite build"
+    "build:member-admin": "pnpm --dir apps/member-admin exec vite build",
+    "typecheck": "pnpm typecheck:registration && pnpm typecheck:member-admin && pnpm typecheck:packages",
+    "typecheck:registration": "pnpm exec vue-tsc --noEmit -p apps/registration-kiosk/tsconfig.json",
+    "typecheck:member-admin": "pnpm exec vue-tsc --noEmit -p apps/member-admin/tsconfig.json",
+    "typecheck:packages": "pnpm exec tsc --noEmit -p packages/tsconfig.json"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@types/node": "^22.15.0",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "vue-tsc": "^2.2.8"
   }
 }

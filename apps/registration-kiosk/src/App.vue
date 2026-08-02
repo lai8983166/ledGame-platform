@@ -1,5 +1,5 @@
-<script setup>
-const appName = "自助注册端";
+<script setup lang="ts">
+const appName: string = "自助注册端";
 </script>
 
 <template>
