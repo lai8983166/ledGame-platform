@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "./components/AppIcon.vue";
 import ToastMessage from "./components/ToastMessage.vue";
+import WristbandsView from "./views/WristbandsView.vue";
 import DashboardView from "./views/DashboardView.vue";
 import LeaderboardView from "./views/LeaderboardView.vue";
 import MembersView from "./views/MembersView.vue";
@@ -11,6 +12,7 @@ import SettingsView from "./views/SettingsView.vue";
 import type { PageId } from "./types";
 
 const navItems: Array<{ id: PageId; label: string; icon: string }> = [
+  { id: "wristbands", label: "手环办理", icon: "card" },
   { id: "overview", label: "运营总览", icon: "overview" },
   { id: "rooms", label: "房间管理", icon: "rooms" },
   { id: "members", label: "会员管理", icon: "members" },
@@ -20,6 +22,7 @@ const navItems: Array<{ id: PageId; label: string; icon: string }> = [
 ];
 
 const pageMeta: Record<PageId, { title: string; description: string }> = {
+  wristbands: { title: "手环办理", description: "完成手环充时、柜台激活、查询与归还" },
   overview: { title: "运营总览", description: "门店今天的关键数据与实时状态" },
   rooms: { title: "房间管理", description: "掌握房间进度、临时积分与硬件状态" },
   members: { title: "会员管理", description: "查询和维护会员资料与充值信息" },
@@ -28,7 +31,7 @@ const pageMeta: Record<PageId, { title: string; description: string }> = {
   settings: { title: "系统设置", description: "配置手环规则、功能开关与数据上传" },
 };
 
-const activePage = ref<PageId>("overview");
+const activePage = ref<PageId>("wristbands");
 const mobileNavOpen = ref(false);
 const toastMessage = ref("");
 let toastTimer: number | undefined;
@@ -131,7 +134,8 @@ onBeforeUnmount(() => {
       </header>
 
       <div class="page-stage">
-        <DashboardView v-if="activePage === 'overview'" @navigate="navigate" />
+        <WristbandsView v-if="activePage === 'wristbands'" @toast="showToast" />
+        <DashboardView v-else-if="activePage === 'overview'" @navigate="navigate" />
         <RoomsView v-else-if="activePage === 'rooms'" @toast="showToast" />
         <MembersView v-else-if="activePage === 'members'" @toast="showToast" />
         <RecordsView v-else-if="activePage === 'records'" />

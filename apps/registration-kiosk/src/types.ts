@@ -1,4 +1,4 @@
-export type KioskScreen = "home" | "phone" | "register" | "swipe" | "success";
+export type KioskScreen = "home" | "phone" | "confirm" | "register" | "swipe" | "success";
 export type KioskOverlay = "none" | "avatar-source" | "avatar-library";
 export type KeyboardLayout = "numeric" | "alphabetic";
 export type InputTarget = "phone" | "name" | "birthYear" | "birthMonth" | "birthDay";
@@ -12,7 +12,17 @@ export interface KioskSession {
   birthDay: string;
   gender: Gender;
   avatarId: string;
+  memberId: number | null;
+  wristbandUid: string;
+  durationMinutes: number | null;
   wristbandStatus: "idle" | "waiting" | "detected";
+}
+
+export interface DemoMember {
+  id?: number;
+  phone: string;
+  name: string;
+  avatarId: string;
 }
 
 export interface AvatarSpec {

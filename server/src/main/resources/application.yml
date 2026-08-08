@@ -1,7 +1,12 @@
 spring:
   application:
     name: ledgame-platform-server
+  datasource:
+    url: jdbc:sqlite:${PLATFORM_DB_PATH:./platform.db}
+    driver-class-name: org.sqlite.JDBC
+  sql:
+    init:
+      mode: always
 
 server:
   port: 8090
-

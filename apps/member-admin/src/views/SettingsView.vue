@@ -28,7 +28,7 @@ const saveDuration = () => {
   const value = Number(braceletMinutes.value);
   if (!Number.isInteger(value) || value < 1 || value > 1440) return void (durationError.value = "请输入 1–1440 之间的整数分钟数");
   savedMinutes.value = value;
-  emit("toast", `手环有效时长已设为 ${value} 分钟（演示状态）`);
+  emit("toast", `常用充时快捷值已设为 ${value} 分钟（演示状态）`);
 };
 
 const requestFeatureToggle = (feature: FeatureSetting) => {
@@ -82,9 +82,9 @@ const testUpload = () => {
 
     <div class="settings-content">
       <section v-if="activeTab === 'basic'" class="settings-card glass-panel">
-        <header class="settings-card__header"><span class="settings-icon"><AppIcon name="clock" /></span><div><p class="section-eyebrow">BRACELET DURATION</p><h2>IC 手环有效使用时长</h2><p>统一设置自助系统激活后显示的默认有效时长。</p></div><StatusBadge tone="info">当前 {{ savedMinutes }} 分钟</StatusBadge></header>
+        <header class="settings-card__header"><span class="settings-icon"><AppIcon name="clock" /></span><div><p class="section-eyebrow">DURATION SHORTCUT</p><h2>常用充时快捷值</h2><p>仅作为柜台录入本次购买时长时的快捷选择，不会自动写入所有手环。</p></div><StatusBadge tone="info">常用 {{ savedMinutes }} 分钟</StatusBadge></header>
         <div class="duration-editor">
-          <label class="form-field"><span>有效使用时长 <b>*</b></span><div class="duration-input"><input v-model.number="braceletMinutes" type="number" min="1" max="1440" @input="durationError = ''" /><span>分钟</span></div><small v-if="durationError" class="field-error">{{ durationError }}</small><small v-else>允许范围：1–1440 分钟，仅支持整数</small></label>
+          <label class="form-field"><span>常用分钟数 <b>*</b></span><div class="duration-input"><input v-model.number="braceletMinutes" type="number" min="1" max="1440" @input="durationError = ''" /><span>分钟</span></div><small v-if="durationError" class="field-error">{{ durationError }}</small><small v-else>每只手环仍可在办理时输入不同分钟数</small></label>
           <div class="quick-amounts quick-amounts--duration"><button v-for="duration in [30, 45, 60, 90, 120]" :key="duration" type="button" :class="{ active: braceletMinutes === duration }" @click="braceletMinutes = duration; durationError = ''">{{ duration }} 分钟</button></div>
         </div>
         <div class="rule-flow">
@@ -92,7 +92,7 @@ const testUpload = () => {
           <div><span>2</span><section><strong>游戏系统首次刷卡</strong><p>首次刷卡进入游戏后，游戏时长才开始计算。</p></section></div><AppIcon name="arrow" />
           <div><span>3</span><section><strong>未开始则不计时</strong><p>仅激活但未开始游戏，有效游戏时长不生效。</p></section></div>
         </div>
-        <div class="notice-bar"><AppIcon name="sparkles" :size="18" /><div><strong>计时规则说明</strong><p>这里设置的是手环可使用的游戏时长，不是从发卡或激活时刻开始的自然倒计时。</p></div></div>
+        <div class="notice-bar"><AppIcon name="sparkles" :size="18" /><div><strong>计时规则说明</strong><p>分钟数属于具体手环的本次购买周期；绑定会员后仍不计时，首次游戏刷卡才开始。</p></div></div>
         <footer class="settings-actions"><button class="primary-button" type="button" @click="saveDuration">保存时长设置</button></footer>
       </section>
 

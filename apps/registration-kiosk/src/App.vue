@@ -5,9 +5,12 @@ import KioskIcon from "./components/KioskIcon.vue";
 import SoftKeyboard from "./components/SoftKeyboard.vue";
 import WristbandArt from "./components/WristbandArt.vue";
 import { avatars } from "./avatars";
-import type { InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
+import type { DemoMember, InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
 
-const createSession = (): KioskSession => ({ phone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: "", wristbandStatus: "idle" });
+const API_BASE = "http://127.0.0.1:8090/api";
+type ApiMember = DemoMember & { id: number };
+
+const createSession = (): KioskSession => ({ phone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: "", memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
 const screen = ref<KioskScreen>("home");
 const overlay = ref<KioskOverlay>("none");
 const session = reactive<KioskSession>(createSession());
@@ -15,6 +18,8 @@ const activeInput = ref<InputTarget | null>(null);
 const keyboardLayout = ref<KeyboardLayout>("numeric");
 const pendingAvatarId = ref("");
 const errors = reactive<Record<string, string>>({});
+const foundMember = ref<ApiMember | null>(null);
+const activationError = ref("");
 const toast = ref("");
 let toastTimer: number | undefined;
 let scanTimer: number | undefined;
@@ -22,9 +27,17 @@ let scanTimer: number | undefined;
 const selectedAvatar = computed(() => avatars.find((avatar) => avatar.id === session.avatarId) ?? avatars[0]);
 const pendingAvatar = computed(() => avatars.find((avatar) => avatar.id === pendingAvatarId.value) ?? avatars[0]);
 const keyboardOpen = computed(() => activeInput.value !== null);
-const currentTitle = computed(() => ({ home: "Self-Service", phone: "Activate Wristband", register: "Register Player", swipe: "Swipe Wristband", success: "Self-Service" }[screen.value]));
-const stepNumber = computed(() => ({ home: 0, phone: 1, register: 2, swipe: 3, success: 4 }[screen.value]));
+const currentTitle = computed(() => ({ home: "Self-Service", phone: "Activate Wristband", confirm: "Confirm Player", register: "Register Player", swipe: "Swipe Wristband", success: "Self-Service" }[screen.value]));
+const stepNumber = computed(() => ({ home: 0, phone: 1, confirm: 2, register: 2, swipe: 3, success: 4 }[screen.value]));
+const profileScreen = computed<KioskScreen>(() => foundMember.value ? "confirm" : "register");
 const activeFieldLabel = computed(() => ({ phone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day" }[activeInput.value ?? "phone"]));
+
+const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const response = await fetch(`${API_BASE}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.message || body.error || `本机服务请求失败（HTTP ${response.status}）`);
+  return body as T;
+};
 
 const showToast = (message: string) => {
   toast.value = message;
@@ -43,6 +56,8 @@ const resetSession = () => {
   Object.assign(session, createSession());
   Object.keys(errors).forEach((key) => delete errors[key]);
   pendingAvatarId.value = "";
+  foundMember.value = null;
+  activationError.value = "";
   activeInput.value = null;
   overlay.value = "none";
   toast.value = "";
@@ -70,11 +85,33 @@ const backspace = () => setInputValue(getInputValue().slice(0, -1));
 const clearInput = () => setInputValue("");
 
 const isPhoneValid = () => /^\d{7,15}$/.test(session.phone);
-const submitPhone = () => {
+const submitPhone = async () => {
   closeKeyboard();
   if (!isPhoneValid()) { errors.phone = "Enter 7–15 digits to continue."; nextTick(() => document.querySelector('[data-input="phone"]')?.scrollIntoView({ behavior: "smooth", block: "center" })); return; }
   delete errors.phone;
-  screen.value = "register";
+  try {
+    const members = await request<ApiMember[]>(`/members?phone=${encodeURIComponent(session.phone)}`);
+    foundMember.value = members[0] ?? null;
+  } catch (error) {
+    errors.phone = error instanceof Error ? error.message : "无法连接本机服务";
+    return;
+  }
+  if (foundMember.value) {
+    session.memberId = foundMember.value.id;
+    session.name = foundMember.value.name;
+    session.avatarId = foundMember.value.avatarId;
+    screen.value = "confirm";
+  } else {
+    session.name = "";
+    session.avatarId = "";
+    screen.value = "register";
+  }
+};
+
+const confirmExistingMember = () => {
+  session.wristbandStatus = "waiting";
+  activationError.value = "";
+  screen.value = "swipe";
 };
 
 const validateRegistration = () => {
@@ -90,15 +127,23 @@ const validateRegistration = () => {
   return Object.keys(errors).length === 0;
 };
 
-const submitRegistration = () => {
+const submitRegistration = async () => {
   closeKeyboard();
   if (!validateRegistration()) {
     const first = ["avatar", "name", "phone", "birthday", "gender"].find((key) => errors[key]);
     nextTick(() => document.querySelector(`[data-field="${first}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
     return;
   }
-  session.wristbandStatus = "waiting";
-  screen.value = "swipe";
+  try {
+    const member = await request<ApiMember>("/members", { method: "POST", body: JSON.stringify({ phone: session.phone, name: session.name.trim(), avatarId: session.avatarId, birthday: `${session.birthYear}-${session.birthMonth.padStart(2, "0")}-${session.birthDay.padStart(2, "0")}`, gender: session.gender, createdBy: "registration-kiosk" }) });
+    foundMember.value = member;
+    session.memberId = member.id;
+    session.wristbandStatus = "waiting";
+    activationError.value = "";
+    screen.value = "swipe";
+  } catch (error) {
+    errors.phone = error instanceof Error ? error.message : "会员创建失败";
+  }
 };
 
 const openAvatarSource = () => {
@@ -110,11 +155,23 @@ const openAvatarLibrary = () => { pendingAvatarId.value = session.avatarId || av
 const confirmAvatar = () => { session.avatarId = pendingAvatarId.value; delete errors.avatar; overlay.value = "none"; showToast(`${pendingAvatar.value.label} is now your avatar.`); };
 const takePhoto = () => { overlay.value = "none"; showToast("Camera is not connected in this UI demo."); };
 
-const simulateSwipe = () => {
+const scanWristband = async () => {
   if (session.wristbandStatus === "detected") return;
-  session.wristbandStatus = "detected";
-  if (scanTimer) window.clearTimeout(scanTimer);
-  scanTimer = window.setTimeout(() => { screen.value = "success"; }, 900);
+  activationError.value = "";
+  const uid = session.wristbandUid.replace(/\D/g, "");
+  if (!uid) return void (activationError.value = "请把已充时手环放到读卡器上");
+  if (!session.memberId) return void (activationError.value = "请先完成会员确认");
+  try {
+    const wristband = await request<Record<string, unknown>>(`/wristbands/${encodeURIComponent(uid)}`);
+    session.durationMinutes = wristband.durationMinutes == null ? null : Number(wristband.durationMinutes);
+    await request("/wristbands/bind", { method: "POST", body: JSON.stringify({ uid, memberId: session.memberId }) });
+    session.wristbandUid = uid;
+    session.wristbandStatus = "detected";
+    if (scanTimer) window.clearTimeout(scanTimer);
+    scanTimer = window.setTimeout(() => { screen.value = "success"; }, 500);
+  } catch (error) {
+    activationError.value = error instanceof Error ? error.message : "手环绑定失败";
+  }
 };
 
 const handleNativeInput = (target: InputTarget, event: Event) => {
@@ -141,7 +198,7 @@ onBeforeUnmount(() => {
     <header class="kiosk-header">
       <div class="kiosk-brand"><span class="kiosk-brand__mark"><i></i><i></i><i></i><i></i></span><div><strong>LED GAME</strong><small>PLAYER STATION</small></div></div>
       <div class="screen-title"><i></i><span>{{ currentTitle }}</span><i></i></div>
-      <div class="session-status"><span class="status-light"></span><div><strong>UI DEMO</strong><small>No hardware connected</small></div></div>
+      <div class="session-status"><span class="status-light"></span><div><strong>LOCAL SERVICE</strong><small>Reader input + SQLite API</small></div></div>
     </header>
 
     <div v-if="screen !== 'home' && screen !== 'success'" class="step-track" aria-label="Activation progress">
@@ -159,12 +216,19 @@ onBeforeUnmount(() => {
 
     <section v-else-if="screen === 'phone'" class="screen screen--center" :class="{ 'screen--with-keyboard': keyboardOpen }">
       <div class="phone-layout">
-        <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="phone" :size="34" /></span><p class="eyebrow">STEP 01 · FIND YOUR PROFILE</p><h1>Enter your<br /><em>phone number</em></h1><p>We'll use it to prepare your player profile. No message will be sent in this UI demo.</p></div>
+        <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="phone" :size="34" /></span><p class="eyebrow">STEP 01 · FIND YOUR PROFILE</p><h1>Enter your<br /><em>phone number</em></h1><p>先查询或创建会员，确认身份后再刷手环。</p></div>
         <div class="tech-panel phone-panel">
           <div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <label class="kiosk-field" :class="{ focused: activeInput === 'phone', invalid: errors.phone }" data-field="phone"><span>PHONE NUMBER</span><div><KioskIcon name="phone" :size="22" /><input data-input="phone" :value="session.phone" inputmode="none" autocomplete="off" placeholder="Tap to enter number" aria-label="Phone number" @focus="openInput('phone','numeric')" @input="handleNativeInput('phone',$event)" @keydown.enter.prevent="submitPhone" /><small>{{ session.phone.length }}/15</small></div><b v-if="errors.phone"><KioskIcon name="info" :size="15" /> {{ errors.phone }}</b><b v-else>Use 7–15 digits. Spaces are added visually.</b></label>
           <div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="goTo('home')"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" type="button" @click="submitPhone">Confirm <KioskIcon name="arrow" :size="20" /></button></div>
         </div>
+      </div>
+    </section>
+
+    <section v-else-if="screen === 'confirm'" class="screen screen--center">
+      <div class="phone-layout member-confirm-layout">
+        <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="user" :size="34" /></span><p class="eyebrow">STEP 02 · MEMBER FOUND</p><h1>Welcome back,<br /><em>{{ session.name }}</em></h1><p>Confirm this is your player profile, then pair the wristband that was charged at the counter.</p></div>
+        <div class="tech-panel member-confirm-card"><div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div><AvatarArt :avatar="selectedAvatar" size="large" /><div><small>EXISTING MEMBER</small><h2>{{ session.name }}</h2><p>{{ session.phone }}</p><span><KioskIcon name="check" :size="16" /> Profile found</span></div><div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="goTo('phone')"><KioskIcon name="back" :size="20" /> Not me</button><button class="kiosk-button kiosk-button--primary" type="button" @click="confirmExistingMember">Continue <KioskIcon name="arrow" :size="20" /></button></div></div>
       </div>
     </section>
 
@@ -182,14 +246,14 @@ onBeforeUnmount(() => {
 
     <section v-else-if="screen === 'swipe'" class="screen screen--swipe">
       <div class="player-chip"><AvatarArt :avatar="selectedAvatar" size="small" /><span><small>PLAYER</small><strong>{{ session.name }}</strong></span></div>
-      <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? 'Wristband detected' : 'Place your wristband on the reader' }}</h1><p>{{ session.wristbandStatus === 'detected' ? 'Creating your activation result…' : 'Hold it over the sensing area until the light turns green.' }}</p><div class="waiting-status" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? 'Wristband recognized' : 'Waiting for wristband…' }}</div></div></div>
-      <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo('register')"><KioskIcon name="back" :size="20" /> Back</button><button class="demo-button" type="button" :disabled="session.wristbandStatus === 'detected'" @click="simulateSwipe"><small>UI DEMO CONTROL</small><strong><KioskIcon name="signal" :size="19" /> Simulate Successful Swipe</strong></button></div>
-      <p class="demo-note"><KioskIcon name="info" :size="15" /> UI simulation only · No reader or IC card is accessed</p>
+      <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? 'Wristband bound' : 'Scan your charged wristband' }}</h1><p>{{ session.wristbandStatus === 'detected' ? 'Member and wristband are now linked.' : '请把柜台已充时的手环放到读卡器上。' }}</p><label class="demo-uid-field"><span>READER UID</span><input v-model="session.wristbandUid" inputmode="numeric" autocomplete="off" maxlength="32" autofocus :disabled="session.wristbandStatus === 'detected'" placeholder="等待读卡器输入" @input="activationError = ''" @keydown.enter.prevent="scanWristband" /></label><p v-if="activationError" class="activation-error"><KioskIcon name="info" :size="16" />{{ activationError }}</p><div class="waiting-status" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? 'Wristband bound · READY' : 'Waiting for reader…' }}</div></div></div>
+      <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo(profileScreen)"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="scanWristband"><KioskIcon name="signal" :size="19" /> Bind scanned wristband</button></div>
+      <p class="demo-note"><KioskIcon name="info" :size="15" /> UID comes from the keyboard-wedge reader. Timing starts only at the first game-system swipe.</p>
     </section>
 
     <section v-else class="screen screen--success">
       <div class="success-burst" aria-hidden="true"><i v-for="n in 12" :key="n" :style="{ '--i': n }"></i></div>
-      <div class="success-layout"><div class="success-mark"><span class="success-ring"></span><span><KioskIcon name="check" :size="70" /></span></div><div class="success-copy"><p class="eyebrow"><KioskIcon name="spark" :size="16" /> ACTIVATION COMPLETE</p><h1>Activation<br /><em>Successful!</em></h1><p>Your wristband is ready. Game time begins only after the first swipe at a game system.</p><div class="success-summary"><AvatarArt :avatar="selectedAvatar" size="small" /><div><small>PLAYER</small><strong>{{ session.name }}</strong></div><i></i><div><small>VALID PLAY TIME</small><strong>60 <b>min</b></strong></div></div><div class="simulation-label"><KioskIcon name="info" :size="15" /> UI simulation · No card was written</div><button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button></div></div>
+      <div class="success-layout"><div class="success-mark"><span class="success-ring"></span><span><KioskIcon name="check" :size="70" /></span></div><div class="success-copy"><p class="eyebrow"><KioskIcon name="spark" :size="16" /> WRISTBAND READY</p><h1>Binding<br /><em>Successful!</em></h1><p>Your member and wristband are linked. Game time begins only after the first swipe at a game system.</p><div class="success-summary"><AvatarArt :avatar="selectedAvatar" size="small" /><div><small>PLAYER</small><strong>{{ session.name }}</strong><b>{{ session.wristbandUid }}</b></div><i></i><div><small>PURCHASED PLAY TIME</small><strong>{{ session.durationMinutes }} <b>min</b></strong></div></div><div class="simulation-label"><KioskIcon name="info" :size="15" /> Saved by local member-admin backend and SQLite</div><button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button></div></div>
     </section>
 
     <SoftKeyboard v-if="keyboardOpen" :layout="keyboardLayout" :field-label="activeFieldLabel" @key="handleKeyboardKey" @backspace="backspace" @clear="clearInput" @done="closeKeyboard" @close="closeKeyboard" />

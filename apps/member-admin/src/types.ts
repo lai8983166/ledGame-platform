@@ -1,4 +1,4 @@
-export type PageId = "overview" | "rooms" | "members" | "records" | "ranking" | "settings";
+export type PageId = "wristbands" | "overview" | "rooms" | "members" | "records" | "ranking" | "settings";
 
 export type StatusTone = "neutral" | "info" | "success" | "warning" | "danger" | "purple";
 
@@ -38,11 +38,21 @@ export interface Member {
   initials: string;
   phone: string;
   identityId: string;
-  rechargeAmount: number;
-  braceletMinutes: number;
   status: "active" | "inactive";
   joinedAt: string;
   color: string;
+}
+
+export type WristbandState = "empty" | "charged" | "ready" | "active" | "expired";
+
+export interface Wristband {
+  uid: string;
+  state: WristbandState;
+  durationMinutes: number | null;
+  memberId: string | null;
+  chargedAt: string | null;
+  activatedAt: string | null;
+  startedAt: string | null;
 }
 
 export interface CardIssueRecord {

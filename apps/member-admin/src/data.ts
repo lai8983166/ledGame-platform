@@ -102,14 +102,14 @@ const rooms: Room[] = [
 ];
 
 const members: Member[] = [
-  { id: "m1", account: "M20260018", name: "陈小宇", initials: "CY", phone: "138 **** 2716", identityId: "ID-310104-018", rechargeAmount: 680, braceletMinutes: 60, status: "active", joinedAt: "2026-08-02", color: "#5b7cff" },
-  { id: "m2", account: "M20260017", name: "林可欣", initials: "LX", phone: "186 **** 9032", identityId: "ID-310112-017", rechargeAmount: 450, braceletMinutes: 90, status: "active", joinedAt: "2026-08-02", color: "#9b6dff" },
-  { id: "m3", account: "M20260016", name: "周子航", initials: "ZZ", phone: "137 **** 6418", identityId: "ID-310115-016", rechargeAmount: 220, braceletMinutes: 60, status: "active", joinedAt: "2026-08-01", color: "#18b6a4" },
-  { id: "m4", account: "M20260015", name: "沈乐宁", initials: "SL", phone: "159 **** 3027", identityId: "ID-310107-015", rechargeAmount: 300, braceletMinutes: 45, status: "active", joinedAt: "2026-07-31", color: "#ff8a65" },
-  { id: "m5", account: "M20260014", name: "王一诺", initials: "WY", phone: "133 **** 7290", identityId: "ID-310106-014", rechargeAmount: 180, braceletMinutes: 60, status: "inactive", joinedAt: "2026-07-29", color: "#62758a" },
-  { id: "m6", account: "M20260013", name: "许安然", initials: "XA", phone: "188 **** 5113", identityId: "ID-310109-013", rechargeAmount: 520, braceletMinutes: 120, status: "active", joinedAt: "2026-07-28", color: "#18b6a4" },
-  { id: "m7", account: "M20260012", name: "顾南星", initials: "GN", phone: "136 **** 1845", identityId: "ID-310101-012", rechargeAmount: 150, braceletMinutes: 60, status: "active", joinedAt: "2026-07-26", color: "#9b6dff" },
-  { id: "m8", account: "M20260011", name: "邵雨桐", initials: "SY", phone: "152 **** 4781", identityId: "ID-310118-011", rechargeAmount: 260, braceletMinutes: 60, status: "active", joinedAt: "2026-07-24", color: "#ff8a65" },
+  { id: "m1", account: "M20260018", name: "陈小宇", initials: "CY", phone: "13800002716", identityId: "ID-310104-018", status: "active", joinedAt: "2026-08-02", color: "#5b7cff" },
+  { id: "m2", account: "M20260017", name: "林可欣", initials: "LX", phone: "18600009032", identityId: "ID-310112-017", status: "active", joinedAt: "2026-08-02", color: "#9b6dff" },
+  { id: "m3", account: "M20260016", name: "周子航", initials: "ZZ", phone: "13700006418", identityId: "ID-310115-016", status: "active", joinedAt: "2026-08-01", color: "#18b6a4" },
+  { id: "m4", account: "M20260015", name: "沈乐宁", initials: "SL", phone: "15900003027", identityId: "ID-310107-015", status: "active", joinedAt: "2026-07-31", color: "#ff8a65" },
+  { id: "m5", account: "M20260014", name: "王一诺", initials: "WY", phone: "13300007290", identityId: "ID-310106-014", status: "inactive", joinedAt: "2026-07-29", color: "#62758a" },
+  { id: "m6", account: "M20260013", name: "许安然", initials: "XA", phone: "18800005113", identityId: "ID-310109-013", status: "active", joinedAt: "2026-07-28", color: "#18b6a4" },
+  { id: "m7", account: "M20260012", name: "顾南星", initials: "GN", phone: "13600001845", identityId: "ID-310101-012", status: "active", joinedAt: "2026-07-26", color: "#9b6dff" },
+  { id: "m8", account: "M20260011", name: "邵雨桐", initials: "SY", phone: "15200004781", identityId: "ID-310118-011", status: "active", joinedAt: "2026-07-24", color: "#ff8a65" },
 ];
 
 export const createRooms = (): Room[] => structuredClone(rooms);
