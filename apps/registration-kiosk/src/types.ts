@@ -1,11 +1,12 @@
-export type KioskScreen = "home" | "phone" | "confirm" | "register" | "swipe" | "success";
+export type KioskScreen = "home" | "phone" | "confirm" | "register" | "swipe" | "success" | "info-phone" | "info-result";
 export type KioskOverlay = "none" | "avatar-source" | "avatar-library";
 export type KeyboardLayout = "numeric" | "alphabetic";
-export type InputTarget = "phone" | "name" | "birthYear" | "birthMonth" | "birthDay";
+export type InputTarget = "phone" | "infoPhone" | "name" | "birthYear" | "birthMonth" | "birthDay";
 export type Gender = "male" | "female" | "secret" | "";
 
 export interface KioskSession {
   phone: string;
+  infoPhone: string;
   name: string;
   birthYear: string;
   birthMonth: string;

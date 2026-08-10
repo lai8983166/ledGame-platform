@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
-import { createRooms } from "../data";
 import type { Room } from "../types";
+import { createPlatformApiClient } from "@ledgame/platform-api-client";
+import { mapRoomStatus } from "../roomStatus";
 
 const emit = defineEmits<{ toast: [message: string] }>();
-const rooms = ref(createRooms());
+const rooms = ref<Room[]>([]);
+const loading = ref(false);
+const loadError = ref("");
+const platformApi = createPlatformApiClient();
+let refreshTimer: number | undefined;
 const filter = ref<"all" | "playing" | "idle" | "warning">("all");
 const search = ref("");
 const selectedRoom = ref<Room | null>(null);
@@ -18,15 +23,45 @@ const editError = ref("");
 
 const filteredRooms = computed(() => rooms.value.filter((room) => {
   const matchesSearch = room.name.toLowerCase().includes(search.value.trim().toLowerCase()) || room.code.toLowerCase().includes(search.value.trim().toLowerCase());
-  const hasWarning = room.hardware.some((device) => device.status !== "online");
+  const hasWarning = room.online === false || room.hardware.some((device) => device.status !== "online");
   const matchesFilter = filter.value === "all" || room.status === filter.value || (filter.value === "warning" && hasWarning);
   return matchesSearch && matchesFilter;
 }));
 
 const formatTime = (seconds = 0) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-const roomTone = (room: Room) => room.status === "playing" ? "purple" : "success";
+const formatEventTime = (value?: string | null) => value ? new Date(value).toLocaleTimeString() : "--";
+const roomTone = (room: Room) => !room.online ? "danger" : room.status === "playing" ? "purple" : "success";
+const roomConnectionLabel = (room: Room) => {
+  if (!room.ip) return "UNKNOWN IP";
+  if (!room.online) return "OFFLINE";
+  if (!room.lastEventAt) return "ONLINE / NO SNAPSHOT";
+  const timestamp = Date.parse(room.lastEventAt);
+  return Number.isFinite(timestamp) && Date.now() - timestamp > 60_000 ? "STALE" : "ONLINE";
+};
+const roomConnectionTone = (room: Room) => roomConnectionLabel(room) === "STALE" ? "warning" : room.online ? "success" : "danger";
 const hardwareTone = (status: string) => status === "online" ? "success" : status === "warning" ? "warning" : "danger";
 const hardwareLabel = (status: string) => status === "online" ? "在线" : status === "warning" ? "异常" : "离线";
+
+const loadRooms = async () => {
+  loading.value = true;
+  try {
+    rooms.value = (await platformApi.listRooms()).map(mapRoomStatus);
+    loadError.value = "";
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : "无法读取房间状态";
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  void loadRooms();
+  refreshTimer = window.setInterval(() => void loadRooms(), 2000);
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer) window.clearInterval(refreshTimer);
+});
 
 const openEdit = (room: Room) => {
   editingRoom.value = room;
@@ -54,8 +89,11 @@ const saveRoomName = () => {
     <div class="toolbar__meta"><span class="live-dot"></span> 临时状态实时预览</div>
   </section>
 
-  <div v-if="filteredRooms.length" class="room-grid">
+  <div v-if="loadError" class="notice-bar notice-bar--warning">{{ loadError }}</div>
+  <div v-if="loading && !rooms.length" class="empty-state glass-panel"><p>正在读取真实房间连接...</p></div>
+  <div v-else-if="filteredRooms.length" class="room-grid">
     <article v-for="room in filteredRooms" :key="room.id" class="room-card glass-panel" :class="{ 'room-card--playing': room.status === 'playing' }">
+      <div class="room-connection-meta"><span>{{ room.ip || 'UNKNOWN_IP' }}</span><span>Queue {{ room.queueLength ?? 0 }}</span><span>{{ room.lastEventType || 'NO_EVENT' }} @ {{ formatEventTime(room.lastEventAt) }}</span><span>Seq {{ room.lastSequence ?? 0 }}</span><StatusBadge :tone="roomConnectionTone(room)">{{ roomConnectionLabel(room) }}</StatusBadge></div>
       <header class="room-card__header">
         <div class="room-code"><span>{{ room.code.slice(-2) }}</span><small>{{ room.code }}</small></div>
         <StatusBadge :tone="roomTone(room)">{{ room.status === "playing" ? "游戏中" : "空闲" }}</StatusBadge>

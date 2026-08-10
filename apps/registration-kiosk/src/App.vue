@@ -5,12 +5,14 @@ import KioskIcon from "./components/KioskIcon.vue";
 import SoftKeyboard from "./components/SoftKeyboard.vue";
 import WristbandArt from "./components/WristbandArt.vue";
 import { avatars } from "./avatars";
+import { createPlatformApiClient } from "@ledgame/platform-api-client";
+import { createPlayerInfoFlow } from "./playerInfoFlow";
 import type { DemoMember, InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
 
 const API_BASE = "http://127.0.0.1:8090/api";
 type ApiMember = DemoMember & { id: number };
 
-const createSession = (): KioskSession => ({ phone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: "", memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
+const createSession = (): KioskSession => ({ phone: "", infoPhone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: "", memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
 const screen = ref<KioskScreen>("home");
 const overlay = ref<KioskOverlay>("none");
 const session = reactive<KioskSession>(createSession());
@@ -23,14 +25,16 @@ const activationError = ref("");
 const toast = ref("");
 let toastTimer: number | undefined;
 let scanTimer: number | undefined;
+const playerInfoFlow = createPlayerInfoFlow(createPlatformApiClient());
+const playerInfoState = playerInfoFlow.state;
 
 const selectedAvatar = computed(() => avatars.find((avatar) => avatar.id === session.avatarId) ?? avatars[0]);
 const pendingAvatar = computed(() => avatars.find((avatar) => avatar.id === pendingAvatarId.value) ?? avatars[0]);
 const keyboardOpen = computed(() => activeInput.value !== null);
-const currentTitle = computed(() => ({ home: "Self-Service", phone: "Activate Wristband", confirm: "Confirm Player", register: "Register Player", swipe: "Swipe Wristband", success: "Self-Service" }[screen.value]));
-const stepNumber = computed(() => ({ home: 0, phone: 1, confirm: 2, register: 2, swipe: 3, success: 4 }[screen.value]));
+const currentTitle = computed(() => ({ home: "Self-Service", phone: "Activate Wristband", confirm: "Confirm Player", register: "Register Player", swipe: "Swipe Wristband", success: "Self-Service", "info-phone": "Player Info", "info-result": "Player Info" }[screen.value]));
+const stepNumber = computed(() => ({ home: 0, phone: 1, confirm: 2, register: 2, swipe: 3, success: 4, "info-phone": 0, "info-result": 0 }[screen.value]));
 const profileScreen = computed<KioskScreen>(() => foundMember.value ? "confirm" : "register");
-const activeFieldLabel = computed(() => ({ phone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day" }[activeInput.value ?? "phone"]));
+const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day" }[activeInput.value ?? "phone"]));
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
@@ -57,6 +61,7 @@ const resetSession = () => {
   Object.keys(errors).forEach((key) => delete errors[key]);
   pendingAvatarId.value = "";
   foundMember.value = null;
+  playerInfoFlow.reset();
   activationError.value = "";
   activeInput.value = null;
   overlay.value = "none";
@@ -69,7 +74,7 @@ function closeKeyboard() { activeInput.value = null; }
 const openInput = (target: InputTarget, layout: KeyboardLayout) => {
   activeInput.value = target;
   keyboardLayout.value = layout;
-  delete errors[target === "phone" ? "phone" : target.startsWith("birth") ? "birthday" : target];
+  delete errors[target === "phone" || target === "infoPhone" ? target : target.startsWith("birth") ? "birthday" : target];
   nextTick(() => document.querySelector(`[data-input="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 };
 
@@ -78,13 +83,30 @@ const setInputValue = (value: string) => { if (activeInput.value) session[active
 const handleKeyboardKey = (value: string) => {
   const target = activeInput.value;
   if (!target) return;
-  const maxLength = target === "phone" ? 15 : target === "name" ? 24 : target === "birthYear" ? 4 : 2;
+  const maxLength = target === "phone" || target === "infoPhone" ? 15 : target === "name" ? 24 : target === "birthYear" ? 4 : 2;
   if (getInputValue().length < maxLength) setInputValue(getInputValue() + (target === "name" ? value : value.replace(/\D/g, "")));
 };
 const backspace = () => setInputValue(getInputValue().slice(0, -1));
 const clearInput = () => setInputValue("");
 
 const isPhoneValid = () => /^\d{7,15}$/.test(session.phone);
+const openPlayerInfo = () => {
+  playerInfoFlow.reset();
+  session.infoPhone = "";
+  goTo("info-phone");
+};
+const queryPlayerInfo = async () => {
+  closeKeyboard();
+  playerInfoState.phone = session.infoPhone;
+  await playerInfoFlow.query();
+  if (playerInfoState.status === "success") screen.value = "info-result";
+};
+const formatRemaining = (seconds: number) => {
+  const safe = Math.max(0, seconds);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`;
+};
 const submitPhone = async () => {
   closeKeyboard();
   if (!isPhoneValid()) { errors.phone = "Enter 7–15 digits to continue."; nextTick(() => document.querySelector('[data-input="phone"]')?.scrollIntoView({ behavior: "smooth", block: "center" })); return; }
@@ -176,7 +198,7 @@ const scanWristband = async () => {
 
 const handleNativeInput = (target: InputTarget, event: Event) => {
   const value = (event.target as HTMLInputElement).value;
-  session[target] = target === "name" ? value.slice(0, 24) : value.replace(/\D/g, "").slice(0, target === "phone" ? 15 : target === "birthYear" ? 4 : 2);
+  session[target] = target === "name" ? value.slice(0, 24) : value.replace(/\D/g, "").slice(0, target === "phone" || target === "infoPhone" ? 15 : target === "birthYear" ? 4 : 2);
 };
 
 const onGlobalKeydown = (event: KeyboardEvent) => {
@@ -201,7 +223,7 @@ onBeforeUnmount(() => {
       <div class="session-status"><span class="status-light"></span><div><strong>LOCAL SERVICE</strong><small>Reader input + SQLite API</small></div></div>
     </header>
 
-    <div v-if="screen !== 'home' && screen !== 'success'" class="step-track" aria-label="Activation progress">
+    <div v-if="['phone', 'confirm', 'register', 'swipe'].includes(screen)" class="step-track" aria-label="Activation progress">
       <span v-for="step in 3" :key="step" :class="{ active: step <= stepNumber, current: step === stepNumber }"><i>{{ step }}</i><b>{{ ['Phone', 'Profile', 'Wristband'][step - 1] }}</b></span>
     </div>
 
@@ -209,9 +231,31 @@ onBeforeUnmount(() => {
       <div class="home-intro"><p class="eyebrow"><span></span> WELCOME TO THE PLAYER STATION <span></span></p><h1>Ready to <em>light up</em><br />the game floor?</h1><p>Activate your wristband in a few simple steps.</p></div>
       <div class="home-actions">
         <button class="feature-card feature-card--primary" type="button" @click="goTo('phone')"><span class="feature-card__glow"></span><span class="feature-card__icon"><WristbandArt :size="68" /></span><span><small>GET STARTED</small><strong>Activate Wristband</strong><b>Register player & pair wristband</b></span><KioskIcon name="arrow" :size="25" /></button>
-        <button class="feature-card" type="button" @click="showToast('Player Info Query is not included in this UI change.')"><span class="feature-card__icon"><KioskIcon name="user" :size="48" /></span><span><small>RETURNING PLAYER</small><strong>Player Info Query</strong><b>View an existing player profile</b></span><KioskIcon name="arrow" :size="25" /></button>
+        <button class="feature-card" type="button" @click="openPlayerInfo"><span class="feature-card__icon"><KioskIcon name="user" :size="48" /></span><span><small>RETURNING PLAYER</small><strong>Player Info Query</strong><b>View profile, points, rank and wristband balance</b></span><KioskIcon name="arrow" :size="25" /></button>
       </div>
       <footer class="home-footer"><span><KioskIcon name="info" :size="16" /> Touch a card to begin</span><span>Session data clears when you return home</span></footer>
+    </section>
+
+    <section v-else-if="screen === 'info-phone'" class="screen screen--center" :class="{ 'screen--with-keyboard': keyboardOpen }">
+      <div class="phone-layout">
+        <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="user" :size="34" /></span><p class="eyebrow">RETURNING PLAYER · READ ONLY</p><h1>Find your<br /><em>player info</em></h1><p>输入会员手机号，查询注册资料、积分排名、手环 ID 和服务端计算的剩余时间。</p></div>
+        <div class="tech-panel phone-panel">
+          <div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <label class="kiosk-field" :class="{ focused: activeInput === 'infoPhone', invalid: playerInfoState.status === 'error' }"><span>PHONE NUMBER</span><div><KioskIcon name="phone" :size="22" /><input data-input="infoPhone" :value="session.infoPhone" inputmode="none" autocomplete="off" placeholder="Tap to enter number" aria-label="Player Info phone number" @focus="openInput('infoPhone','numeric')" @input="handleNativeInput('infoPhone',$event); playerInfoState.error = ''" @keydown.enter.prevent="queryPlayerInfo" /><small>{{ session.infoPhone.length }}/15</small></div><b v-if="playerInfoState.error"><KioskIcon name="info" :size="15" /> {{ playerInfoState.error }}</b><b v-else>Only persisted member information is shown.</b></label>
+          <div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="resetSession"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" type="button" :disabled="playerInfoState.status === 'loading'" @click="queryPlayerInfo">{{ playerInfoState.status === 'loading' ? 'Querying…' : 'Query' }} <KioskIcon name="arrow" :size="20" /></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section v-else-if="screen === 'info-result' && playerInfoState.info" class="screen screen--player-info">
+      <header class="player-info-heading"><div><p class="eyebrow">PLAYER RECORD · LIVE SQLITE DATA</p><h1>Welcome back, <em>{{ playerInfoState.info.profile.name }}</em></h1><p>{{ playerInfoState.info.profile.phone }} · Registered {{ playerInfoState.info.profile.createdAt.slice(0, 10) }}</p></div><button class="kiosk-button kiosk-button--secondary" type="button" @click="screen = 'info-phone'">Query another</button></header>
+      <div class="player-info-grid">
+        <section class="tech-panel player-info-profile"><AvatarArt :avatar="avatars.find(item => item.id === playerInfoState.info?.profile.avatarId) ?? avatars[0]" size="large" /><div><small>MEMBER PROFILE</small><h2>{{ playerInfoState.info.profile.name }}</h2><p v-if="playerInfoState.info.profile.birthday">Birthday · {{ playerInfoState.info.profile.birthday }}</p><p v-if="playerInfoState.info.profile.gender">Gender · {{ playerInfoState.info.profile.gender }}</p><span><KioskIcon name="check" :size="16" /> {{ playerInfoState.info.profile.status }}</span></div></section>
+        <section class="tech-panel player-info-points"><small>TOTAL POINTS</small><strong>{{ playerInfoState.info.points.total }}</strong><p>Current rank <b>#{{ playerInfoState.info.points.rank }}</b></p></section>
+        <section class="tech-panel player-info-list"><header><small>WRISTBAND & BALANCE</small><b>{{ playerInfoState.info.wristbands.length }}</b></header><div v-if="playerInfoState.info.wristbands.length"><article v-for="band in playerInfoState.info.wristbands" :key="band.uid"><WristbandArt :size="44" /><span><strong>{{ band.uid }}</strong><small>{{ band.status }} · {{ band.durationMinutes }} min purchased</small></span><b>{{ formatRemaining(band.remainingSeconds) }}</b></article></div><p v-else>No active wristband is currently bound.</p></section>
+        <section class="tech-panel player-info-list player-info-plays"><header><small>RECENT GAMES</small><b>{{ playerInfoState.info.recentPlays.length }}</b></header><div v-if="playerInfoState.info.recentPlays.length"><article v-for="play in playerInfoState.info.recentPlays" :key="play.id"><span><strong>{{ play.gameName }}</strong><small>{{ play.status }} · {{ play.startedAt.slice(0, 16).replace('T', ' ') }}</small></span><b>+{{ play.pointsAwarded }}</b></article></div><p v-else>No game records yet.</p></section>
+      </div>
+      <button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button>
     </section>
 
     <section v-else-if="screen === 'phone'" class="screen screen--center" :class="{ 'screen--with-keyboard': keyboardOpen }">

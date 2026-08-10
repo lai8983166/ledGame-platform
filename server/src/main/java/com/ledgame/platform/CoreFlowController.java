@@ -23,9 +23,11 @@ import org.springframework.web.server.ResponseStatusException;
 @CrossOrigin(originPatterns = {"http://127.0.0.1:[*]", "http://localhost:[*]"})
 public class CoreFlowController {
     private final JdbcTemplate jdbc;
+    private final GameAccessService gameAccessService;
 
-    public CoreFlowController(JdbcTemplate jdbc) {
+    public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService) {
         this.jdbc = jdbc;
+        this.gameAccessService = gameAccessService;
     }
 
     @GetMapping("/health")
@@ -55,12 +57,12 @@ public class CoreFlowController {
 
     @GetMapping("/wristbands")
     public List<Map<String, Object>> listWristbands() {
-        return jdbc.queryForList("SELECT w.card_uid AS uid, w.status, w.duration_minutes AS durationMinutes, w.charged_at AS chargedAt, b.member_id AS memberId, m.phone, m.name AS memberName FROM wristbands w LEFT JOIN wristband_bindings b ON b.wristband_id = w.id AND b.status IN ('READY', 'ACTIVE') LEFT JOIN members m ON m.id = b.member_id ORDER BY w.card_uid");
+        return gameAccessService.listWristbands();
     }
 
     @GetMapping("/wristbands/{uid}")
     public Map<String, Object> getWristband(@PathVariable String uid) {
-        return findWristband(uid);
+        return gameAccessService.getWristband(uid);
     }
 
     @PostMapping("/wristbands/charge")
@@ -107,6 +109,18 @@ public class CoreFlowController {
         if (!String.valueOf(wristband.get("status")).equals("CHARGED")) throw conflict("只有未绑定的已充时手环可以清除可用余额");
         jdbc.update("UPDATE wristbands SET status='IN_STOCK', duration_minutes=NULL, charged_at=NULL, updated_at=? WHERE card_uid=?", now(), uid);
         return findWristband(uid);
+    }
+
+    @PostMapping("/wristbands/reclaim")
+    @Transactional
+    public Map<String, Object> reclaim(@RequestBody UidRequest request) {
+        String uid = normalizeUid(request.uid());
+        Map<String, Object> wristband = gameAccessService.getWristband(uid);
+        if (!String.valueOf(wristband.get("status")).equals("EXPIRED")) {
+            throw conflict("只有已到期的手环可以回收");
+        }
+        jdbc.update("UPDATE wristbands SET status='IN_STOCK', duration_minutes=NULL, charged_at=NULL, updated_at=? WHERE card_uid=? AND status='EXPIRED'", now(), uid);
+        return gameAccessService.getWristband(uid);
     }
 
     @PostMapping("/wristbands/unbind")

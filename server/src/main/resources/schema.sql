@@ -39,3 +39,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_open_wristband_binding
     ON wristband_bindings(wristband_id) WHERE status IN ('READY', 'ACTIVE');
 
 CREATE INDEX IF NOT EXISTS ix_bindings_member ON wristband_bindings(member_id, status);
+
+CREATE TABLE IF NOT EXISTS game_play_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id INTEGER NOT NULL REFERENCES members(id),
+    binding_id INTEGER NOT NULL REFERENCES wristband_bindings(id),
+    wristband_uid TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    room_id TEXT,
+    external_session_id TEXT NOT NULL,
+    game_id TEXT NOT NULL,
+    game_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'ABORTED')),
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    success INTEGER,
+    termination_reason TEXT,
+    raw_score INTEGER,
+    points_awarded INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_game_play_external_session
+    ON game_play_records(device_id, external_session_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_running_play_binding
+    ON game_play_records(binding_id) WHERE status = 'RUNNING';
+
+CREATE INDEX IF NOT EXISTS ix_game_plays_member_started
+    ON game_play_records(member_id, started_at DESC);

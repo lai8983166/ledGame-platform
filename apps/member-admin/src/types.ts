@@ -29,6 +29,13 @@ export interface Room {
   remainingSeconds?: number;
   players: LivePlayer[];
   hardware: HardwareDevice[];
+  ip?: string;
+  online?: boolean;
+  connectionId?: string;
+  lastSequence?: number;
+  lastEventType?: string | null;
+  lastEventAt?: string | null;
+  queueLength?: number;
 }
 
 export interface Member {

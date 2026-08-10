@@ -1,0 +1,9 @@
+spring:
+  sql:
+    init:
+      mode: always
+
+logging:
+  level:
+    org.springframework: warn
+    com.ledgame.platform: info
