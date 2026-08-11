@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "sourceLocale": "en-US",
+  "applications": {
+    "memberAdmin": {
+      "targets": {}
+    },
+    "registrationKiosk": {
+      "targets": {}
+    }
+  }
+}

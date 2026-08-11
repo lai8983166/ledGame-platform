@@ -10,33 +10,58 @@ import RecordsView from "./views/RecordsView.vue";
 import RoomsView from "./views/RoomsView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import type { PageId } from "./types";
-
-const navItems: Array<{ id: PageId; label: string; icon: string }> = [
-  { id: "wristbands", label: "手环办理", icon: "card" },
-  { id: "overview", label: "运营总览", icon: "overview" },
-  { id: "rooms", label: "房间管理", icon: "rooms" },
-  { id: "members", label: "会员管理", icon: "members" },
-  { id: "records", label: "记录与数据", icon: "records" },
-  { id: "ranking", label: "副屏排行", icon: "ranking" },
-  { id: "settings", label: "系统设置", icon: "settings" },
-];
-
-const pageMeta: Record<PageId, { title: string; description: string }> = {
-  wristbands: { title: "手环办理", description: "完成手环充时、柜台激活、查询与归还" },
-  overview: { title: "运营总览", description: "门店今天的关键数据与实时状态" },
-  rooms: { title: "房间管理", description: "掌握房间进度、临时积分与硬件状态" },
-  members: { title: "会员管理", description: "查询和维护会员资料与充值信息" },
-  records: { title: "记录与数据", description: "集中查看发卡、游玩、交易与游戏数据" },
-  ranking: { title: "副屏排行", description: "预览日、月、年度积分排行榜" },
-  settings: { title: "系统设置", description: "配置手环规则、功能开关与数据上传" },
-};
+import {
+  PLATFORM_LOCALES,
+  applyDocumentLocale,
+  persistLocale,
+  readStoredLocale,
+  type PlatformLocale,
+} from "@ledgame/platform-shared-ui";
+import {
+  MEMBER_ADMIN_LOCALE_STORAGE_KEY,
+  memberAdminCatalogs,
+  type MemberAdminMessageKey,
+} from "./localization";
+import { localeFlagUrls } from "./localeFlags";
 
 const activePage = ref<PageId>("wristbands");
 const mobileNavOpen = ref(false);
+const languageOpen = ref(false);
+const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, MEMBER_ADMIN_LOCALE_STORAGE_KEY));
 const toastMessage = ref("");
 let toastTimer: number | undefined;
 
-const currentMeta = computed(() => pageMeta[activePage.value]);
+const copy = computed(() => memberAdminCatalogs[locale.value]);
+const text = (key: MemberAdminMessageKey) => copy.value[key];
+const navDefinitions: Array<{ id: PageId; labelKey: MemberAdminMessageKey; icon: string }> = [
+  { id: "wristbands", labelKey: "navWristbands", icon: "card" },
+  { id: "overview", labelKey: "navOverview", icon: "overview" },
+  { id: "rooms", labelKey: "navRooms", icon: "rooms" },
+  { id: "members", labelKey: "navMembers", icon: "members" },
+  { id: "records", labelKey: "navRecords", icon: "records" },
+  { id: "ranking", labelKey: "navRanking", icon: "ranking" },
+  { id: "settings", labelKey: "navSettings", icon: "settings" },
+];
+const descriptionKeys: Record<PageId, MemberAdminMessageKey> = {
+  wristbands: "descWristbands",
+  overview: "descOverview",
+  rooms: "descRooms",
+  members: "descMembers",
+  records: "descRecords",
+  ranking: "descRanking",
+  settings: "descSettings",
+};
+const navItems = computed(() => navDefinitions.map((item) => ({ ...item, label: text(item.labelKey) })));
+const currentMeta = computed(() => ({
+  title: navItems.value.find((item) => item.id === activePage.value)?.label ?? "",
+  description: text(descriptionKeys[activePage.value]),
+}));
+
+const selectLocale = (value: PlatformLocale) => {
+  locale.value = persistLocale(window.localStorage, MEMBER_ADMIN_LOCALE_STORAGE_KEY, value);
+  applyDocumentLocale(document.documentElement, locale.value);
+  languageOpen.value = false;
+};
 
 const navigate = (page: PageId) => {
   activePage.value = page;
@@ -51,10 +76,16 @@ const showToast = (message: string) => {
 };
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (event.key === "Escape") mobileNavOpen.value = false;
+  if (event.key === "Escape") {
+    mobileNavOpen.value = false;
+    languageOpen.value = false;
+  }
 };
 
-onMounted(() => window.addEventListener("keydown", onKeydown));
+onMounted(() => {
+  applyDocumentLocale(document.documentElement, locale.value);
+  window.addEventListener("keydown", onKeydown);
+});
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeydown);
   if (toastTimer) window.clearTimeout(toastTimer);
@@ -77,13 +108,13 @@ onBeforeUnmount(() => {
           <strong>LED GAME</strong>
           <small>MEMBER ADMIN</small>
         </div>
-        <button class="icon-button sidebar__close" type="button" aria-label="关闭导航" @click="mobileNavOpen = false">
+        <button class="icon-button sidebar__close" type="button" :aria-label="text('closeNavigation')" @click="mobileNavOpen = false">
           <AppIcon name="close" />
         </button>
       </div>
 
       <nav class="main-nav" aria-label="主要功能">
-        <p class="nav-label">管理中心</p>
+        <p class="nav-label">{{ text('mainFunctions') }}</p>
         <button
           v-for="item in navItems"
           :key="item.id"
@@ -102,11 +133,11 @@ onBeforeUnmount(() => {
       <div class="sidebar__status">
         <div class="connection-card">
           <span class="connection-card__icon"><AppIcon name="cloud" :size="19" /></span>
-          <div><strong>系统运行正常</strong><small><i></i> 6 个房间已连接</small></div>
+          <div><strong>{{ text('systemHealthy') }}</strong><small><i></i> {{ text('roomsConnected') }}</small></div>
         </div>
         <div class="admin-profile">
           <span class="avatar avatar--admin">AD</span>
-          <div><strong>门店管理员</strong><small>上海旗舰店</small></div>
+          <div><strong>{{ text('storeManager') }}</strong><small>LED GAME</small></div>
           <button class="icon-button" type="button" aria-label="退出演示账号"><AppIcon name="logout" :size="18" /></button>
         </div>
       </div>
@@ -115,7 +146,7 @@ onBeforeUnmount(() => {
     <main class="main-content">
       <header class="topbar">
         <div class="topbar__title">
-          <button class="icon-button mobile-menu" type="button" aria-label="打开导航" :aria-expanded="mobileNavOpen" @click="mobileNavOpen = true">
+          <button class="icon-button mobile-menu" type="button" :aria-label="text('openNavigation')" :aria-expanded="mobileNavOpen" @click="mobileNavOpen = true">
             <AppIcon name="menu" />
           </button>
           <div>
@@ -124,8 +155,35 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="topbar__actions">
-          <div class="live-chip"><span></span> 演示数据</div>
-          <button class="icon-button notification-button" type="button" aria-label="查看通知">
+          <div class="language-switcher">
+            <button
+              class="language-button"
+              type="button"
+              :aria-label="text('chooseLanguage')"
+              :aria-expanded="languageOpen"
+              @click="languageOpen = !languageOpen"
+            >
+              <span aria-hidden="true">🌐</span>
+              <strong>{{ PLATFORM_LOCALES.find((item) => item.code === locale)?.label }}</strong>
+              <small>{{ locale }}</small>
+            </button>
+            <div v-if="languageOpen" class="language-popover glass-panel" role="dialog" :aria-label="text('chooseLanguage')">
+              <header><strong>{{ text('chooseLanguage') }}</strong><button type="button" :aria-label="text('close')" @click="languageOpen = false">×</button></header>
+              <div class="language-list" role="listbox" :aria-label="text('chooseLanguage')">
+                <button
+                  v-for="item in PLATFORM_LOCALES"
+                  :key="item.code"
+                  type="button"
+                  :class="{ active: item.code === locale }"
+                  :aria-selected="item.code === locale"
+                  role="option"
+                  @click="selectLocale(item.code)"
+                ><img :src="localeFlagUrls[item.flagCode]" alt="" /><strong>{{ item.label }}</strong><small>{{ item.code }}</small></button>
+              </div>
+            </div>
+          </div>
+          <div class="live-chip"><span></span> {{ text('demoData') }}</div>
+          <button class="icon-button notification-button" type="button" :aria-label="text('notifications')">
             <AppIcon name="bell" />
             <span class="notification-button__dot"></span>
           </button>

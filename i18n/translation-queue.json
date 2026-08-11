@@ -1,0 +1,1742 @@
+{
+  "schemaVersion": 1,
+  "sourceLocale": "en-US",
+  "applications": {
+    "memberAdmin": {
+      "targets": {
+        "es-ES": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "pt-PT": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "fr-FR": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "de-DE": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "pl-PL": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "ru-RU": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "vi-VN": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "it-IT": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "cs-CZ": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "ko-KR": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "ro-RO": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        },
+        "ar-SA": {
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "closeNavigation": {
+            "source": "Close navigation",
+            "translation": ""
+          },
+          "demoData": {
+            "source": "Demo data",
+            "translation": ""
+          },
+          "descMembers": {
+            "source": "Search and maintain member profiles and balances",
+            "translation": ""
+          },
+          "descOverview": {
+            "source": "Today's key store metrics and live status",
+            "translation": ""
+          },
+          "descRanking": {
+            "source": "Preview daily, monthly and yearly rankings",
+            "translation": ""
+          },
+          "descRecords": {
+            "source": "Review wristband, transaction and game records",
+            "translation": ""
+          },
+          "descRooms": {
+            "source": "Monitor room progress, scores and device status",
+            "translation": ""
+          },
+          "descSettings": {
+            "source": "Configure wristband rules and system options",
+            "translation": ""
+          },
+          "descWristbands": {
+            "source": "Charge, activate, inspect and recycle wristbands",
+            "translation": ""
+          },
+          "mainFunctions": {
+            "source": "Main functions",
+            "translation": ""
+          },
+          "notifications": {
+            "source": "View notifications",
+            "translation": ""
+          },
+          "openNavigation": {
+            "source": "Open navigation",
+            "translation": ""
+          },
+          "roomsConnected": {
+            "source": "6 rooms connected",
+            "translation": ""
+          },
+          "storeManager": {
+            "source": "Store manager",
+            "translation": ""
+          },
+          "systemHealthy": {
+            "source": "System healthy",
+            "translation": ""
+          }
+        }
+      }
+    },
+    "registrationKiosk": {
+      "targets": {
+        "es-ES": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "pt-PT": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "fr-FR": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "de-DE": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "pl-PL": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "ru-RU": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "vi-VN": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "it-IT": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "cs-CZ": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "ko-KR": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "ro-RO": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        },
+        "ar-SA": {
+          "activateDetail": {
+            "source": "Register player & pair wristband",
+            "translation": ""
+          },
+          "close": {
+            "source": "Close",
+            "translation": ""
+          },
+          "getStarted": {
+            "source": "Get started",
+            "translation": ""
+          },
+          "localService": {
+            "source": "Local service",
+            "translation": ""
+          },
+          "playerInfoDetail": {
+            "source": "View profile, points, rank and wristband balance",
+            "translation": ""
+          },
+          "returningPlayer": {
+            "source": "Returning player",
+            "translation": ""
+          },
+          "rotateBody": {
+            "source": "This experience is designed for a landscape kiosk.",
+            "translation": ""
+          },
+          "rotateTitle": {
+            "source": "Rotate your screen",
+            "translation": ""
+          },
+          "serviceDetail": {
+            "source": "Reader input + local API",
+            "translation": ""
+          },
+          "sessionClears": {
+            "source": "Session data clears when you return home",
+            "translation": ""
+          },
+          "stepPhone": {
+            "source": "Phone",
+            "translation": ""
+          },
+          "stepProfile": {
+            "source": "Profile",
+            "translation": ""
+          },
+          "stepWristband": {
+            "source": "Wristband",
+            "translation": ""
+          },
+          "titleActivate": {
+            "source": "Activate Wristband",
+            "translation": ""
+          },
+          "titleConfirm": {
+            "source": "Confirm Player",
+            "translation": ""
+          },
+          "titlePlayerInfo": {
+            "source": "Player Info",
+            "translation": ""
+          },
+          "titleRegister": {
+            "source": "Register Player",
+            "translation": ""
+          },
+          "titleSwipe": {
+            "source": "Swipe Wristband",
+            "translation": ""
+          },
+          "touchToBegin": {
+            "source": "Touch a card to begin",
+            "translation": ""
+          }
+        }
+      }
+    }
+  }
+}

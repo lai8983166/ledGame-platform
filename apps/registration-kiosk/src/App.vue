@@ -8,6 +8,19 @@ import { avatars } from "./avatars";
 import { createPlatformApiClient } from "@ledgame/platform-api-client";
 import { createPlayerInfoFlow } from "./playerInfoFlow";
 import type { DemoMember, InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
+import {
+  PLATFORM_LOCALES,
+  applyDocumentLocale,
+  persistLocale,
+  readStoredLocale,
+  type PlatformLocale,
+} from "@ledgame/platform-shared-ui";
+import {
+  REGISTRATION_KIOSK_LOCALE_STORAGE_KEY,
+  registrationKioskCatalogs,
+  type RegistrationKioskMessageKey,
+} from "./localization";
+import { localeFlagUrls } from "./localeFlags";
 
 const API_BASE = "http://127.0.0.1:8090/api";
 type ApiMember = DemoMember & { id: number };
@@ -15,6 +28,8 @@ type ApiMember = DemoMember & { id: number };
 const createSession = (): KioskSession => ({ phone: "", infoPhone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: "", memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
 const screen = ref<KioskScreen>("home");
 const overlay = ref<KioskOverlay>("none");
+const languageOpen = ref(false);
+const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, REGISTRATION_KIOSK_LOCALE_STORAGE_KEY));
 const session = reactive<KioskSession>(createSession());
 const activeInput = ref<InputTarget | null>(null);
 const keyboardLayout = ref<KeyboardLayout>("numeric");
@@ -31,7 +46,20 @@ const playerInfoState = playerInfoFlow.state;
 const selectedAvatar = computed(() => avatars.find((avatar) => avatar.id === session.avatarId) ?? avatars[0]);
 const pendingAvatar = computed(() => avatars.find((avatar) => avatar.id === pendingAvatarId.value) ?? avatars[0]);
 const keyboardOpen = computed(() => activeInput.value !== null);
-const currentTitle = computed(() => ({ home: "Self-Service", phone: "Activate Wristband", confirm: "Confirm Player", register: "Register Player", swipe: "Swipe Wristband", success: "Self-Service", "info-phone": "Player Info", "info-result": "Player Info" }[screen.value]));
+const copy = computed(() => registrationKioskCatalogs[locale.value]);
+const text = (key: RegistrationKioskMessageKey) => copy.value[key];
+const titleKeys: Record<KioskScreen, RegistrationKioskMessageKey> = {
+  home: "titleHome",
+  phone: "titleActivate",
+  confirm: "titleConfirm",
+  register: "titleRegister",
+  swipe: "titleSwipe",
+  success: "titleHome",
+  "info-phone": "titlePlayerInfo",
+  "info-result": "titlePlayerInfo",
+};
+const currentTitle = computed(() => text(titleKeys[screen.value]));
+const stepLabels = computed(() => [text("stepPhone"), text("stepProfile"), text("stepWristband")]);
 const stepNumber = computed(() => ({ home: 0, phone: 1, confirm: 2, register: 2, swipe: 3, success: 4, "info-phone": 0, "info-result": 0 }[screen.value]));
 const profileScreen = computed<KioskScreen>(() => foundMember.value ? "confirm" : "register");
 const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day" }[activeInput.value ?? "phone"]));
@@ -202,9 +230,21 @@ const handleNativeInput = (target: InputTarget, event: Event) => {
 };
 
 const onGlobalKeydown = (event: KeyboardEvent) => {
-  if (event.key === "Escape") { if (overlay.value !== "none") overlay.value = "none"; else closeKeyboard(); }
+  if (event.key === "Escape") {
+    if (languageOpen.value) languageOpen.value = false;
+    else if (overlay.value !== "none") overlay.value = "none";
+    else closeKeyboard();
+  }
 };
-onMounted(() => window.addEventListener("keydown", onGlobalKeydown));
+const selectLocale = (value: PlatformLocale) => {
+  locale.value = persistLocale(window.localStorage, REGISTRATION_KIOSK_LOCALE_STORAGE_KEY, value);
+  applyDocumentLocale(document.documentElement, locale.value);
+  languageOpen.value = false;
+};
+onMounted(() => {
+  applyDocumentLocale(document.documentElement, locale.value);
+  window.addEventListener("keydown", onGlobalKeydown);
+});
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
   if (toastTimer) window.clearTimeout(toastTimer);
@@ -215,25 +255,28 @@ onBeforeUnmount(() => {
 <template>
   <main class="kiosk-app" :class="[{ 'keyboard-is-open': keyboardOpen }, `screen-${screen}`]">
     <div class="kiosk-bg" aria-hidden="true"><span class="energy-orb energy-orb--one"></span><span class="energy-orb energy-orb--two"></span><span class="scanline"></span></div>
-    <div class="portrait-notice"><KioskIcon name="rotate" :size="38" /><strong>Rotate your screen</strong><span>This experience is designed for a landscape kiosk.</span></div>
+    <div class="portrait-notice"><KioskIcon name="rotate" :size="38" /><strong>{{ text('rotateTitle') }}</strong><span>{{ text('rotateBody') }}</span></div>
 
     <header class="kiosk-header">
       <div class="kiosk-brand"><span class="kiosk-brand__mark"><i></i><i></i><i></i><i></i></span><div><strong>LED GAME</strong><small>PLAYER STATION</small></div></div>
       <div class="screen-title"><i></i><span>{{ currentTitle }}</span><i></i></div>
-      <div class="session-status"><span class="status-light"></span><div><strong>LOCAL SERVICE</strong><small>Reader input + SQLite API</small></div></div>
+      <div class="kiosk-header__actions">
+        <button class="kiosk-language-button" type="button" :aria-label="text('chooseLanguage')" :aria-expanded="languageOpen" @click="languageOpen = true"><span aria-hidden="true">🌐</span><strong>{{ PLATFORM_LOCALES.find((item) => item.code === locale)?.label }}</strong></button>
+        <div class="session-status"><span class="status-light"></span><div><strong>{{ text('localService') }}</strong><small>{{ text('serviceDetail') }}</small></div></div>
+      </div>
     </header>
 
     <div v-if="['phone', 'confirm', 'register', 'swipe'].includes(screen)" class="step-track" aria-label="Activation progress">
-      <span v-for="step in 3" :key="step" :class="{ active: step <= stepNumber, current: step === stepNumber }"><i>{{ step }}</i><b>{{ ['Phone', 'Profile', 'Wristband'][step - 1] }}</b></span>
+      <span v-for="step in 3" :key="step" :class="{ active: step <= stepNumber, current: step === stepNumber }"><i>{{ step }}</i><b>{{ stepLabels[step - 1] }}</b></span>
     </div>
 
     <section v-if="screen === 'home'" class="screen screen--home">
-      <div class="home-intro"><p class="eyebrow"><span></span> WELCOME TO THE PLAYER STATION <span></span></p><h1>Ready to <em>light up</em><br />the game floor?</h1><p>Activate your wristband in a few simple steps.</p></div>
+      <div class="home-intro"><p class="eyebrow"><span></span> {{ text('welcome') }} <span></span></p><h1>{{ text('headlineBefore') }} <em>{{ text('headlineAccent') }}</em><br />{{ text('headlineAfter') }}</h1><p>{{ text('intro') }}</p></div>
       <div class="home-actions">
-        <button class="feature-card feature-card--primary" type="button" @click="goTo('phone')"><span class="feature-card__glow"></span><span class="feature-card__icon"><WristbandArt :size="68" /></span><span><small>GET STARTED</small><strong>Activate Wristband</strong><b>Register player & pair wristband</b></span><KioskIcon name="arrow" :size="25" /></button>
-        <button class="feature-card" type="button" @click="openPlayerInfo"><span class="feature-card__icon"><KioskIcon name="user" :size="48" /></span><span><small>RETURNING PLAYER</small><strong>Player Info Query</strong><b>View profile, points, rank and wristband balance</b></span><KioskIcon name="arrow" :size="25" /></button>
+        <button class="feature-card feature-card--primary" type="button" @click="goTo('phone')"><span class="feature-card__glow"></span><span class="feature-card__icon"><WristbandArt :size="68" /></span><span><small>{{ text('getStarted') }}</small><strong>{{ text('activateWristband') }}</strong><b>{{ text('activateDetail') }}</b></span><KioskIcon name="arrow" :size="25" /></button>
+        <button class="feature-card" type="button" @click="openPlayerInfo"><span class="feature-card__icon"><KioskIcon name="user" :size="48" /></span><span><small>{{ text('returningPlayer') }}</small><strong>{{ text('playerInfo') }}</strong><b>{{ text('playerInfoDetail') }}</b></span><KioskIcon name="arrow" :size="25" /></button>
       </div>
-      <footer class="home-footer"><span><KioskIcon name="info" :size="16" /> Touch a card to begin</span><span>Session data clears when you return home</span></footer>
+      <footer class="home-footer"><span><KioskIcon name="info" :size="16" /> {{ text('touchToBegin') }}</span><span>{{ text('sessionClears') }}</span></footer>
     </section>
 
     <section v-else-if="screen === 'info-phone'" class="screen screen--center" :class="{ 'screen--with-keyboard': keyboardOpen }">
@@ -301,6 +344,15 @@ onBeforeUnmount(() => {
     </section>
 
     <SoftKeyboard v-if="keyboardOpen" :layout="keyboardLayout" :field-label="activeFieldLabel" @key="handleKeyboardKey" @backspace="backspace" @clear="clearInput" @done="closeKeyboard" @close="closeKeyboard" />
+
+    <div v-if="languageOpen" class="modal-backdrop language-modal-backdrop" @mousedown.self="languageOpen = false">
+      <section class="kiosk-language-modal tech-panel" role="dialog" aria-modal="true" :aria-label="text('chooseLanguage')">
+        <header><div><p class="eyebrow">{{ text('language') }}</p><h2>{{ text('chooseLanguage') }}</h2></div><button type="button" :aria-label="text('close')" @click="languageOpen = false"><KioskIcon name="close" :size="24" /></button></header>
+        <div class="kiosk-language-grid" role="listbox" :aria-label="text('chooseLanguage')">
+          <button v-for="item in PLATFORM_LOCALES" :key="item.code" type="button" role="option" :aria-selected="item.code === locale" :class="{ active: item.code === locale }" @click="selectLocale(item.code)"><img :src="localeFlagUrls[item.flagCode]" alt="" /><strong>{{ item.label }}</strong><small>{{ item.code }}</small><i v-if="item.code === locale"><KioskIcon name="check" :size="16" /></i></button>
+        </div>
+      </section>
+    </div>
 
     <div v-if="overlay === 'avatar-source'" class="modal-backdrop" @mousedown.self="overlay = 'none'">
       <section class="source-modal tech-panel" role="dialog" aria-modal="true" aria-label="Choose avatar source"><header><div><p class="eyebrow">AVATAR SOURCE</p><h2>How would you like to set your avatar?</h2></div><button type="button" aria-label="Close avatar options" @click="overlay = 'none'"><KioskIcon name="close" :size="22" /></button></header><div class="source-options"><button type="button" @click="openAvatarLibrary"><span><KioskIcon name="library" :size="32" /></span><div><small>OFFLINE COLLECTION</small><strong>Set from Library</strong><p>Choose from 20 built-in player avatars.</p></div><KioskIcon name="arrow" :size="21" /></button><button type="button" @click="takePhoto"><span><KioskIcon name="camera" :size="32" /></span><div><small>DEVICE CAMERA</small><strong>Take Photo</strong><p>Camera is not connected in this UI demo.</p></div><KioskIcon name="arrow" :size="21" /></button></div></section>

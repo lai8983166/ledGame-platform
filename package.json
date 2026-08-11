@@ -14,7 +14,11 @@
     "typecheck:registration": "pnpm exec vue-tsc --noEmit -p apps/registration-kiosk/tsconfig.json",
     "typecheck:member-admin": "pnpm exec vue-tsc --noEmit -p apps/member-admin/tsconfig.json",
     "typecheck:packages": "pnpm exec tsc --noEmit -p packages/tsconfig.json",
-    "test:client": "vitest run packages/api-client/src/index.test.ts apps/registration-kiosk/src/playerInfoFlow.test.ts",
+    "i18n:report": "tsx scripts/i18n-workflow.ts report",
+    "i18n:extract": "tsx scripts/i18n-workflow.ts extract",
+    "i18n:import": "tsx scripts/i18n-workflow.ts import",
+    "i18n:check": "tsx scripts/i18n-workflow.ts check",
+    "test:client": "pnpm i18n:check && vitest run packages/api-client/src/index.test.ts packages/shared-ui/src/localization.test.ts apps/member-admin/src/localization.test.ts apps/registration-kiosk/src/localization.test.ts apps/registration-kiosk/src/playerInfoFlow.test.ts",
     "test:server": "mvn -q -f server/pom.xml test",
     "test:core": "pnpm test:server && pnpm test:client",
     "test:e2e": "mvn -q -f server/pom.xml -Dtest=CoreFlowApiIntegrationTest#isolatedCoreSmokeRunsFromRegistrationThroughGameSettlementAndPlayerInfo test"
@@ -22,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^22.15.0",
     "concurrently": "^9.1.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
     "vue-tsc": "^2.2.8"

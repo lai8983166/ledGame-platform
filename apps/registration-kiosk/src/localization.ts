@@ -1,0 +1,116 @@
+import {
+  type AuthoredCatalogs,
+  applyQueuedTranslations,
+  createCompleteCatalogs,
+  type PlatformLocale,
+} from "@ledgame/platform-shared-ui";
+import persistedTranslations from "../../../i18n/translations.json";
+
+export const REGISTRATION_KIOSK_LOCALE_STORAGE_KEY = "ledgame.registration-kiosk.locale";
+
+export const registrationKioskBaseCatalog = {
+  language: "Language",
+  chooseLanguage: "Choose language",
+  close: "Close",
+  rotateTitle: "Rotate your screen",
+  rotateBody: "This experience is designed for a landscape kiosk.",
+  localService: "Local service",
+  serviceDetail: "Reader input + local API",
+  titleHome: "Self-Service",
+  titleActivate: "Activate Wristband",
+  titleConfirm: "Confirm Player",
+  titleRegister: "Register Player",
+  titleSwipe: "Swipe Wristband",
+  titlePlayerInfo: "Player Info",
+  stepPhone: "Phone",
+  stepProfile: "Profile",
+  stepWristband: "Wristband",
+  welcome: "Welcome to the player station",
+  headlineBefore: "Ready to",
+  headlineAccent: "light up",
+  headlineAfter: "the game floor?",
+  intro: "Activate your wristband in a few simple steps.",
+  getStarted: "Get started",
+  activateWristband: "Activate wristband",
+  activateDetail: "Register player & pair wristband",
+  returningPlayer: "Returning player",
+  playerInfo: "Player info query",
+  playerInfoDetail: "View profile, points, rank and wristband balance",
+  touchToBegin: "Touch a card to begin",
+  sessionClears: "Session data clears when you return home",
+};
+
+export type RegistrationKioskMessageKey = keyof typeof registrationKioskBaseCatalog;
+type Copy = Partial<Record<RegistrationKioskMessageKey, string>>;
+
+const home = (
+  language: string,
+  chooseLanguage: string,
+  titleHome: string,
+  welcome: string,
+  headlineBefore: string,
+  headlineAccent: string,
+  headlineAfter: string,
+  intro: string,
+  activateWristband: string,
+  playerInfo: string,
+): Copy => ({ language, chooseLanguage, titleHome, welcome, headlineBefore, headlineAccent, headlineAfter, intro, activateWristband, playerInfo });
+
+export const registrationKioskAuthoredCatalogs = {
+  "zh-CN": {
+    language: "语言",
+    chooseLanguage: "选择语言",
+    close: "关闭",
+    rotateTitle: "请旋转屏幕",
+    rotateBody: "自助注册端需要横屏使用。",
+    localService: "本机服务",
+    serviceDetail: "读卡器输入 + 本机 API",
+    titleHome: "自助服务",
+    titleActivate: "激活手环",
+    titleConfirm: "确认会员",
+    titleRegister: "注册会员",
+    titleSwipe: "刷手环",
+    titlePlayerInfo: "会员信息",
+    stepPhone: "手机号",
+    stepProfile: "会员资料",
+    stepWristband: "手环",
+    welcome: "欢迎使用自助注册端",
+    headlineBefore: "准备好",
+    headlineAccent: "点亮",
+    headlineAfter: "游戏空间了吗？",
+    intro: "只需几步即可激活您的手环。",
+    getStarted: "开始",
+    activateWristband: "激活手环",
+    activateDetail: "注册会员并绑定手环",
+    returningPlayer: "已有会员",
+    playerInfo: "查询会员信息",
+    playerInfoDetail: "查看资料、积分、排名、手环和余额",
+    touchToBegin: "点击卡片开始",
+    sessionClears: "返回首页时会清除本次会话数据",
+  },
+  "es-ES": home("Idioma", "Elegir idioma", "Autoservicio", "Bienvenido a la estación de jugadores", "¿Listo para", "iluminar", "la zona de juego?", "Activa tu pulsera en unos sencillos pasos.", "Activar pulsera", "Consultar jugador"),
+  "pt-PT": home("Idioma", "Escolher idioma", "Autosserviço", "Bem-vindo ao posto do jogador", "Pronto para", "iluminar", "a zona de jogo?", "Ative a pulseira em poucos passos.", "Ativar pulseira", "Consultar jogador"),
+  "fr-FR": home("Langue", "Choisir la langue", "Libre-service", "Bienvenue à la borne joueur", "Prêt à", "illuminer", "l’espace de jeu ?", "Activez votre bracelet en quelques étapes.", "Activer le bracelet", "Infos joueur"),
+  "de-DE": home("Sprache", "Sprache wählen", "Selbstbedienung", "Willkommen an der Spielerstation", "Bereit, die", "Spielfläche", "zum Leuchten zu bringen?", "Aktiviere dein Armband in wenigen Schritten.", "Armband aktivieren", "Spielerinfo"),
+  "pl-PL": home("Język", "Wybierz język", "Samoobsługa", "Witamy w stacji gracza", "Gotowi, by", "rozświetlić", "strefę gry?", "Aktywuj opaskę w kilku krokach.", "Aktywuj opaskę", "Informacje gracza"),
+  "ru-RU": home("Язык", "Выберите язык", "Самообслуживание", "Добро пожаловать на станцию игрока", "Готовы", "зажечь", "игровую площадку?", "Активируйте браслет за несколько шагов.", "Активировать браслет", "Данные игрока"),
+  "vi-VN": home("Ngôn ngữ", "Chọn ngôn ngữ", "Tự phục vụ", "Chào mừng đến trạm người chơi", "Sẵn sàng", "thắp sáng", "khu trò chơi?", "Kích hoạt vòng tay chỉ trong vài bước.", "Kích hoạt vòng tay", "Thông tin người chơi"),
+  "it-IT": home("Lingua", "Scegli lingua", "Self-service", "Benvenuto alla postazione giocatore", "Pronto ad", "illuminare", "l’area di gioco?", "Attiva il braccialetto in pochi passaggi.", "Attiva braccialetto", "Info giocatore"),
+  "cs-CZ": home("Jazyk", "Zvolit jazyk", "Samoobsluha", "Vítejte u stanice hráče", "Připraveni", "rozsvítit", "herní plochu?", "Aktivujte náramek v několika krocích.", "Aktivovat náramek", "Informace hráče"),
+  "ko-KR": home("언어", "언어 선택", "셀프 서비스", "플레이어 스테이션에 오신 것을 환영합니다", "게임 공간을", "빛낼", "준비가 되셨나요?", "몇 단계만으로 손목밴드를 활성화하세요.", "손목밴드 활성화", "플레이어 정보"),
+  "ro-RO": home("Limbă", "Alege limba", "Autoservire", "Bun venit la stația jucătorului", "Gata să", "luminezi", "zona de joc?", "Activează brățara în câțiva pași.", "Activează brățara", "Informații jucător"),
+  "ar-SA": home("اللغة", "اختر اللغة", "الخدمة الذاتية", "مرحبًا بك في محطة اللاعب", "هل أنت مستعد", "لإضاءة", "ساحة اللعب؟", "فعّل سوارك في بضع خطوات بسيطة.", "تفعيل السوار", "معلومات اللاعب"),
+} satisfies AuthoredCatalogs<typeof registrationKioskBaseCatalog>;
+
+export const registrationKioskCatalogs = createCompleteCatalogs(
+  registrationKioskBaseCatalog,
+  applyQueuedTranslations(
+    registrationKioskBaseCatalog,
+    registrationKioskAuthoredCatalogs,
+    persistedTranslations.applications.registrationKiosk.targets,
+  ),
+);
+
+export function registrationKioskMessage(locale: PlatformLocale, key: RegistrationKioskMessageKey): string {
+  return registrationKioskCatalogs[locale][key];
+}
