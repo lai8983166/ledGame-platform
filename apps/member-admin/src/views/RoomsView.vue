@@ -69,14 +69,22 @@ const openEdit = (room: Room) => {
   editError.value = "";
 };
 
-const saveRoomName = () => {
+const saveRoomName = async () => {
   const name = editName.value.trim();
   if (!name) return void (editError.value = "请输入房间名称");
   if (name.length > 12) return void (editError.value = "房间名称最多 12 个字符");
   if (rooms.value.some((room) => room.id !== editingRoom.value?.id && room.name === name)) return void (editError.value = "该房间名称已存在");
-  if (editingRoom.value) editingRoom.value.name = name;
-  editingRoom.value = null;
-  emit("toast", "房间名称已更新（演示状态）");
+  if (!editingRoom.value?.ip) return void (editError.value = "该房间缺少 IP，无法保存");
+  try {
+    const updated = await platformApi.renameRoom(editingRoom.value.ip, name);
+    const mapped = mapRoomStatus(updated);
+    const index = rooms.value.findIndex((room) => room.id === editingRoom.value?.id);
+    if (index >= 0) rooms.value[index] = mapped;
+    editingRoom.value = null;
+    emit("toast", "房间名称已更新");
+  } catch (error) {
+    editError.value = error instanceof Error ? error.message : "房间名称保存失败";
+  }
 };
 </script>
 

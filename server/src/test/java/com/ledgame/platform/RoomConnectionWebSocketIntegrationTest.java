@@ -12,6 +12,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
@@ -35,19 +37,26 @@ class RoomConnectionWebSocketIntegrationTest {
                 "ws://127.0.0.1:" + port + "/ws/rooms").get();
         try {
             session.sendMessage(new TextMessage("""
-                    {"type":"HELLO","token":"dev-room-token","deviceId":"integration-game","roomId":"integration-room"}
+                    {"type":"HELLO"}
                     """));
             session.sendMessage(new TextMessage("""
                     {"type":"ROOM_SNAPSHOT","eventId":"integration-game-1","sequence":1,"state":{"engineState":"IDLE","queueSummary":{"waiting":[{}]}}}
                     """));
 
             Map<String, Object> online = awaitRoom(room -> Boolean.TRUE.equals(room.get("online"))
-                    && "integration-game".equals(room.get("deviceId")));
+                    && "127.0.0.1".equals(room.get("ip")));
             assertThat(online).containsEntry("queueLength", 1);
+            ResponseEntity<Map> renamed = http.exchange(
+                    "/api/rooms/127.0.0.1", HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("roomName", "测试房间")), Map.class);
+            assertThat(renamed.getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(awaitRoom(room -> "测试房间".equals(room.get("roomName"))))
+                    .containsEntry("online", true);
 
             session.close();
             Map<String, Object> offline = awaitRoom(room -> Boolean.FALSE.equals(room.get("online")));
             assertThat(offline).containsEntry("lastSequence", 1);
+            assertThat(offline).containsEntry("roomName", "测试房间");
         } finally {
             if (session.isOpen()) session.close();
         }

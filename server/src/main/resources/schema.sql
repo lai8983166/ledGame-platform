@@ -68,3 +68,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_running_play_binding
 
 CREATE INDEX IF NOT EXISTS ix_game_plays_member_started
     ON game_play_records(member_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS room_settings (
+    room_ip TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);

@@ -33,4 +33,15 @@ describe("platform api client player info", () => {
     expect(error).toBeInstanceOf(PlatformApiError);
     expect(error).toMatchObject({ status: 404, code: "PLAYER_NOT_FOUND", message: "未找到该手机号对应的会员" });
   });
+
+  it("renames a room through the IP-identified endpoint", async () => {
+    const response = { ip: "192.168.1.25", roomName: "A区游戏桌", online: false };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createPlatformApiClient().renameRoom("192.168.1.25", "A区游戏桌")).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8090/api/rooms/192.168.1.25",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ roomName: "A区游戏桌" }) }),
+    );
+  });
 });

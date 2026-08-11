@@ -30,10 +30,6 @@ public class RoomConnectionRegistry {
 
     public Connection register(WebSocketSession session, JsonNode hello) {
         if (!properties.isEnabled()) throw protocolError("ROOM_CONNECTION_DISABLED", "Room connection is disabled");
-        String token = text(hello, "token");
-        if (properties.getToken().isBlank() || !properties.getToken().equals(token)) {
-            throw protocolError("ROOM_CONNECTION_UNAUTHORIZED", "Invalid room connection token");
-        }
         String ip = sourceIp(session);
         Connection connection = new Connection(
                 session,
@@ -105,7 +101,7 @@ public class RoomConnectionRegistry {
         return normalizeIp(address.getAddress() == null ? address.getHostString() : address.getAddress().getHostAddress());
     }
 
-    private static String normalizeIp(String value) {
+    static String normalizeIp(String value) {
         String ip = value == null ? "" : value.trim();
         return "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip) ? "127.0.0.1" : ip;
     }

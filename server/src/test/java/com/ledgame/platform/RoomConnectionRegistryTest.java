@@ -20,7 +20,6 @@ class RoomConnectionRegistryTest {
     @BeforeEach
     void setUp() {
         properties = new RoomConnectionProperties();
-        properties.setToken("secret");
         registry = new RoomConnectionRegistry(properties, objectMapper);
     }
 
@@ -28,7 +27,7 @@ class RoomConnectionRegistryTest {
     void acceptsHelloAndAppliesOnlyNewSequences() throws Exception {
         WebSocketSession session = session("session-a", "192.168.1.25");
         registry.register(session, objectMapper.readTree("""
-            {"type":"HELLO","token":"secret","deviceId":"game-01","roomId":"room-01"}
+            {"type":"HELLO","deviceId":"game-01","roomId":"room-01"}
             """));
 
         var first = registry.accept(session, objectMapper.readTree("""
@@ -48,14 +47,10 @@ class RoomConnectionRegistryTest {
     }
 
     @Test
-    void rejectsInvalidHelloAndUnsupportedEvents() throws Exception {
+    void acceptsCredentialFreeHelloAndRejectsUnsupportedEvents() throws Exception {
         WebSocketSession session = session("session-b", "192.168.1.26");
-        assertThatThrownBy(() -> registry.register(session, objectMapper.readTree(
-                "{\"type\":\"HELLO\",\"token\":\"wrong\"}")))
-                .hasMessageContaining("ROOM_CONNECTION_UNAUTHORIZED");
-
         registry.register(session, objectMapper.readTree(
-                "{\"type\":\"HELLO\",\"token\":\"secret\"}"));
+                "{\"type\":\"HELLO\"}"));
         assertThatThrownBy(() -> registry.accept(session, objectMapper.readTree(
                 "{\"type\":\"UNKNOWN\",\"sequence\":1}")))
                 .hasMessageContaining("ROOM_EVENT_UNSUPPORTED");
@@ -65,7 +60,7 @@ class RoomConnectionRegistryTest {
     void preservesRoomProjectionAsOfflineAfterDisconnect() throws Exception {
         WebSocketSession session = session("session-c", "192.168.1.27");
         registry.register(session, objectMapper.readTree(
-                "{\"type\":\"HELLO\",\"token\":\"secret\",\"roomId\":\"room-03\"}"));
+                "{\"type\":\"HELLO\",\"roomId\":\"room-03\"}"));
         registry.accept(session, objectMapper.readTree(
                 "{\"type\":\"ROOM_SNAPSHOT\",\"sequence\":1,\"state\":{\"engineState\":\"IDLE\"}}"));
 

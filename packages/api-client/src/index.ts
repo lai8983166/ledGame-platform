@@ -9,6 +9,7 @@ export interface PlatformApiClient {
   ): Promise<TResponse | null>;
   getPlayerInfo(phone: string): Promise<PlayerInfo>;
   listRooms(): Promise<RoomStatus[]>;
+  renameRoom(ip: string, roomName: string): Promise<RoomStatus>;
 }
 
 interface ErrorResponse {
@@ -139,6 +140,16 @@ export function createPlatformApiClient({
     async listRooms(): Promise<RoomStatus[]> {
       const result = await client.request<RoomStatus[]>("/api/rooms");
       return Array.isArray(result) ? result : [];
+    },
+    async renameRoom(ip: string, roomName: string): Promise<RoomStatus> {
+      const result = await client.request<RoomStatus>(`/api/rooms/${encodeURIComponent(ip)}`, {
+        method: "PUT",
+        body: JSON.stringify({ roomName }),
+      });
+      if (!result) {
+        throw new PlatformApiError("Room rename response was empty", 502, "EMPTY_RESPONSE");
+      }
+      return result;
     },
   };
   return client;

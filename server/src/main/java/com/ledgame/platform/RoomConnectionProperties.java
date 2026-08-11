@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "ledgame.room-connection")
 public class RoomConnectionProperties {
     private boolean enabled = true;
-    private String token = "dev-room-token";
 
     public boolean isEnabled() {
         return enabled;
@@ -17,11 +16,4 @@ public class RoomConnectionProperties {
         this.enabled = enabled;
     }
 
-    public String getToken() {
-        return token;
-    }
-
-    public void setToken(String token) {
-        this.token = token == null ? "" : token.trim();
-    }
 }

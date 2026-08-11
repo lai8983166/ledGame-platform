@@ -14,4 +14,3 @@ server:
 ledgame:
   room-connection:
     enabled: ${LED_ROOM_CONNECTION_ENABLED:true}
-    token: ${LED_ROOM_CONNECTION_TOKEN:dev-room-token}
