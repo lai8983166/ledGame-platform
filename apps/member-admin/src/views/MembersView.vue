@@ -5,9 +5,9 @@ import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import type { Member } from "../types";
+import { platformApiBase } from "../platformApi";
 
 const emit = defineEmits<{ toast: [message: string] }>();
-const API_BASE = "http://127.0.0.1:8090/api";
 const palette = ["#5b7cff", "#9b6dff", "#18b6a4", "#ff8a65", "#62758a"];
 const members = ref<Member[]>([]);
 const search = ref("");
@@ -20,7 +20,7 @@ const connectionError = ref("");
 const memberForm = ref({ name: "", phone: "" });
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${API_BASE}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
+  const response = await fetch(`${platformApiBase}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.message || body.error || `本机服务请求失败（HTTP ${response.status}）`);
   return body as T;
@@ -86,10 +86,10 @@ onMounted(loadMembers);
     <button class="primary-button toolbar__primary" type="button" @click="openCreate"><AppIcon name="plus" :size="18" /> 新增会员</button>
   </section>
 
-  <section v-if="connectionError" class="notice-bar"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
+  <section v-if="connectionError" class="notice-bar" data-testid="admin-members-error"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
 
   <section class="table-card glass-panel">
-    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>数据库 ID</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id"><td><button class="member-cell" type="button" @click="selectedMember = member"><span class="avatar" :style="{ background: member.color }">{{ member.initials }}</span><span><strong>{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td>{{ member.phone }}</td><td><code>{{ member.id }}</code></td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="icon-button" type="button" aria-label="查看会员" @click="selectedMember = member"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
+    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>数据库 ID</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="selectedMember = member"><span class="avatar" :style="{ background: member.color }">{{ member.initials }}</span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td><code>{{ member.id }}</code></td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="icon-button" type="button" aria-label="查看会员" @click="selectedMember = member"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
     <div v-else class="empty-state empty-state--flat"><span><AppIcon name="search" :size="28" /></span><h2>没有找到会员</h2><p>当前列表来自本机 SQLite 数据库。</p><button class="secondary-button" type="button" @click="search = ''; statusFilter = 'all'">清除筛选</button></div>
     <footer class="table-footer"><span>当前显示数据库中的会员</span><strong>共 {{ filteredMembers.length }} 位</strong></footer>
   </section>

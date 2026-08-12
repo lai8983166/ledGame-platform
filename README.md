@@ -60,3 +60,6 @@ pnpm test:e2e
 - `ledGame` 继续作为游戏桌面端。
 - `ledGame-backend` 继续负责本地游戏运行时和 LED 硬件。
 - 本项目的 `server` 是中心平台后端，不会打包进游戏桌面端。
+
+cd /f/project/ledGame-platform
+pnpm test:acceptance

@@ -41,6 +41,25 @@ public class GamePlayService {
         this.clock = clock;
     }
 
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> list() {
+        return jdbc.queryForList("""
+            SELECT g.id, g.member_id AS memberId, m.name AS memberName,
+                   g.binding_id AS bindingId, g.wristband_uid AS uid,
+                   g.device_id AS deviceId, g.room_id AS roomId,
+                   g.external_session_id AS externalSessionId,
+                   g.game_id AS gameId, g.game_name AS gameName, g.status,
+                   g.started_at AS startedAt, g.ended_at AS endedAt,
+                   g.success, g.termination_reason AS terminationReason,
+                   g.raw_score AS rawScore, g.points_awarded AS pointsAwarded,
+                   g.result_json AS resultJson
+              FROM game_play_records g
+              JOIN members m ON m.id=g.member_id
+             ORDER BY g.started_at DESC, g.id DESC
+             LIMIT 200
+            """).stream().map(this::playView).toList();
+    }
+
     @Transactional
     public Map<String, Object> start(StartCommand command) {
         requireText(command.deviceId(), "deviceId");

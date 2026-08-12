@@ -118,6 +118,7 @@ onBeforeUnmount(() => {
         <button
           v-for="item in navItems"
           :key="item.id"
+          :data-testid="`admin-nav-${item.id}`"
           class="nav-item"
           :class="{ 'nav-item--active': activePage === item.id }"
           type="button"
@@ -191,7 +192,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <div class="page-stage">
+      <div class="page-stage" :data-testid="`admin-page-${activePage}`">
         <WristbandsView v-if="activePage === 'wristbands'" @toast="showToast" />
         <DashboardView v-else-if="activePage === 'overview'" @navigate="navigate" />
         <RoomsView v-else-if="activePage === 'rooms'" @toast="showToast" />
@@ -203,5 +204,5 @@ onBeforeUnmount(() => {
     </main>
   </div>
 
-  <ToastMessage v-if="toastMessage" :message="toastMessage" />
+  <div v-if="toastMessage" data-testid="admin-toast"><ToastMessage :message="toastMessage" /></div>
 </template>

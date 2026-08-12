@@ -3,6 +3,7 @@ package com.ledgame.platform;
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -18,6 +19,11 @@ public class GamePlayController {
 
     public GamePlayController(GamePlayService gamePlayService) {
         this.gamePlayService = gamePlayService;
+    }
+
+    @GetMapping
+    public java.util.List<Map<String, Object>> list() {
+        return gamePlayService.list();
     }
 
     @PostMapping("/start")

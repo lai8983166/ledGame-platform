@@ -5,14 +5,13 @@ import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import type { Room } from "../types";
-import { createPlatformApiClient } from "@ledgame/platform-api-client";
 import { mapRoomStatus } from "../roomStatus";
+import { platformApi } from "../platformApi";
 
 const emit = defineEmits<{ toast: [message: string] }>();
 const rooms = ref<Room[]>([]);
 const loading = ref(false);
 const loadError = ref("");
-const platformApi = createPlatformApiClient();
 let refreshTimer: number | undefined;
 const filter = ref<"all" | "playing" | "idle" | "warning">("all");
 const search = ref("");
@@ -97,14 +96,14 @@ const saveRoomName = async () => {
     <div class="toolbar__meta"><span class="live-dot"></span> 临时状态实时预览</div>
   </section>
 
-  <div v-if="loadError" class="notice-bar notice-bar--warning">{{ loadError }}</div>
+  <div v-if="loadError" class="notice-bar notice-bar--warning" data-testid="admin-rooms-error">{{ loadError }}</div>
   <div v-if="loading && !rooms.length" class="empty-state glass-panel"><p>正在读取真实房间连接...</p></div>
   <div v-else-if="filteredRooms.length" class="room-grid">
-    <article v-for="room in filteredRooms" :key="room.id" class="room-card glass-panel" :class="{ 'room-card--playing': room.status === 'playing' }">
-      <div class="room-connection-meta"><span>{{ room.ip || 'UNKNOWN_IP' }}</span><span>Queue {{ room.queueLength ?? 0 }}</span><span>{{ room.lastEventType || 'NO_EVENT' }} @ {{ formatEventTime(room.lastEventAt) }}</span><span>Seq {{ room.lastSequence ?? 0 }}</span><StatusBadge :tone="roomConnectionTone(room)">{{ roomConnectionLabel(room) }}</StatusBadge></div>
+    <article v-for="room in filteredRooms" :key="room.id" class="room-card glass-panel" :class="{ 'room-card--playing': room.status === 'playing' }" :data-testid="`admin-room-${room.ip}`">
+      <div class="room-connection-meta"><span data-testid="admin-room-ip">{{ room.ip || 'UNKNOWN_IP' }}</span><span data-testid="admin-room-queue-length">Queue {{ room.queueLength ?? 0 }}</span><span>{{ room.lastEventType || 'NO_EVENT' }} @ {{ formatEventTime(room.lastEventAt) }}</span><span>Seq {{ room.lastSequence ?? 0 }}</span><StatusBadge data-testid="admin-room-connection" :data-online="room.online" :tone="roomConnectionTone(room)">{{ roomConnectionLabel(room) }}</StatusBadge></div>
       <header class="room-card__header">
         <div class="room-code"><span>{{ room.code.slice(-2) }}</span><small>{{ room.code }}</small></div>
-        <StatusBadge :tone="roomTone(room)">{{ room.status === "playing" ? "游戏中" : "空闲" }}</StatusBadge>
+        <StatusBadge data-testid="admin-room-status" :data-status="room.status" :tone="roomTone(room)">{{ room.status === "playing" ? "游戏中" : "空闲" }}</StatusBadge>
       </header>
       <div class="room-card__title"><div><h2>{{ room.name }}</h2><p>{{ room.status === 'playing' ? room.gameName : '等待玩家刷卡开始' }}</p></div><button class="icon-button" type="button" aria-label="编辑房间名称" @click="openEdit(room)"><AppIcon name="edit" :size="17" /></button></div>
       <div v-if="room.status === 'playing'" class="room-timer"><span><AppIcon name="clock" :size="18" /> 游戏剩余</span><strong>{{ formatTime(room.remainingSeconds) }}</strong><small>{{ room.phase }}</small></div>

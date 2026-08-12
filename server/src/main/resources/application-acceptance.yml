@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: acceptance
+  datasource:
+    url: jdbc:sqlite:${ACCEPTANCE_PLATFORM_DB_PATH}
+
+server:
+  port: ${ACCEPTANCE_PLATFORM_PORT:0}
+
+ledgame:
+  acceptance:
+    clock-offset-seconds: ${ACCEPTANCE_CLOCK_OFFSET_SECONDS:0}
+  room-connection:
+    enabled: true
+
+logging:
+  level:
+    root: INFO

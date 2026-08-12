@@ -9,3 +9,5 @@ coverage/
 target/
 *.log
 server/*.db
+acceptance/artifacts/
+acceptance/.runtime/

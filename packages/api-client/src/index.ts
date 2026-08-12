@@ -85,10 +85,29 @@ export class PlatformApiError extends Error {
   }
 }
 
+export const DEFAULT_PLATFORM_BASE_URL = "http://127.0.0.1:8090";
+
+export function resolvePlatformBaseUrl(value?: string | null): string {
+  const candidate = String(value || "").trim();
+  if (!candidate) return DEFAULT_PLATFORM_BASE_URL;
+  try {
+    const url = new URL(candidate);
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+      return DEFAULT_PLATFORM_BASE_URL;
+    }
+    url.hash = "";
+    url.search = "";
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return DEFAULT_PLATFORM_BASE_URL;
+  }
+}
+
 export function createPlatformApiClient({
-  baseUrl = "http://127.0.0.1:8090",
+  baseUrl = DEFAULT_PLATFORM_BASE_URL,
 }: PlatformApiClientOptions = {}): PlatformApiClient {
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
+  const normalizedBaseUrl = resolvePlatformBaseUrl(baseUrl);
 
   const client: PlatformApiClient = {
     async request<TResponse = unknown>(

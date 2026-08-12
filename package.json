@@ -21,11 +21,15 @@
     "test:client": "pnpm i18n:check && vitest run packages/api-client/src/index.test.ts packages/shared-ui/src/localization.test.ts apps/member-admin/src/localization.test.ts apps/registration-kiosk/src/localization.test.ts apps/registration-kiosk/src/playerInfoFlow.test.ts",
     "test:server": "mvn -q -f server/pom.xml test",
     "test:core": "pnpm test:server && pnpm test:client",
-    "test:e2e": "mvn -q -f server/pom.xml -Dtest=CoreFlowApiIntegrationTest#isolatedCoreSmokeRunsFromRegistrationThroughGameSettlementAndPlayerInfo test"
+    "test:e2e": "mvn -q -f server/pom.xml -Dtest=CoreFlowApiIntegrationTest#isolatedCoreSmokeRunsFromRegistrationThroughGameSettlementAndPlayerInfo test",
+    "test:acceptance:unit": "vitest run acceptance/support/runtime.test.ts acceptance/support/config.test.ts acceptance/support/selectors.test.ts acceptance/support/chineseReporter.test.ts",
+    "test:acceptance": "playwright test --config acceptance/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.0",
     "@types/node": "^22.15.0",
     "concurrently": "^9.1.2",
+    "playwright": "1.55.0",
     "tsx": "^4.20.6",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
