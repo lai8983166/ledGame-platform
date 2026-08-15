@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS game_play_records (
     termination_reason TEXT,
     raw_score INTEGER,
     points_awarded INTEGER NOT NULL DEFAULT 0,
+    scoring_policy TEXT,
     result_json TEXT
 );
 

@@ -35,6 +35,9 @@ describe("中文验收报告", () => {
     expect(report).toContain("测试结论：通过");
     expect(report).toContain("中文业务场景");
     expect(report).toContain("中文业务步骤：通过");
+    expect(report).toContain("Debug 规范化输入");
+    expect(report).toContain("PRODUCTION 软件形态");
+    expect(report).toContain("未覆盖的现场硬件项目");
     expect(report).not.toContain("Expect");
   });
 });

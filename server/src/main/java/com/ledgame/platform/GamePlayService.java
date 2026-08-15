@@ -21,7 +21,8 @@ public class GamePlayService {
                device_id AS deviceId, room_id AS roomId, external_session_id AS externalSessionId,
                game_id AS gameId, game_name AS gameName, status, started_at AS startedAt,
                ended_at AS endedAt, success, termination_reason AS terminationReason,
-               raw_score AS rawScore, points_awarded AS pointsAwarded, result_json AS resultJson
+               raw_score AS rawScore, points_awarded AS pointsAwarded,
+               scoring_policy AS scoringPolicy, result_json AS resultJson
           FROM game_play_records
         """;
 
@@ -29,16 +30,19 @@ public class GamePlayService {
     private final GameAccessService accessService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final GamePointsPolicy pointsPolicy;
 
     public GamePlayService(
             JdbcTemplate jdbc,
             GameAccessService accessService,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            GamePointsPolicy pointsPolicy) {
         this.jdbc = jdbc;
         this.accessService = accessService;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.pointsPolicy = pointsPolicy;
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +56,7 @@ public class GamePlayService {
                    g.started_at AS startedAt, g.ended_at AS endedAt,
                    g.success, g.termination_reason AS terminationReason,
                    g.raw_score AS rawScore, g.points_awarded AS pointsAwarded,
+                   g.scoring_policy AS scoringPolicy,
                    g.result_json AS resultJson
               FROM game_play_records g
               JOIN members m ON m.id=g.member_id
@@ -114,15 +119,15 @@ public class GamePlayService {
         String reason = requireText(command.terminationReason(), "terminationReason");
         boolean completed = reason.startsWith("NATURAL_");
         String status = completed ? "COMPLETED" : "ABORTED";
-        int awarded = completed ? Math.max(0, command.pointsAwarded() == null ? 0 : command.pointsAwarded()) : 0;
+        GamePointsPolicy.AwardDecision award = pointsPolicy.award(completed, command.rawScore());
         Integer success = command.success() == null ? null : (command.success() ? 1 : 0);
         int updated = jdbc.update("""
             UPDATE game_play_records
                SET status=?, ended_at=?, success=?, termination_reason=?, raw_score=?,
-                   points_awarded=?, result_json=?
+                   points_awarded=?, scoring_policy=?, result_json=?
              WHERE id=? AND status='RUNNING'
-            """, status, clock.instant().toString(), success, reason, command.rawScore(), awarded,
-            toJson(command.resultPayload()), playId);
+            """, status, clock.instant().toString(), success, reason, command.rawScore(), award.points(),
+            award.version(), toJson(command.resultPayload()), playId);
         if (updated == 0) return playView(find(playId));
         return playView(find(playId));
     }

@@ -38,10 +38,24 @@ public class CoreFlowController {
     @GetMapping("/members")
     public List<Map<String, Object>> findMembers(@RequestParam(required = false, defaultValue = "") String phone) {
         String normalizedPhone = normalizePhone(phone);
+        String projection = """
+            WITH totals AS (
+                SELECT m.id, m.phone, m.name, m.avatar_id AS avatarId, m.birthday, m.gender,
+                       m.status, m.created_at AS createdAt,
+                       COALESCE(SUM(CASE WHEN g.status='COMPLETED' THEN g.points_awarded ELSE 0 END), 0) AS pointsTotal
+                  FROM members m
+                  LEFT JOIN game_play_records g ON g.member_id=m.id
+                 WHERE m.status='ACTIVE'
+                 GROUP BY m.id
+            )
+            SELECT totals.*,
+                   1 + (SELECT COUNT(*) FROM totals higher WHERE higher.pointsTotal > totals.pointsTotal) AS rank
+              FROM totals
+            """;
         if (normalizedPhone.isEmpty()) {
-            return jdbc.queryForList("SELECT id, phone, name, avatar_id AS avatarId, birthday, gender, status, created_at AS createdAt FROM members WHERE status = 'ACTIVE' ORDER BY id DESC");
+            return jdbc.queryForList(projection + " ORDER BY id DESC");
         }
-        return jdbc.queryForList("SELECT id, phone, name, avatar_id AS avatarId, birthday, gender, status, created_at AS createdAt FROM members WHERE phone = ? AND status = 'ACTIVE'", normalizedPhone);
+        return jdbc.queryForList(projection + " WHERE phone=?", normalizedPhone);
     }
 
     @PostMapping("/members")

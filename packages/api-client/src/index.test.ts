@@ -1,9 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlatformApiError, createPlatformApiClient } from "./index";
 
-describe("platform api client player info", () => {
-  afterEach(() => vi.unstubAllGlobals());
+afterEach(() => vi.unstubAllGlobals());
 
+describe("platform api client transport", () => {
+  it("uses the injected desktop transport without calling browser fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const transport = vi.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ ok: true }),
+    });
+
+    const client = createPlatformApiClient({ transport });
+    await expect(client.request("/api/health")).resolves.toEqual({ ok: true });
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/api/health",
+      method: "GET",
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("platform api client player info", () => {
   it("returns typed Player Info from the local backend", async () => {
     const response = {
       profile: { id: 7, phone: "13800138000", name: "测试玩家", status: "ACTIVE", createdAt: "2026-08-09T02:00:00Z", createdBy: "kiosk" },

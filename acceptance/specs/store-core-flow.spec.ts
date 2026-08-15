@@ -26,13 +26,14 @@ test("门店黄金流程：充值、注册绑定、开始游戏、排队、自�
       await expect.poll(() => store.waitingQueueLength()).toBe(1);
     });
 
-    await test.step("通过调试面板结束当前游戏并自动切换到排队玩家", async () => {
-      await store.endCurrentGame();
+    await test.step("通过调试面板命中确定目标，自然完成当前游戏并自动切换到排队玩家", async () => {
+      await store.completeCurrentGameNaturally();
       await expect.poll(() => store.currentWristbandUid()).toBe("2283055619");
     });
 
     await test.step("核对会员管理端、玩家信息查询与公开接口的数据一致性", async () => {
-      await store.assertFinalCrossClientState("13800000001", "2283055618");
+      await store.assertNaturalCrossClientState("13800000001", "2283055618");
+      await store.assertConflictingDuplicateSettlementIsIgnored("13800000001");
     });
   } finally {
     await store.stop(testInfo.status === testInfo.expectedStatus);

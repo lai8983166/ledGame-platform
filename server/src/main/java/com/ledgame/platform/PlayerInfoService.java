@@ -66,7 +66,7 @@ public class PlayerInfoService {
             SELECT id, game_id AS gameId, game_name AS gameName, device_id AS deviceId,
                    room_id AS roomId, status, started_at AS startedAt, ended_at AS endedAt,
                    success, termination_reason AS terminationReason, raw_score AS rawScore,
-                   points_awarded AS pointsAwarded
+                   points_awarded AS pointsAwarded, scoring_policy AS scoringPolicy
               FROM game_play_records
              WHERE member_id=?
              ORDER BY started_at DESC, id DESC

@@ -1,0 +1,14 @@
+{
+  "appId": "com.ledgame.platform.registrationkiosk",
+  "productName": "LED Game 自助注册端",
+  "directories": { "output": "release/registration-kiosk" },
+  "asar": true,
+  "files": [
+    "apps/registration-kiosk/dist/**/*",
+    "desktop/shared/**/*",
+    "desktop/registration-kiosk/**/*",
+    "package.json"
+  ],
+  "extraMetadata": { "main": "desktop/registration-kiosk/main.cjs" },
+  "win": { "target": ["dir", "zip"] }
+}

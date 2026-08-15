@@ -333,13 +333,25 @@ class CoreFlowApiIntegrationTest {
                         "pointsAwarded", 12, "resultPayload", Map.of("level", 3)));
         assertThat(successResult.getBody()).containsEntry("status", "COMPLETED");
         assertThat(successResult.getBody()).containsEntry("success", true);
-        assertThat(successResult.getBody()).containsEntry("pointsAwarded", 12);
+        assertThat(successResult.getBody()).containsEntry("rawScore", 88);
+        assertThat(successResult.getBody()).containsEntry("pointsAwarded", 88);
+        assertThat(successResult.getBody()).containsEntry("scoringPolicy", "raw-score-v1");
+        ResponseEntity<List<Map<String, Object>>> playList = http.exchange(
+                "/api/game-plays", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        assertThat(playList.getBody()).anySatisfy(play -> assertThat(play)
+                .containsEntry("rawScore", 88)
+                .containsEntry("pointsAwarded", 88)
+                .containsEntry("scoringPolicy", "raw-score-v1")
+                .containsEntry("terminationReason", "NATURAL_COMPLETION"));
 
         ResponseEntity<Map<String, Object>> duplicateResult = put(
                 "/api/game-plays/" + number(success.getBody().get("id")) + "/result",
-                Map.of("success", true, "terminationReason", "NATURAL_COMPLETION", "rawScore", 88,
-                        "pointsAwarded", 12));
+                Map.of("success", false, "terminationReason", "NATURAL_FAILURE", "rawScore", 999,
+                        "pointsAwarded", 999));
         assertThat(duplicateResult.getBody()).containsEntry("endedAt", successResult.getBody().get("endedAt"));
+        assertThat(duplicateResult.getBody()).containsEntry("terminationReason", "NATURAL_COMPLETION");
+        assertThat(duplicateResult.getBody()).containsEntry("rawScore", 88);
+        assertThat(duplicateResult.getBody()).containsEntry("pointsAwarded", 88);
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM game_play_records WHERE external_session_id='session-success'",
                 Integer.class)).isEqualTo(1);
@@ -351,14 +363,17 @@ class CoreFlowApiIntegrationTest {
                         "pointsAwarded", 2));
         assertThat(failureResult.getBody()).containsEntry("status", "COMPLETED");
         assertThat(failureResult.getBody()).containsEntry("success", false);
+        assertThat(failureResult.getBody()).containsEntry("pointsAwarded", 20);
+        assertThat(failureResult.getBody()).containsEntry("scoringPolicy", "raw-score-v1");
 
-        for (String reason : List.of("MANUAL_STOP", "STARTUP_ABORT")) {
+        for (String reason : List.of("MANUAL_STOP", "STARTUP_ABORT", "RUNTIME_ERROR")) {
             ResponseEntity<Map<String, Object>> play = startPlay("session-" + reason, "game-c", "游戏 C");
             ResponseEntity<Map<String, Object>> aborted = put(
                     "/api/game-plays/" + number(play.getBody().get("id")) + "/result",
                     Map.of("success", false, "terminationReason", reason, "pointsAwarded", 99));
             assertThat(aborted.getBody()).containsEntry("status", "ABORTED");
             assertThat(aborted.getBody()).containsEntry("pointsAwarded", 0);
+            assertThat(aborted.getBody()).containsEntry("scoringPolicy", "raw-score-v1");
         }
 
         clock.advance(Duration.ofMinutes(20));
@@ -400,6 +415,7 @@ class CoreFlowApiIntegrationTest {
         put("/api/game-plays/" + number(leaderPlay.getBody().get("id")) + "/result", Map.of(
                 "success", true,
                 "terminationReason", "NATURAL_COMPLETION",
+                "rawScore", 130,
                 "pointsAwarded", 30));
 
         ResponseEntity<Map<String, Object>> response = get("/api/player-info?phone=13100131000");
@@ -414,7 +430,7 @@ class CoreFlowApiIntegrationTest {
         assertThat(profile).containsEntry("createdBy", "kiosk");
 
         Map<String, Object> points = map(response.getBody().get("points"));
-        assertThat(number(points.get("total"))).isEqualTo(12L);
+        assertThat(number(points.get("total"))).isEqualTo(99L);
         assertThat(number(points.get("rank"))).isEqualTo(2L);
 
         List<Map<String, Object>> wristbands = maps(response.getBody().get("wristbands"));
@@ -426,7 +442,9 @@ class CoreFlowApiIntegrationTest {
         List<Map<String, Object>> recentPlays = maps(response.getBody().get("recentPlays"));
         assertThat(recentPlays).hasSize(1);
         assertThat(recentPlays.get(0)).containsEntry("gameName", "游戏 A");
-        assertThat(recentPlays.get(0)).containsEntry("pointsAwarded", 12);
+        assertThat(recentPlays.get(0)).containsEntry("rawScore", 99);
+        assertThat(recentPlays.get(0)).containsEntry("pointsAwarded", 99);
+        assertThat(recentPlays.get(0)).containsEntry("scoringPolicy", "raw-score-v1");
         assertThat(recentPlays.get(0)).containsEntry("status", "COMPLETED");
     }
 
@@ -461,9 +479,72 @@ class CoreFlowApiIntegrationTest {
 
         Map<String, Object> info = get("/api/player-info?phone=13000130000").getBody();
         assertThat(map(info.get("profile"))).containsEntry("name", "烟测玩家");
-        assertThat(map(info.get("points"))).containsEntry("total", 25);
+        assertThat(map(info.get("points"))).containsEntry("total", 100);
         assertThat(maps(info.get("recentPlays"))).hasSize(1);
         assertThat(maps(info.get("wristbands")).get(0)).containsEntry("uid", "2283055618");
+    }
+
+    @Test
+    void platformScoringHandlesMissingAndNegativeScoresAndSharedRanks() {
+        long firstMember = number(post("/api/members", Map.of(
+                "phone", "13000130010", "name", "积分并列甲")).getBody().get("id"));
+        chargeAndBind("2283055620", firstMember, 60);
+        post("/api/game-access/activate", Map.of("uid", "2283055620", "deviceId", "game-01"));
+        ResponseEntity<Map<String, Object>> firstPlay = startPlay(
+                "2283055620", "rank-session-1", "game-rank", "排名游戏");
+        put("/api/game-plays/" + number(firstPlay.getBody().get("id")) + "/result", Map.of(
+                "success", true, "terminationReason", "NATURAL_COMPLETION",
+                "rawScore", 50, "pointsAwarded", 5000));
+
+        long secondMember = number(post("/api/members", Map.of(
+                "phone", "13000130011", "name", "积分并列乙")).getBody().get("id"));
+        chargeAndBind("2283055621", secondMember, 60);
+        post("/api/game-access/activate", Map.of("uid", "2283055621", "deviceId", "game-02"));
+        ResponseEntity<Map<String, Object>> secondPlay = startPlay(
+                "2283055621", "rank-session-2", "game-rank", "排名游戏");
+        put("/api/game-plays/" + number(secondPlay.getBody().get("id")) + "/result", Map.of(
+                "success", false, "terminationReason", "NATURAL_FAILURE",
+                "rawScore", 50, "pointsAwarded", 0));
+
+        long thirdMember = number(post("/api/members", Map.of(
+                "phone", "13000130012", "name", "积分第三名")).getBody().get("id"));
+        chargeAndBind("2283055622", thirdMember, 60);
+        post("/api/game-access/activate", Map.of("uid", "2283055622", "deviceId", "game-03"));
+        ResponseEntity<Map<String, Object>> negativePlay = startPlay(
+                "2283055622", "rank-session-3", "game-rank", "排名游戏");
+        Map<String, Object> missingScore = new java.util.LinkedHashMap<>();
+        missingScore.put("success", true);
+        missingScore.put("terminationReason", "NATURAL_COMPLETION");
+        missingScore.put("rawScore", null);
+        missingScore.put("pointsAwarded", 999);
+        ResponseEntity<Map<String, Object>> missingResult = put(
+                "/api/game-plays/" + number(negativePlay.getBody().get("id")) + "/result", missingScore);
+        assertThat(missingResult.getBody()).containsEntry("pointsAwarded", 0);
+        assertThat(missingResult.getBody()).containsEntry("scoringPolicy", "raw-score-v1");
+
+        ResponseEntity<Map<String, Object>> belowZeroPlay = startPlay(
+                "2283055622", "rank-session-4", "game-rank", "鎺掑悕娓告垙");
+        ResponseEntity<Map<String, Object>> belowZeroResult = put(
+                "/api/game-plays/" + number(belowZeroPlay.getBody().get("id")) + "/result", Map.of(
+                        "success", false,
+                        "terminationReason", "NATURAL_FAILURE",
+                        "rawScore", -10,
+                        "pointsAwarded", 888));
+        assertThat(belowZeroResult.getBody()).containsEntry("pointsAwarded", 0);
+        assertThat(belowZeroResult.getBody()).containsEntry("scoringPolicy", "raw-score-v1");
+
+        assertThat(map(get("/api/player-info?phone=13000130010").getBody().get("points")))
+                .containsEntry("total", 50).containsEntry("rank", 1);
+        assertThat(map(get("/api/player-info?phone=13000130011").getBody().get("points")))
+                .containsEntry("total", 50).containsEntry("rank", 1);
+        assertThat(map(get("/api/player-info?phone=13000130012").getBody().get("points")))
+                .containsEntry("total", 0).containsEntry("rank", 3);
+
+        ResponseEntity<List<Map<String, Object>>> members = http.exchange(
+                "/api/members", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        Map<String, Object> firstProjection = members.getBody().stream()
+                .filter(member -> "13000130010".equals(member.get("phone"))).findFirst().orElseThrow();
+        assertThat(firstProjection).containsEntry("pointsTotal", 50).containsEntry("rank", 1);
     }
 
     private ResponseEntity<Map<String, Object>> post(String path, Object body) {

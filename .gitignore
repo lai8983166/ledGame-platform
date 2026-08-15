@@ -11,3 +11,6 @@ target/
 server/*.db
 acceptance/artifacts/
 acceptance/.runtime/
+build-resources/platform/
+release/
+test-results/

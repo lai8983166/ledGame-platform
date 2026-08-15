@@ -271,6 +271,7 @@
     "apps/registration-kiosk/src/App.vue::player info",
     "apps/registration-kiosk/src/App.vue::text(",
     "apps/registration-kiosk/src/App.vue::your player",
+    "apps/registration-kiosk/src/OperatorApp.vue::text(",
     "apps/registration-kiosk/src/App.vue::先查询或创建会员，确认身份后再刷手环。",
     "apps/registration-kiosk/src/App.vue::等待读卡器输入",
     "apps/registration-kiosk/src/App.vue::输入会员手机号，查询注册资料、积分排名、手环 ID 和服务端计算的剩余时间。",

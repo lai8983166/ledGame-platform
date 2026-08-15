@@ -3,11 +3,14 @@ import { computed, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import StatusBadge from "../components/StatusBadge.vue";
+import DesktopRuntimeCard from "../components/DesktopRuntimeCard.vue";
 import { createFeatureSettings } from "../data";
 import type { FeatureSetting } from "../types";
+import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 
 type SettingsTab = "basic" | "features" | "upload";
 const emit = defineEmits<{ toast: [message: string] }>();
+defineProps<{ locale: PlatformLocale }>();
 const activeTab = ref<SettingsTab>("basic");
 const braceletMinutes = ref<number | null>(60);
 const savedMinutes = ref(60);
@@ -81,6 +84,7 @@ const testUpload = () => {
     </nav>
 
     <div class="settings-content">
+      <DesktopRuntimeCard :locale="locale" @toast="emit('toast', $event)" />
       <section v-if="activeTab === 'basic'" class="settings-card glass-panel">
         <header class="settings-card__header"><span class="settings-icon"><AppIcon name="clock" /></span><div><p class="section-eyebrow">DURATION SHORTCUT</p><h2>常用充时快捷值</h2><p>仅作为柜台录入本次购买时长时的快捷选择，不会自动写入所有手环。</p></div><StatusBadge tone="info">常用 {{ savedMinutes }} 分钟</StatusBadge></header>
         <div class="duration-editor">

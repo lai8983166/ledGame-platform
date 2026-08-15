@@ -4,9 +4,14 @@
   "private": true,
   "description": "LED Game central membership platform",
   "scripts": {
-    "dev": "concurrently -k \"pnpm dev:registration\" \"pnpm dev:member-admin\" \"mvn -f server/pom.xml spring-boot:run\"",
+    "dev": "concurrently -k \"pnpm dev:registration:browser\" \"pnpm dev:member-admin:browser\" \"mvn -f server/pom.xml spring-boot:run\"",
     "dev:registration": "pnpm --dir apps/registration-kiosk exec vite -- --host 127.0.0.1 --port 5176",
     "dev:member-admin": "pnpm --dir apps/member-admin exec vite -- --host 127.0.0.1 --port 5177",
+    "dev:registration:browser": "pnpm dev:registration",
+    "dev:member-admin:browser": "pnpm dev:member-admin",
+    "dev:registration:desktop": "concurrently -k \"pnpm dev:registration\" \"wait-on tcp:127.0.0.1:5176 && cross-env VITE_REGISTRATION_KIOSK_DEV_URL=http://127.0.0.1:5176 electron desktop/registration-kiosk/main.cjs\"",
+    "prepare:member-admin:dev": "mvn -q -f server/pom.xml package -DskipTests",
+    "dev:member-admin:desktop": "pnpm prepare:member-admin:dev && concurrently -k \"pnpm dev:member-admin\" \"wait-on tcp:127.0.0.1:5177 && cross-env VITE_MEMBER_ADMIN_DEV_URL=http://127.0.0.1:5177 electron desktop/member-admin/main.cjs\"",
     "build": "pnpm build:registration && pnpm build:member-admin",
     "build:registration": "pnpm --dir apps/registration-kiosk exec vite build",
     "build:member-admin": "pnpm --dir apps/member-admin exec vite build",
@@ -18,21 +23,43 @@
     "i18n:extract": "tsx scripts/i18n-workflow.ts extract",
     "i18n:import": "tsx scripts/i18n-workflow.ts import",
     "i18n:check": "tsx scripts/i18n-workflow.ts check",
-    "test:client": "pnpm i18n:check && vitest run packages/api-client/src/index.test.ts packages/shared-ui/src/localization.test.ts apps/member-admin/src/localization.test.ts apps/registration-kiosk/src/localization.test.ts apps/registration-kiosk/src/playerInfoFlow.test.ts",
+    "test:client": "pnpm i18n:check && vitest run packages/api-client/src/index.test.ts packages/shared-ui/src/localization.test.ts apps/member-admin/src/localization.test.ts apps/member-admin/src/pointsProjectionUi.test.ts apps/registration-kiosk/src/localization.test.ts apps/registration-kiosk/src/playerInfoFlow.test.ts",
     "test:server": "mvn -q -f server/pom.xml test",
     "test:core": "pnpm test:server && pnpm test:client",
     "test:e2e": "mvn -q -f server/pom.xml -Dtest=CoreFlowApiIntegrationTest#isolatedCoreSmokeRunsFromRegistrationThroughGameSettlementAndPlayerInfo test",
-    "test:acceptance:unit": "vitest run acceptance/support/runtime.test.ts acceptance/support/config.test.ts acceptance/support/selectors.test.ts acceptance/support/chineseReporter.test.ts",
-    "test:acceptance": "playwright test --config acceptance/playwright.config.ts"
+    "test:acceptance:unit": "vitest run acceptance/support/runtime.test.ts acceptance/support/config.test.ts acceptance/support/selectors.test.ts acceptance/support/bidirectionalFloorDevice.test.ts acceptance/support/chineseReporter.test.ts",
+    "test:acceptance": "playwright test --config acceptance/playwright.config.ts",
+    "test:acceptance:desktop": "pnpm prepare:member-admin:dev && playwright test --config acceptance/playwright.config.ts acceptance/specs/store-platform-desktop.spec.ts",
+    "test:desktop": "vitest run desktop/tests/member-admin-runtime.test.mjs desktop/tests/registration-kiosk-shell.test.mjs desktop/tests/package-contract.test.mjs desktop/tests/shared-runtime.test.mjs",
+    "test:desktop:electron": "playwright test desktop/tests/registration-kiosk.electron.spec.mjs --workers=1",
+    "test:desktop:member": "pnpm prepare:member-admin:dev && playwright test desktop/tests/member-admin.electron.spec.mjs --workers=1",
+    "portable:prepare": "node scripts/prepare-platform-portable.cjs",
+    "portable:member-admin:dir": "pnpm portable:prepare && pnpm build:member-admin && electron-builder --config desktop/electron-builder.member-admin.json --win dir",
+    "portable:member-admin:zip": "pnpm portable:prepare && pnpm build:member-admin && electron-builder --config desktop/electron-builder.member-admin.json --win zip",
+    "portable:registration:dir": "pnpm build:registration && electron-builder --config desktop/electron-builder.registration-kiosk.json --win dir",
+    "portable:registration:zip": "pnpm build:registration && electron-builder --config desktop/electron-builder.registration-kiosk.json --win zip",
+    "portable:all": "pnpm portable:member-admin:dir && pnpm portable:member-admin:zip && pnpm portable:registration:dir && pnpm portable:registration:zip",
+    "portable:smoke": "node scripts/smoke-platform-packages.mjs",
+    "portable:verify": "node scripts/verify-platform-packages.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",
     "@types/node": "^22.15.0",
     "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.0.0",
+    "electron-builder": "^26.15.3",
     "playwright": "1.55.0",
     "tsx": "^4.20.6",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
+    "wait-on": "^8.0.1",
     "vue-tsc": "^2.2.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   }
 }

@@ -10,9 +10,12 @@ import {
   waitForReadiness,
   type ManagedChildProcess,
 } from "./runtime";
+import { BidirectionalFloorDevice } from "./bidirectionalFloorDevice";
 
 type MemberFixture = { phone: string; name: string; uid: string };
-type RuntimePorts = { platform: number; admin: number; kiosk: number; game: number; renderer: number; debugTcp: number };
+type RuntimePorts = { platform: number; admin: number; kiosk: number; game: number; renderer: number; debugTcp: number; floorTcp: number };
+export type StoreAcceptanceOptions = { runtimeMode?: "SIMULATION" | "PRODUCTION"; platformClients?: "browser" | "desktop" };
+type ResolvedStoreAcceptanceOptions = { runtimeMode: "SIMULATION" | "PRODUCTION"; platformClients: "browser" | "desktop" };
 
 const platformRoot = path.resolve(process.cwd());
 const gameRoot = path.resolve(platformRoot, "..", "ledGame");
@@ -30,6 +33,7 @@ function safeRunId(runDirectory: string): string {
 
 function processNameInChinese(label: string): string {
   if (label.startsWith("platform-restart-")) return `会员管理后端重启进程-${label.slice("platform-restart-".length)}`;
+  if (label.startsWith("game-backend-restart-")) return `游戏后端重启进程-${label.slice("game-backend-restart-".length)}`;
   return ({
     platform: "会员管理后端",
     "member-admin": "会员管理端",
@@ -43,26 +47,34 @@ export class StoreAcceptanceHarness {
   readonly #testInfo: TestInfo;
   readonly #runDirectory: string;
   readonly #ports: RuntimePorts;
+  readonly #options: ResolvedStoreAcceptanceOptions;
   readonly #processes = new ManagedProcessRegistry();
   readonly #children: ManagedChildProcess[] = [];
   #platformProcess: ManagedChildProcess | null = null;
+  #gameBackendProcess: ManagedChildProcess | null = null;
   #platformStartCount = 0;
+  #gameBackendStartCount = 0;
   #browser: Browser | null = null;
   #adminPage: Page | null = null;
   #kioskPage: Page | null = null;
   #electronApp: ElectronApplication | null = null;
+  #memberAdminElectron: ElectronApplication | null = null;
+  #registrationElectron: ElectronApplication | null = null;
+  #registrationOperatorPage: Page | null = null;
   #mainPage: Page | null = null;
   #touchPage: Page | null = null;
   #debugPage: Page | null = null;
+  #floorDevice: BidirectionalFloorDevice | null = null;
   #stopped = false;
 
-  private constructor(testInfo: TestInfo, runDirectory: string, ports: RuntimePorts) {
+  private constructor(testInfo: TestInfo, runDirectory: string, ports: RuntimePorts, options: ResolvedStoreAcceptanceOptions) {
     this.#testInfo = testInfo;
     this.#runDirectory = runDirectory;
     this.#ports = ports;
+    this.#options = options;
   }
 
-  static async start(testInfo: TestInfo): Promise<StoreAcceptanceHarness> {
+  static async start(testInfo: TestInfo, options: StoreAcceptanceOptions = {}): Promise<StoreAcceptanceHarness> {
     const runDirectory = await createOwnedRunDirectory(runtimeBase);
     const ports: RuntimePorts = {
       platform: await allocateLoopbackPort(),
@@ -71,8 +83,13 @@ export class StoreAcceptanceHarness {
       game: await allocateLoopbackPort(),
       renderer: await allocateLoopbackPort(),
       debugTcp: await allocateLoopbackPort(),
+      floorTcp: await allocateLoopbackPort(),
     };
-    const harness = new StoreAcceptanceHarness(testInfo, runDirectory, ports);
+    const resolvedOptions: ResolvedStoreAcceptanceOptions = {
+      runtimeMode: options.runtimeMode === "PRODUCTION" ? "PRODUCTION" : "SIMULATION",
+      platformClients: options.platformClients === "desktop" ? "desktop" : "browser",
+    };
+    const harness = new StoreAcceptanceHarness(testInfo, runDirectory, ports, resolvedOptions);
     try {
       await harness.#startAll();
       return harness;
@@ -88,9 +105,14 @@ export class StoreAcceptanceHarness {
     const electronUserData = path.join(this.#runDirectory, "electron-user-data");
     await mkdir(path.join(electronUserData, "settings"), { recursive: true });
     await mkdir(logs, { recursive: true });
+    if (this.#options.runtimeMode === "PRODUCTION") {
+      this.#floorDevice = new BidirectionalFloorDevice(this.#ports.floorTcp, 16, 16);
+      await this.#floorDevice.start();
+      this.#processes.add({ label: "bidirectional-floor", stop: () => this.#floorDevice!.stop() });
+    }
     await writeFile(path.join(electronUserData, "settings", "application.json"), `${JSON.stringify({
       entryMethod: "wristband",
-      mode: "debug",
+      mode: this.#options.runtimeMode === "PRODUCTION" ? "game" : "debug",
       memberPlatformHost: "127.0.0.1",
       memberPlatformPort: this.#ports.platform,
       secondaryDisplay: null,
@@ -99,11 +121,12 @@ export class StoreAcceptanceHarness {
       schemaVersion: 1,
       repositories: { platformRoot, gameRoot, gameBackendRoot },
       ports: this.#ports,
+      runtimeMode: this.#options.runtimeMode,
       browserChannel: process.env.ACCEPTANCE_BROWSER_CHANNEL || "msedge",
       headed: process.env.ACCEPTANCE_HEADED === "1",
     }, null, 2)}\n`, "utf8");
 
-    await this.#startPlatform();
+    if (this.#options.platformClients === "browser") await this.#startPlatform();
     this.#startChild("member-admin", "pnpm", ["--dir", path.join(platformRoot, "apps", "member-admin"), "exec", "vite", "--host", "127.0.0.1", "--port", String(this.#ports.admin), "--strictPort"], platformRoot, {
       VITE_PLATFORM_BASE_URL: this.platformBaseUrl,
     });
@@ -114,36 +137,29 @@ export class StoreAcceptanceHarness {
     });
     await this.#ready("Registration Kiosk", `http://127.0.0.1:${this.#ports.kiosk}/`, this.#children.at(-1)!);
 
-    const runId = safeRunId(this.#runDirectory).replaceAll("-", "_");
-    this.#startChild("game-backend", "mvn", ["-q", "spring-boot:run"], gameBackendRoot, {
-      SPRING_PROFILES_ACTIVE: "acceptance",
-      ACCEPTANCE_GAME_DATABASE_URL: `jdbc:h2:mem:${runId};MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1`,
-      ACCEPTANCE_GAME_PORT: String(this.#ports.game),
-      MEMBER_PLATFORM_BASE_URL: this.platformBaseUrl,
-      LEDGAME_DEVICE_ID: `acceptance-${runId}`,
-      LEDGAME_ROOM_ID: `acceptance-${runId}`,
-      LEDGAME_ROOM_NAME: "Acceptance Room",
-      LED_ROOM_RECONNECT_DELAY: "250ms",
-    });
-    await this.#ready("Game backend", `${this.gameBaseUrl}/engine/demo/state`, this.#children.at(-1)!, 120_000);
+    if (this.#options.platformClients === "desktop") await this.#startPlatformDesktopClients(electronUserData);
+
+    await this.#startGameBackend();
     const seed = await fetch(`${this.gameBaseUrl}/dev/seed/simple-variants`, { method: "POST" });
     if (!seed.ok) throw new Error(`Game seed failed with HTTP ${seed.status}: ${await seed.text()}`);
 
     this.#startChild("game-renderer", "pnpm", ["exec", "vite", "--host", "127.0.0.1", "--port", String(this.#ports.renderer), "--strictPort"], gameRoot);
     await this.#ready("Game renderer", `http://127.0.0.1:${this.#ports.renderer}/`, this.#children.at(-1)!);
 
-    this.#browser = await chromium.launch({
-      channel: process.env.ACCEPTANCE_BROWSER_CHANNEL || "msedge",
-      headless: process.env.ACCEPTANCE_HEADED !== "1",
-    });
-    const adminContext = await this.#browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    const kioskContext = await this.#browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    this.#adminPage = await adminContext.newPage();
-    this.#kioskPage = await kioskContext.newPage();
-    await Promise.all([
-      this.#adminPage.goto(`http://127.0.0.1:${this.#ports.admin}/`, { waitUntil: "domcontentloaded" }),
-      this.#kioskPage.goto(`http://127.0.0.1:${this.#ports.kiosk}/`, { waitUntil: "domcontentloaded" }),
-    ]);
+    if (this.#options.platformClients === "browser") {
+      this.#browser = await chromium.launch({
+        channel: process.env.ACCEPTANCE_BROWSER_CHANNEL || "msedge",
+        headless: process.env.ACCEPTANCE_HEADED !== "1",
+      });
+      const adminContext = await this.#browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const kioskContext = await this.#browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      this.#adminPage = await adminContext.newPage();
+      this.#kioskPage = await kioskContext.newPage();
+      await Promise.all([
+        this.#adminPage.goto(`http://127.0.0.1:${this.#ports.admin}/`, { waitUntil: "domcontentloaded" }),
+        this.#kioskPage.goto(`http://127.0.0.1:${this.#ports.kiosk}/`, { waitUntil: "domcontentloaded" }),
+      ]);
+    }
     await expect(this.#adminPage.getByTestId("admin-page-wristbands")).toBeVisible();
     await expect(this.#kioskPage.getByTestId("kiosk-screen-home")).toBeVisible();
 
@@ -166,6 +182,93 @@ export class StoreAcceptanceHarness {
     this.#mainPage = this.#electronApp.windows().find((page) => page.url().startsWith(`http://127.0.0.1:${this.#ports.renderer}`) && !page.url().includes("window=")) ?? null;
     if (!this.#mainPage) throw new Error(`Electron main window missing: ${this.#electronApp.windows().map((page) => page.url()).join(", ")}`);
     await expect(this.#mainPage.getByTestId("game-enter-flow")).toBeVisible();
+  }
+
+  async #startPlatformDesktopClients(electronUserData: string): Promise<void> {
+    const electronExecutable = path.join(platformRoot, "node_modules", "electron", "dist", "electron.exe");
+    const { ELECTRON_RUN_AS_NODE: _electronRunAsNode, ...electronEnvironment } = process.env;
+    this.#memberAdminElectron = await electron.launch({
+      executablePath: electronExecutable,
+      args: [path.join(platformRoot, "desktop", "member-admin", "main.cjs")],
+      cwd: platformRoot,
+      env: {
+        ...electronEnvironment,
+        VITE_MEMBER_ADMIN_DEV_URL: `http://127.0.0.1:${this.#ports.admin}`,
+        LEDGAME_USER_DATA: path.join(electronUserData, "member-admin"),
+        LEDGAME_PLATFORM_PORT: String(this.#ports.platform),
+      },
+    });
+    this.#adminPage = await this.#memberAdminElectron.firstWindow();
+    await expect.poll(async () => {
+      try { return await httpOk(`${this.platformBaseUrl}/api/health`); } catch { return false; }
+    }, { timeout: 45_000 }).toBe(true);
+
+    this.#registrationElectron = await electron.launch({
+      executablePath: electronExecutable,
+      args: [path.join(platformRoot, "desktop", "registration-kiosk", "main.cjs")],
+      cwd: platformRoot,
+      env: {
+        ...electronEnvironment,
+        VITE_REGISTRATION_KIOSK_DEV_URL: `http://127.0.0.1:${this.#ports.kiosk}`,
+        LEDGAME_USER_DATA: path.join(electronUserData, "registration-kiosk"),
+      },
+    });
+    this.#registrationOperatorPage = await this.#registrationElectron.firstWindow();
+    await this.#registrationOperatorPage.getByTestId("operator-host").fill("127.0.0.1");
+    await this.#registrationOperatorPage.getByTestId("operator-port").fill(String(this.#ports.platform));
+    await this.#registrationOperatorPage.getByTestId("operator-save").click();
+    await this.#registrationOperatorPage.getByTestId("operator-test").click();
+    await expect(this.#registrationOperatorPage.getByTestId("operator-status")).toContainText(/连接成功|connection/i);
+    await this.#registrationOperatorPage.getByTestId("operator-launch").click();
+    await expect.poll(() => this.#registrationElectron!.windows().length).toBe(2);
+    this.#kioskPage = this.#registrationElectron.windows().find((page) => page !== this.#registrationOperatorPage) ?? null;
+    if (!this.#kioskPage) throw new Error("Registration kiosk customer window is missing");
+  }
+
+  async exitRegistrationKioskToOperator(): Promise<void> {
+    if (!this.#registrationElectron || !this.#registrationOperatorPage || !this.#kioskPage) throw new Error("Registration desktop is not started");
+    await this.#kioskPage.evaluate(() => window.registrationDesktop?.staffExit?.());
+    await expect.poll(() => this.#registrationElectron!.windows().length).toBe(1);
+    await expect(this.#registrationOperatorPage.getByTestId("operator-host")).toBeVisible();
+  }
+
+  async #startGameBackend(): Promise<void> {
+    const runId = safeRunId(this.#runDirectory).replaceAll("-", "_");
+    const label = this.#gameBackendStartCount === 0 ? "game-backend" : `game-backend-restart-${this.#gameBackendStartCount}`;
+    this.#gameBackendStartCount += 1;
+    const databasePath = path.join(this.#runDirectory, "game-runtime").replaceAll("\\", "/");
+    const productionEnvironment: NodeJS.ProcessEnv = this.#options.runtimeMode === "PRODUCTION" ? {
+      ACCEPTANCE_FAKE_HARDWARE_READINESS: "true",
+      SPRING_APPLICATION_JSON: JSON.stringify({
+        led: {
+          outputs: [
+            { name: "bridge", enabled: false, host: "127.0.0.1", port: 3001 },
+            { name: "debug-panel", enabled: false, host: "127.0.0.1", port: this.#ports.debugTcp },
+            {
+              name: "elc408-sdk",
+              enabled: true,
+              host: "127.0.0.1",
+              port: this.#ports.floorTcp,
+              queueCapacity: 4,
+              connectTimeoutMillis: 500,
+              inputEnabled: true,
+            },
+          ],
+        },
+      }),
+    } : {};
+    this.#gameBackendProcess = this.#startChild(label, "mvn", ["-q", "spring-boot:run"], gameBackendRoot, {
+      SPRING_PROFILES_ACTIVE: "acceptance",
+      ACCEPTANCE_GAME_DATABASE_URL: `jdbc:h2:file:${databasePath};MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE`,
+      ACCEPTANCE_GAME_PORT: String(this.#ports.game),
+      MEMBER_PLATFORM_BASE_URL: this.platformBaseUrl,
+      LEDGAME_DEVICE_ID: `acceptance-${runId}`,
+      LEDGAME_ROOM_ID: `acceptance-${runId}`,
+      LEDGAME_ROOM_NAME: "Acceptance Room",
+      LED_ROOM_RECONNECT_DELAY: "250ms",
+      ...productionEnvironment,
+    });
+    await this.#ready("Game backend", `${this.gameBaseUrl}/engine/demo/state`, this.#gameBackendProcess, 120_000);
   }
 
   #startChild(label: string, command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = {}): ManagedChildProcess {
@@ -272,9 +375,15 @@ export class StoreAcceptanceHarness {
     await this.#openGamePreparation();
     await this.#scanGameWristband(uid);
     await expect(this.touchPage.getByTestId("game-player-access")).toHaveAttribute("data-wristband-uid", uid);
-    const game = this.touchPage.locator('[data-testid^="game-option-"]').first();
-    await expect(game).toBeVisible();
-    await game.click();
+    if (this.#options.runtimeMode === "PRODUCTION") {
+      await this.touchPage.getByTestId("game-player-next").click();
+      await expect(this.touchPage.getByTestId("game-game-next")).toBeEnabled();
+      await this.touchPage.getByTestId("game-game-next").click();
+    } else {
+      const game = this.touchPage.locator('[data-testid^="game-option-"]').first();
+      await expect(game).toBeVisible();
+      await game.click();
+    }
     await expect(this.touchPage.getByTestId("game-start")).toBeEnabled();
     await this.touchPage.getByTestId("game-start").click();
     await expect(this.touchPage.getByTestId("game-touch")).toHaveAttribute("data-state", "RUNNING", { timeout: 30_000 });
@@ -282,13 +391,19 @@ export class StoreAcceptanceHarness {
 
   async #openGamePreparation(): Promise<void> {
     if (!this.#mainPage || !this.#electronApp) throw new Error("Electron is not started");
-    if (!this.#touchPage || !this.#debugPage) {
+    const needsDebugPanel = this.#options.runtimeMode === "SIMULATION";
+    if (!this.#touchPage || (needsDebugPanel && !this.#debugPage)) {
       await this.#mainPage.getByTestId("game-enter-flow").click();
-      await expect.poll(() => this.#electronApp!.windows().length, { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
+      await expect.poll(() => this.#electronApp!.windows().length, { timeout: 20_000 }).toBeGreaterThanOrEqual(needsDebugPanel ? 3 : 2);
       const windows = this.#electronApp.windows();
       this.#touchPage = windows.find((page) => page.url().includes("window=touch")) ?? null;
       this.#debugPage = windows.find((page) => page.url().includes("window=debug")) ?? null;
-      if (!this.#touchPage || !this.#debugPage) throw new Error(`Electron auxiliary windows missing: ${windows.map((page) => page.url()).join(", ")}`);
+      if (!this.#touchPage || (needsDebugPanel && !this.#debugPage)) {
+        throw new Error(`Electron auxiliary windows missing: ${windows.map((page) => page.url()).join(", ")}`);
+      }
+    }
+    if (await this.currentEngineState() === "STOPPED") {
+      await this.touchPage.getByTestId("game-return-idle").click();
     }
     await expect(this.touchPage.getByTestId("game-touch")).toHaveAttribute("data-state", "IDLE");
     await this.touchPage.getByTestId("game-touch-idle").click();
@@ -314,6 +429,13 @@ export class StoreAcceptanceHarness {
 
   async currentEngineState(): Promise<string> {
     return (await this.touchPage.getByTestId("game-touch").getAttribute("data-state")) || "UNKNOWN";
+  }
+
+  async currentRuntimeMode(): Promise<string> {
+    const response = await fetch(`${this.gameBaseUrl}/engine/game/state`);
+    if (!response.ok) throw new Error(`Runtime state query failed with HTTP ${response.status}`);
+    const body = await response.json() as { data?: { runtimeMode?: string } };
+    return body.data?.runtimeMode || "UNKNOWN";
   }
 
   async enqueueNextGame(uid: string): Promise<void> {
@@ -347,12 +469,32 @@ export class StoreAcceptanceHarness {
   }
 
   async restartPlatform(clockOffsetSeconds = 0): Promise<void> {
+    await this.stopPlatform();
+    await this.#startPlatform(clockOffsetSeconds);
+  }
+
+  async stopPlatform(): Promise<void> {
     if (!this.#platformProcess) throw new Error("Platform server is not started");
     await this.#platformProcess.stop();
+    this.#platformProcess = null;
     await expect.poll(async () => {
       try { return await httpOk(`${this.platformBaseUrl}/api/health`); } catch { return false; }
     }, { timeout: 15_000 }).toBe(false);
-    await this.#startPlatform(clockOffsetSeconds);
+  }
+
+  async startPlatform(): Promise<void> {
+    if (this.#platformProcess) throw new Error("Platform server is already started");
+    await this.#startPlatform();
+  }
+
+  async restartGameBackend(): Promise<void> {
+    if (!this.#gameBackendProcess) throw new Error("Game backend is not started");
+    await this.#gameBackendProcess.stop();
+    this.#gameBackendProcess = null;
+    await expect.poll(async () => {
+      try { return await httpOk(`${this.gameBaseUrl}/engine/demo/state`); } catch { return false; }
+    }, { timeout: 15_000 }).toBe(false);
+    await this.#startGameBackend();
   }
 
   async expectGameAdmissionRejected(uid: string, expectedCode: string): Promise<void> {
@@ -396,22 +538,51 @@ export class StoreAcceptanceHarness {
     await this.debugPage.getByTestId("game-debug-end").click();
   }
 
+  async completeCurrentGameNaturally(): Promise<void> {
+    await expect(this.debugPage.getByTestId("game-debug-panel")).toHaveAttribute("data-runtime-mode", "SIMULATION");
+    await this.debugPage.getByTestId("game-debug-complete-natural").click();
+  }
+
+  async completeCurrentGameThroughFloor(): Promise<void> {
+    if (this.#options.runtimeMode !== "PRODUCTION" || !this.#floorDevice) {
+      throw new Error("Production floor completion is only available in PRODUCTION acceptance mode");
+    }
+    expect(await this.currentRuntimeMode()).toBe("PRODUCTION");
+    await this.#floorDevice.sendFloorTap(0, 0);
+  }
+
+  async settlementDiagnostics(): Promise<{ counts: { pending: number; delivered: number; failed: number }; deliveries: Array<{ platformPlayId: number; state: string; attemptCount: number; lastErrorCode?: string | null }> }> {
+    const response = await fetch(`${this.gameBaseUrl}/api/member-platform/settlements`);
+    if (!response.ok) throw new Error(`Settlement diagnostics failed with HTTP ${response.status}`);
+    return response.json();
+  }
+
   async currentWristbandUid(): Promise<string | null> {
     const access = this.touchPage.getByTestId("game-player-access");
     if (!await access.count()) return null;
     return access.getAttribute("data-wristband-uid");
   }
 
-  async assertFinalCrossClientState(phone: string, uid: string): Promise<void> {
-    const response = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
-    if (!response.ok) throw new Error(`Player Info query failed with HTTP ${response.status}`);
-    const info = await response.json() as { recentPlays?: Array<{ status: string }>; wristbands?: Array<{ uid: string; remainingSeconds: number }> };
-    expect(info.recentPlays?.some((play) => play.status === "ABORTED")).toBe(true);
-    expect(info.wristbands?.find((band) => band.uid === uid)?.remainingSeconds).toBeGreaterThan(0);
+  async assertNaturalCrossClientState(phone: string, uid: string): Promise<void> {
+    let info: { points: { total: number; rank: number }; recentPlays: Array<{ id: number; status: string; terminationReason: string; rawScore: number; pointsAwarded: number; scoringPolicy: string }>; wristbands: Array<{ uid: string; remainingSeconds: number }> } | null = null;
+    await expect.poll(async () => {
+      const response = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+      if (!response.ok) return null;
+      info = await response.json();
+      return info.recentPlays?.[0]?.status;
+    }, { timeout: 30_000 }).toBe("COMPLETED");
+    if (!info) throw new Error("Player Info was not loaded");
+    const settled = info.recentPlays[0];
+    expect(settled).toMatchObject({ status: "COMPLETED", terminationReason: "NATURAL_COMPLETION", rawScore: 1, pointsAwarded: 1, scoringPolicy: "raw-score-v1" });
+    expect(info.points).toEqual({ total: 1, rank: 1 });
+    expect(info.wristbands.find((band) => band.uid === uid)?.remainingSeconds).toBeGreaterThan(0);
 
     const admin = this.adminPage;
     await admin.getByTestId("admin-nav-members").click();
-    await expect(admin.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone })).toBeVisible();
+    const memberRow = admin.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone });
+    await expect(memberRow).toBeVisible();
+    await expect(memberRow.getByTestId("admin-member-points")).toHaveText("1");
+    await expect(memberRow.getByTestId("admin-member-rank")).toHaveText("#1");
     await admin.getByTestId("admin-nav-rooms").click();
     const room = admin.locator('[data-testid^="admin-room-"]').first();
     await expect(room).toBeVisible();
@@ -420,7 +591,11 @@ export class StoreAcceptanceHarness {
     await admin.getByTestId("admin-record-tab-plays").click();
     const playRecord = admin.locator('tr[data-testid^="admin-play-"]').filter({ hasText: uid }).first();
     await expect(playRecord).toBeVisible();
-    await expect(playRecord).toHaveAttribute("data-status", "ABORTED");
+    await expect(playRecord).toHaveAttribute("data-status", "COMPLETED");
+    await expect(playRecord.getByTestId("admin-play-raw-score")).toHaveText("1");
+    await expect(playRecord.getByTestId("admin-play-points")).toContainText("1");
+    await expect(playRecord.getByTestId("admin-play-points")).toContainText("raw-score-v1");
+    await expect(playRecord.getByTestId("admin-play-termination")).toContainText("NATURAL_COMPLETION");
 
     const kiosk = this.kioskPage;
     await kiosk.goto(`http://127.0.0.1:${this.#ports.kiosk}/`, { waitUntil: "domcontentloaded" });
@@ -429,13 +604,57 @@ export class StoreAcceptanceHarness {
     await kiosk.getByTestId("kiosk-info-submit").click();
     await expect(kiosk.getByTestId("kiosk-info-result")).toBeVisible();
     await expect(kiosk.getByTestId(`kiosk-info-wristband-${uid}`)).toBeVisible();
-    await expect(kiosk.locator('[data-testid^="kiosk-info-play-"]').first()).toHaveAttribute("data-status", "ABORTED");
+    await expect(kiosk.getByTestId("kiosk-info-points-total")).toHaveText("1");
+    await expect(kiosk.getByTestId("kiosk-info-rank")).toHaveText("#1");
+    const kioskPlay = kiosk.locator('article[data-testid^="kiosk-info-play-"]').first();
+    await expect(kioskPlay).toHaveAttribute("data-status", "COMPLETED");
+    await expect(kioskPlay.getByTestId("kiosk-info-play-raw-score")).toHaveText("1");
+    await expect(kioskPlay.getByTestId("kiosk-info-play-points")).toHaveText("+1");
+  }
+
+  async assertManualAbortState(phone: string): Promise<void> {
+    await expect.poll(async () => {
+      const response = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+      if (!response.ok) return null;
+      const info = await response.json() as { points: { total: number }; recentPlays: Array<{ status: string; pointsAwarded: number; terminationReason: string }> };
+      const play = info.recentPlays[0];
+      return { total: info.points.total, play: play ? {
+        status: play.status,
+        pointsAwarded: play.pointsAwarded,
+        terminationReason: play.terminationReason,
+      } : null };
+    }, { timeout: 30_000 }).toEqual({ total: 0, play: { status: "ABORTED", pointsAwarded: 0, terminationReason: "MANUAL_STOP" } });
+  }
+
+  async assertConflictingDuplicateSettlementIsIgnored(phone: string): Promise<void> {
+    const beforeResponse = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+    if (!beforeResponse.ok) throw new Error(`Player Info query failed with HTTP ${beforeResponse.status}`);
+    const before = await beforeResponse.json() as { points: { total: number }; recentPlays: Array<{ id: number; rawScore: number; pointsAwarded: number; terminationReason: string }> };
+    const play = before.recentPlays[0];
+    const duplicate = await fetch(`${this.platformBaseUrl}/api/game-plays/${play.id}/result`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ success: false, terminationReason: "NATURAL_FAILURE", rawScore: 999999, pointsAwarded: 999999 }),
+    });
+    expect(duplicate.ok).toBe(true);
+    expect(await duplicate.json()).toMatchObject({
+      terminationReason: play.terminationReason,
+      rawScore: play.rawScore,
+      pointsAwarded: play.pointsAwarded,
+    });
+    const afterResponse = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+    const after = await afterResponse.json() as { points: { total: number }; recentPlays: unknown[] };
+    expect(after.points.total).toBe(before.points.total);
+    expect(after.recentPlays).toHaveLength(before.recentPlays.length);
   }
 
   async #attachDiagnostics(prefix: string): Promise<void> {
     const summary = {
       runDirectory: this.#runDirectory,
       ports: this.#ports,
+      runtimeMode: this.#options.runtimeMode,
+      platformClients: this.#options.platformClients,
+      floorDevice: this.#floorDevice?.diagnostics() ?? null,
       processes: this.#children.map((process) => ({
         label: process.label,
         pid: process.child.pid,
@@ -455,6 +674,8 @@ export class StoreAcceptanceHarness {
     if (!passed) await this.#attachDiagnostics("测试失败");
     const failures: unknown[] = [];
     try { await this.#electronApp?.close(); } catch (error) { failures.push(error); }
+    try { await this.#registrationElectron?.close(); } catch (error) { failures.push(error); }
+    try { await this.#memberAdminElectron?.close(); } catch (error) { failures.push(error); }
     try { await this.#browser?.close(); } catch (error) { failures.push(error); }
     try { await this.#processes.stopAll(); } catch (error) { failures.push(error); }
     if (process.env.ACCEPTANCE_KEEP_RUNTIME === "1") {

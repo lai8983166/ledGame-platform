@@ -9,7 +9,8 @@ spring:
       mode: always
 
 server:
-  port: 8090
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  port: ${SERVER_PORT:8090}
 
 ledgame:
   room-connection:

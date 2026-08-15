@@ -5,7 +5,7 @@ import KioskIcon from "./components/KioskIcon.vue";
 import SoftKeyboard from "./components/SoftKeyboard.vue";
 import WristbandArt from "./components/WristbandArt.vue";
 import { avatars } from "./avatars";
-import { platformApi, platformApiBase } from "./platformApi";
+import { platformApi } from "./platformApi";
 import { createPlayerInfoFlow } from "./playerInfoFlow";
 import type { DemoMember, InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
 import {
@@ -39,6 +39,9 @@ const activationError = ref("");
 const toast = ref("");
 let toastTimer: number | undefined;
 let scanTimer: number | undefined;
+let removeConnectionListener: (() => void) | undefined;
+const desktopOnline = ref(true);
+const desktopConnectionMessage = ref("");
 const playerInfoFlow = createPlayerInfoFlow(platformApi);
 const playerInfoState = playerInfoFlow.state;
 
@@ -64,10 +67,7 @@ const profileScreen = computed<KioskScreen>(() => foundMember.value ? "confirm" 
 const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day" }[activeInput.value ?? "phone"]));
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${platformApiBase}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.message || body.error || `本机服务请求失败（HTTP ${response.status}）`);
-  return body as T;
+  return await platformApi.request<T>(`/api${path}`, init) as T;
 };
 
 const showToast = (message: string) => {
@@ -243,9 +243,19 @@ const selectLocale = (value: PlatformLocale) => {
 onMounted(() => {
   applyDocumentLocale(document.documentElement, locale.value);
   window.addEventListener("keydown", onGlobalKeydown);
+  if (window.registrationDesktop) {
+    desktopOnline.value = false;
+    desktopConnectionMessage.value = "正在连接会员管理端";
+    removeConnectionListener = window.registrationDesktop.onConnectionState((state) => {
+      desktopOnline.value = state.online;
+      desktopConnectionMessage.value = state.message;
+      if (!state.online) resetSession();
+    });
+  }
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
+  removeConnectionListener?.();
   if (toastTimer) window.clearTimeout(toastTimer);
   if (scanTimer) window.clearTimeout(scanTimer);
 });
@@ -253,6 +263,9 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="kiosk-app" :class="[{ 'keyboard-is-open': keyboardOpen }, `screen-${screen}`]" :data-testid="`kiosk-screen-${screen}`">
+    <div v-if="!desktopOnline" class="service-offline-overlay" data-testid="kiosk-offline-overlay">
+      <section><strong>{{ text('offlineTitle') }}</strong><p>{{ desktopConnectionMessage }}</p><small>{{ text('offlineRecovery') }}</small></section>
+    </div>
     <div class="kiosk-bg" aria-hidden="true"><span class="energy-orb energy-orb--one"></span><span class="energy-orb energy-orb--two"></span><span class="scanline"></span></div>
     <div class="portrait-notice"><KioskIcon name="rotate" :size="38" /><strong>{{ text('rotateTitle') }}</strong><span>{{ text('rotateBody') }}</span></div>
 
@@ -293,9 +306,9 @@ onBeforeUnmount(() => {
       <header class="player-info-heading"><div><p class="eyebrow">PLAYER RECORD · LIVE SQLITE DATA</p><h1>Welcome back, <em>{{ playerInfoState.info.profile.name }}</em></h1><p>{{ playerInfoState.info.profile.phone }} · Registered {{ playerInfoState.info.profile.createdAt.slice(0, 10) }}</p></div><button class="kiosk-button kiosk-button--secondary" type="button" @click="screen = 'info-phone'">Query another</button></header>
       <div class="player-info-grid">
         <section class="tech-panel player-info-profile"><AvatarArt :avatar="avatars.find(item => item.id === playerInfoState.info?.profile.avatarId) ?? avatars[0]" size="large" /><div><small>MEMBER PROFILE</small><h2>{{ playerInfoState.info.profile.name }}</h2><p v-if="playerInfoState.info.profile.birthday">Birthday · {{ playerInfoState.info.profile.birthday }}</p><p v-if="playerInfoState.info.profile.gender">Gender · {{ playerInfoState.info.profile.gender }}</p><span><KioskIcon name="check" :size="16" /> {{ playerInfoState.info.profile.status }}</span></div></section>
-        <section class="tech-panel player-info-points" data-testid="kiosk-info-points"><small>TOTAL POINTS</small><strong>{{ playerInfoState.info.points.total }}</strong><p>Current rank <b>#{{ playerInfoState.info.points.rank }}</b></p></section>
+        <section class="tech-panel player-info-points" data-testid="kiosk-info-points"><small>TOTAL POINTS</small><strong data-testid="kiosk-info-points-total">{{ playerInfoState.info.points.total }}</strong><p>Current rank <b data-testid="kiosk-info-rank">#{{ playerInfoState.info.points.rank }}</b></p></section>
         <section class="tech-panel player-info-list" data-testid="kiosk-info-wristbands"><header><small>WRISTBAND & BALANCE</small><b>{{ playerInfoState.info.wristbands.length }}</b></header><div v-if="playerInfoState.info.wristbands.length"><article v-for="band in playerInfoState.info.wristbands" :key="band.uid" :data-testid="`kiosk-info-wristband-${band.uid}`" :data-status="band.status"><WristbandArt :size="44" /><span><strong>{{ band.uid }}</strong><small>{{ band.status }} · {{ band.durationMinutes }} min purchased</small></span><b data-testid="kiosk-info-remaining">{{ formatRemaining(band.remainingSeconds) }}</b></article></div><p v-else>No active wristband is currently bound.</p></section>
-        <section class="tech-panel player-info-list player-info-plays" data-testid="kiosk-info-plays"><header><small>RECENT GAMES</small><b>{{ playerInfoState.info.recentPlays.length }}</b></header><div v-if="playerInfoState.info.recentPlays.length"><article v-for="play in playerInfoState.info.recentPlays" :key="play.id" :data-testid="`kiosk-info-play-${play.id}`" :data-status="play.status"><span><strong>{{ play.gameName }}</strong><small>{{ play.status }} · {{ play.startedAt.slice(0, 16).replace('T', ' ') }}</small></span><b>+{{ play.pointsAwarded }}</b></article></div><p v-else>No game records yet.</p></section>
+        <section class="tech-panel player-info-list player-info-plays" data-testid="kiosk-info-plays"><header><small>RECENT GAMES</small><b>{{ playerInfoState.info.recentPlays.length }}</b></header><div v-if="playerInfoState.info.recentPlays.length"><article v-for="play in playerInfoState.info.recentPlays" :key="play.id" :data-testid="`kiosk-info-play-${play.id}`" :data-status="play.status"><span><strong>{{ play.gameName }}</strong><small>{{ play.status }} · {{ play.terminationReason }} · raw <b data-testid="kiosk-info-play-raw-score">{{ play.rawScore ?? 0 }}</b></small></span><b data-testid="kiosk-info-play-points">+{{ play.pointsAwarded }}</b></article></div><p v-else>No game records yet.</p></section>
       </div>
       <button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button>
     </section>

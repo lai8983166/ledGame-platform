@@ -63,3 +63,7 @@ pnpm test:e2e
 
 cd /f/project/ledGame-platform
 pnpm test:acceptance
+
+## Windows 桌面端
+
+会员管理端和自助注册端的 Electron 开发、测试与便携打包说明见 [Windows 桌面端开发与打包说明](docs/Windows桌面端开发与打包说明.md)。门店 IP、端口、防火墙和跨机冒烟步骤见 [门店局域网配置与冒烟说明](docs/门店局域网配置与冒烟说明.md)。

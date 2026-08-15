@@ -19,6 +19,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("acceptance")
@@ -47,6 +48,9 @@ class AcceptanceProfileIntegrationTest {
     @Autowired
     Clock clock;
 
+    @Autowired
+    JdbcTemplate jdbc;
+
     @Test
     void usesRunOwnedSqliteAndExposesReadiness() throws Exception {
         assertThat(dataSource.getConnection().getMetaData().getURL().replace('\\', '/'))
@@ -55,5 +59,8 @@ class AcceptanceProfileIntegrationTest {
         Map<String, Object> health = rest.getForObject("/api/health", Map.class);
         assertThat(health).containsEntry("ok", true).containsEntry("database", "sqlite");
         assertThat(Duration.between(Instant.now(), clock.instant()).getSeconds()).isBetween(118L, 121L);
+        assertThat(jdbc.queryForList("PRAGMA table_info(game_play_records)").stream()
+                .map(column -> String.valueOf(column.get("name"))))
+                .contains("scoring_policy");
     }
 }

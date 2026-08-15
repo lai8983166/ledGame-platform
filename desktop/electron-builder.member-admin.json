@@ -1,0 +1,18 @@
+{
+  "appId": "com.ledgame.platform.memberadmin",
+  "productName": "LED Game 会员管理端",
+  "directories": { "output": "release/member-admin" },
+  "asar": true,
+  "files": [
+    "apps/member-admin/dist/**/*",
+    "desktop/shared/**/*",
+    "desktop/member-admin/**/*",
+    "package.json"
+  ],
+  "extraMetadata": { "main": "desktop/member-admin/main.cjs" },
+  "extraResources": [
+    { "from": "build-resources/platform/backend", "to": "backend" },
+    { "from": "build-resources/platform/jre", "to": "jre" }
+  ],
+  "win": { "target": ["dir", "zip"] }
+}

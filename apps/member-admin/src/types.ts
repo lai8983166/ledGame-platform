@@ -48,6 +48,8 @@ export interface Member {
   status: "active" | "inactive";
   joinedAt: string;
   color: string;
+  pointsTotal?: number;
+  rank?: number;
 }
 
 export type WristbandState = "empty" | "charged" | "ready" | "active" | "expired";
@@ -78,6 +80,10 @@ export interface PlayRecord {
   braceletId: string;
   roomName: string;
   score: number;
+  pointsAwarded?: number;
+  scoringPolicy?: string | null;
+  status?: string;
+  terminationReason?: string | null;
   startedAt: string;
   endedAt: string;
 }

@@ -70,6 +70,12 @@ export default class ChineseAcceptanceReporter implements Reporter {
       `- 跳过：${skipped}`,
       `- 场景累计耗时：${durationText(totalDuration)}`,
       "",
+      "## 覆盖边界",
+      "",
+      "- Debug 规范化输入：Debug 画布通过与生产地砖相同的 DOWN/UP 领域事件驱动游戏规则，并由黄金流程核对自然结算。",
+      "- PRODUCTION 软件形态：游戏以 PRODUCTION 模式运行，经双向 TCP 地砖替身校验 LED 帧、回写生产格式输入并核对自然结算。",
+      "- 未覆盖的现场硬件项目：实体 ELC-408/控制器发现、真实地砖坐标与防抖、LED 实物显示、物理断线重连和门店局域网仍需现场冒烟。",
+      "",
       "## 场景明细",
       "",
     ];

@@ -1,6 +1,23 @@
 export interface PlatformApiClientOptions {
   baseUrl?: string;
+  transport?: PlatformApiTransport;
 }
+
+export interface PlatformApiTransportRequest {
+  path: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export interface PlatformApiTransportResponse {
+  status: number;
+  body: string;
+}
+
+export type PlatformApiTransport = (
+  request: PlatformApiTransportRequest,
+) => Promise<PlatformApiTransportResponse>;
 
 export interface PlatformApiClient {
   request<TResponse = unknown>(
@@ -51,6 +68,7 @@ export interface PlayerRecentPlay {
   terminationReason?: string | null;
   rawScore?: number | null;
   pointsAwarded: number;
+  scoringPolicy?: string | null;
 }
 
 export interface PlayerInfo {
@@ -106,6 +124,7 @@ export function resolvePlatformBaseUrl(value?: string | null): string {
 
 export function createPlatformApiClient({
   baseUrl = DEFAULT_PLATFORM_BASE_URL,
+  transport,
 }: PlatformApiClientOptions = {}): PlatformApiClient {
   const normalizedBaseUrl = resolvePlatformBaseUrl(baseUrl);
 
@@ -119,21 +138,30 @@ export function createPlatformApiClient({
         headers.set("Content-Type", "application/json");
       }
 
-      const response = await fetch(`${normalizedBaseUrl}${path}`, {
-        ...options,
-        headers,
-      });
-      const text = await response.text();
+      const method = String(options.method || "GET").toUpperCase();
+      const transportResponse = transport
+        ? await transport({
+            path,
+            method,
+            headers: Object.fromEntries(headers.entries()),
+            ...(typeof options.body === "string" ? { body: options.body } : {}),
+          })
+        : await fetch(`${normalizedBaseUrl}${path}`, {
+            ...options,
+            method,
+            headers,
+          }).then(async (response) => ({ status: response.status, body: await response.text() }));
+      const text = transportResponse.body;
       const data = text ? (JSON.parse(text) as unknown) : null;
 
-      if (!response.ok) {
+      if (transportResponse.status < 200 || transportResponse.status >= 300) {
         const message =
           typeof data === "object" &&
           data !== null &&
           "message" in data &&
           typeof (data as ErrorResponse).message === "string"
             ? (data as ErrorResponse).message!
-            : `Platform request failed: ${response.status}`;
+            : `Platform request failed: ${transportResponse.status}`;
         const code =
           typeof data === "object" &&
           data !== null &&
@@ -141,7 +169,7 @@ export function createPlatformApiClient({
           typeof (data as ErrorResponse).code === "string"
             ? (data as ErrorResponse).code!
             : "REQUEST_FAILED";
-        throw new PlatformApiError(message, response.status, code);
+        throw new PlatformApiError(message, transportResponse.status, code);
       }
 
       return data as TResponse | null;

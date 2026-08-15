@@ -4,7 +4,7 @@ import AppIcon from "../components/AppIcon.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import type { StatusTone, WristbandState } from "../types";
 import { canClearWristbandBalance, canReclaimWristband, normalizeWristbandUid } from "../wristbandActions";
-import { platformApiBase } from "../platformApi";
+import { platformApi } from "../platformApi";
 
 const emit = defineEmits<{ toast: [message: string] }>();
 type UiWristband = { uid: string; state: WristbandState; durationMinutes: number | null; memberName: string | null; phone: string | null };
@@ -31,10 +31,7 @@ const stateMeta: Record<WristbandState, { label: string; description: string; to
 const filteredWristbands = computed(() => wristbands.value.filter((item) => statusFilter.value === "all" || item.state === statusFilter.value));
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${platformApiBase}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.message || body.error || `本机服务请求失败（HTTP ${response.status}）`);
-  return body as T;
+  return await platformApi.request<T>(`/api${path}`, init) as T;
 };
 
 const mapWristband = (item: Record<string, unknown>): UiWristband => ({

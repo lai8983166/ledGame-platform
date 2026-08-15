@@ -196,10 +196,10 @@ onBeforeUnmount(() => {
         <WristbandsView v-if="activePage === 'wristbands'" @toast="showToast" />
         <DashboardView v-else-if="activePage === 'overview'" @navigate="navigate" />
         <RoomsView v-else-if="activePage === 'rooms'" @toast="showToast" />
-        <MembersView v-else-if="activePage === 'members'" @toast="showToast" />
-        <RecordsView v-else-if="activePage === 'records'" />
+        <MembersView v-else-if="activePage === 'members'" :locale="locale" @toast="showToast" />
+        <RecordsView v-else-if="activePage === 'records'" :locale="locale" />
         <LeaderboardView v-else-if="activePage === 'ranking'" />
-        <SettingsView v-else @toast="showToast" />
+        <SettingsView v-else :locale="locale" @toast="showToast" />
       </div>
     </main>
   </div>
