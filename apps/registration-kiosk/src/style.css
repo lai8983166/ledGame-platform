@@ -146,6 +146,17 @@ em { color: var(--cyan-bright); font-style: normal; text-shadow: 0 0 28px rgba(7
 @keyframes spin { to { transform:rotate(360deg); } }
 @keyframes success-ring { 50% { transform:scale(1.04); box-shadow:0 0 0 40px rgba(85,238,213,.02),0 0 0 80px rgba(84,116,239,.012); } }
 
+.kiosk-exit-hotspot { position:fixed; z-index:90; inset:0 auto 0 0; width:36px; border:0; padding:0; opacity:0; background:transparent; cursor:default; }
+.staff-exit-backdrop { position:fixed; z-index:120; inset:0; display:grid; place-items:center; padding:24px; background:rgba(3,12,28,.78); backdrop-filter:blur(12px); }
+.staff-exit-dialog { width:min(440px,100%); padding:30px; border:1px solid rgba(99,231,233,.35); border-radius:24px; background:var(--panel-strong); box-shadow:0 28px 90px rgba(0,0,0,.5); animation:modal-in .2s ease both; }
+.staff-exit-dialog h2 { margin:0 0 10px; font-size:28px; }
+.staff-exit-dialog > p:not(.eyebrow):not(.staff-exit-error) { margin:0 0 22px; color:var(--muted); font-size:12px; line-height:1.6; }
+.staff-exit-dialog footer { display:flex; justify-content:flex-end; gap:10px; margin-top:22px; }
+.staff-exit-field { display:block; }
+.staff-exit-field span { display:block; margin-bottom:8px; color:#87a8bd; font-size:9px; font-weight:800; letter-spacing:.13em; }
+.staff-exit-field input { width:100%; height:54px; padding:0 14px; border:1px solid rgba(108,174,201,.3); border-radius:14px; outline:0; color:var(--text); background:rgba(3,15,33,.65); font-size:18px; letter-spacing:.18em; }
+.staff-exit-field input:focus { border-color:rgba(77,238,237,.72); box-shadow:0 0 0 4px rgba(56,235,235,.07); }
+.staff-exit-error { margin:9px 0 0; color:var(--danger); font-size:11px; }
 .service-offline-overlay { position:fixed; z-index:1000; inset:0; display:grid; place-items:center; padding:30px; background:rgba(4,13,28,.92); backdrop-filter:blur(12px); }
 .service-offline-overlay section { width:min(520px,100%); padding:34px; border:1px solid rgba(255,117,141,.35); border-radius:22px; text-align:center; background:rgba(35,19,38,.94); box-shadow:0 24px 70px rgba(0,0,0,.45); }
 .service-offline-overlay strong { display:block; color:#ffb0c0; font-size:30px; }

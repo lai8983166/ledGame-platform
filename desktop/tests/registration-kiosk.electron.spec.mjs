@@ -97,7 +97,13 @@ test("development shell enforces operator/kiosk lifecycle, permissions and recon
     api = await startHealthServer(apiPort);
     await expect(kiosk.getByTestId("kiosk-offline-overlay")).toBeHidden({ timeout: 10000 });
 
-    await kiosk.evaluate(() => window.registrationDesktop?.staffExit?.());
+    await kiosk.getByTestId("kiosk-staff-exit-hotspot").dblclick();
+    await expect(kiosk.getByTestId("kiosk-staff-exit-dialog")).toBeVisible();
+    await kiosk.getByTestId("kiosk-exit-password").fill("123456");
+    await kiosk.getByTestId("kiosk-exit-submit").click();
+    await expect(kiosk.getByTestId("kiosk-exit-error")).toContainText(/密码|password/i);
+    await kiosk.getByTestId("kiosk-exit-password").fill("888888");
+    await kiosk.getByTestId("kiosk-exit-submit").click();
     await expect.poll(() => desktop.windows().length).toBe(1);
     await expect(operator.getByTestId("operator-host")).toBeVisible();
   } finally {

@@ -32,6 +32,10 @@ const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, REGISTR
 const session = reactive<KioskSession>(createSession());
 const activeInput = ref<InputTarget | null>(null);
 const keyboardLayout = ref<KeyboardLayout>("numeric");
+const staffExitOpen = ref(false);
+const staffExitPassword = ref("");
+const staffExitError = ref("");
+const staffExitInput = ref<HTMLInputElement | null>(null);
 const pendingAvatarId = ref("");
 const errors = reactive<Record<string, string>>({});
 const foundMember = ref<ApiMember | null>(null);
@@ -40,6 +44,7 @@ const toast = ref("");
 let toastTimer: number | undefined;
 let scanTimer: number | undefined;
 let removeConnectionListener: (() => void) | undefined;
+let removeStaffExitListener: (() => void) | undefined;
 const desktopOnline = ref(true);
 const desktopConnectionMessage = ref("");
 const playerInfoFlow = createPlayerInfoFlow(platformApi);
@@ -97,6 +102,32 @@ const resetSession = () => {
 };
 
 function closeKeyboard() { activeInput.value = null; }
+
+const openStaffExitDialog = () => {
+  closeKeyboard();
+  staffExitPassword.value = "";
+  staffExitError.value = "";
+  staffExitOpen.value = true;
+  nextTick(() => staffExitInput.value?.focus());
+};
+
+const closeStaffExitDialog = () => {
+  staffExitOpen.value = false;
+  staffExitPassword.value = "";
+  staffExitError.value = "";
+};
+
+const confirmStaffExit = async () => {
+  staffExitError.value = "";
+  try {
+    if (!window.registrationDesktop?.staffExit) throw new Error("DESKTOP_EXIT_UNAVAILABLE");
+    await window.registrationDesktop.staffExit(staffExitPassword.value);
+  } catch {
+    staffExitError.value = text("staffExitInvalid");
+    staffExitPassword.value = "";
+    nextTick(() => staffExitInput.value?.focus());
+  }
+};
 
 const openInput = (target: InputTarget, layout: KeyboardLayout) => {
   activeInput.value = target;
@@ -230,7 +261,8 @@ const handleNativeInput = (target: InputTarget, event: Event) => {
 
 const onGlobalKeydown = (event: KeyboardEvent) => {
   if (event.key === "Escape") {
-    if (languageOpen.value) languageOpen.value = false;
+    if (staffExitOpen.value) closeStaffExitDialog();
+    else if (languageOpen.value) languageOpen.value = false;
     else if (overlay.value !== "none") overlay.value = "none";
     else closeKeyboard();
   }
@@ -251,11 +283,13 @@ onMounted(() => {
       desktopConnectionMessage.value = state.message;
       if (!state.online) resetSession();
     });
+    removeStaffExitListener = window.registrationDesktop.onStaffExitRequest?.(openStaffExitDialog);
   }
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
   removeConnectionListener?.();
+  removeStaffExitListener?.();
   if (toastTimer) window.clearTimeout(toastTimer);
   if (scanTimer) window.clearTimeout(scanTimer);
 });
@@ -263,6 +297,39 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="kiosk-app" :class="[{ 'keyboard-is-open': keyboardOpen }, `screen-${screen}`]" :data-testid="`kiosk-screen-${screen}`">
+    <button
+      class="kiosk-exit-hotspot"
+      data-testid="kiosk-staff-exit-hotspot"
+      type="button"
+      :aria-label="text('staffExitTitle')"
+      @dblclick.prevent.stop="openStaffExitDialog"
+    ></button>
+    <div v-if="staffExitOpen" class="staff-exit-backdrop" data-testid="kiosk-staff-exit-dialog" @mousedown.self="closeStaffExitDialog">
+      <section class="staff-exit-dialog" role="dialog" aria-modal="true" aria-labelledby="staff-exit-title">
+        <p class="eyebrow">{{ text('staffExitEyebrow') }}</p>
+        <h2 id="staff-exit-title">{{ text('staffExitTitle') }}</h2>
+        <p>{{ text('staffExitDescription') }}</p>
+        <label class="staff-exit-field">
+          <span>{{ text('staffExitPasswordLabel') }}</span>
+          <input
+            ref="staffExitInput"
+            v-model="staffExitPassword"
+            data-testid="kiosk-exit-password"
+            type="password"
+            inputmode="numeric"
+            autocomplete="off"
+            :placeholder="text('staffExitPasswordPlaceholder')"
+            @keydown.stop.enter.prevent="confirmStaffExit"
+            @keydown.stop.esc.prevent="closeStaffExitDialog"
+          />
+        </label>
+        <p v-if="staffExitError" class="staff-exit-error" data-testid="kiosk-exit-error">{{ staffExitError }}</p>
+        <footer>
+          <button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-exit-cancel" type="button" @click="closeStaffExitDialog">{{ text('staffExitCancel') }}</button>
+          <button class="kiosk-button kiosk-button--primary" data-testid="kiosk-exit-submit" type="button" @click="confirmStaffExit">{{ text('staffExitConfirm') }}</button>
+        </footer>
+      </section>
+    </div>
     <div v-if="!desktopOnline" class="service-offline-overlay" data-testid="kiosk-offline-overlay">
       <section><strong>{{ text('offlineTitle') }}</strong><p>{{ desktopConnectionMessage }}</p><small>{{ text('offlineRecovery') }}</small></section>
     </div>

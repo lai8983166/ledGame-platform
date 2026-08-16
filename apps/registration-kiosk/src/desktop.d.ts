@@ -11,8 +11,9 @@ declare global {
       saveSettings?(settings: { host: string; port: number }): Promise<{ host: string; port: number }>;
       testConnection?(settings: { host: string; port: number }): Promise<{ ok: boolean; code?: string; message?: string }>;
       startKiosk?(): Promise<unknown>;
-      staffExit?(): Promise<void>;
+      staffExit?(password: string): Promise<{ ok: boolean }>;
       onConnectionState(listener: (state: ConnectionState) => void): () => void;
+      onStaffExitRequest?(listener: () => void): () => void;
     };
   }
 

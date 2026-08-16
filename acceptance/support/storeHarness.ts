@@ -227,7 +227,7 @@ export class StoreAcceptanceHarness {
 
   async exitRegistrationKioskToOperator(): Promise<void> {
     if (!this.#registrationElectron || !this.#registrationOperatorPage || !this.#kioskPage) throw new Error("Registration desktop is not started");
-    await this.#kioskPage.evaluate(() => window.registrationDesktop?.staffExit?.());
+    await this.#kioskPage.evaluate(() => window.registrationDesktop?.staffExit?.("888888"));
     await expect.poll(() => this.#registrationElectron!.windows().length).toBe(1);
     await expect(this.#registrationOperatorPage.getByTestId("operator-host")).toBeVisible();
   }

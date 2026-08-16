@@ -52,6 +52,7 @@ test("member admin owns an isolated backend, SQLite and restartable dynamic port
     });
     const page = await desktop.firstWindow();
     await expect(page.locator("#app")).toBeVisible();
+    await expect(page.getByTestId("admin-platform-connection")).toContainText(/已连接本机后端|connected/i, { timeout: 45000 });
 
     await expect.poll(async () => (await page.evaluate(() => window.memberAdminDesktop?.diagnostics())).state, { timeout: 45000 }).toBe("online");
     let diagnostics = await page.evaluate(() => window.memberAdminDesktop.diagnostics());

@@ -13,6 +13,7 @@ let mainWindow;
 let store;
 let settings = { port: 8090 };
 let status = { state: "starting", message: "正在启动本机服务" };
+let backendReady = Promise.resolve();
 const backend = createManagedProcess();
 
 function setStatus(next) {
@@ -99,19 +100,17 @@ async function restartBackend(port) {
   if (nextPort !== settings.port) await assertPortAvailable(nextPort);
   await stopBackend();
   settings = await store.write({ ...settings, port: nextPort });
-  try {
-    await startBackend(nextPort);
-    return diagnostics();
-  } catch (error) {
-    return { ...diagnostics(), error: error.message };
-  }
+  backendReady = startBackend(nextPort).catch(() => {});
+  await backendReady;
+  return diagnostics();
 }
 
 function registerIpc() {
   const fromMainWindow = (event) => event.sender.id === mainWindow?.webContents.id;
   const transport = createApiTransport(async () => `http://127.0.0.1:${settings.port}`);
-  ipcMain.handle("member-admin:api-request", (event, request) => {
+  ipcMain.handle("member-admin:api-request", async (event, request) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    await backendReady;
     return transport(request);
   });
   ipcMain.handle("member-admin:diagnostics", (event) => {
@@ -125,7 +124,8 @@ function registerIpc() {
   ipcMain.handle("member-admin:retry-backend", async (event) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
     if (backend.running) await stopBackend();
-    try { await startBackend(settings.port); } catch { /* diagnostics carries failure */ }
+    backendReady = startBackend(settings.port).catch(() => {});
+    await backendReady;
     return diagnostics();
   });
 }
@@ -157,8 +157,8 @@ app.whenReady().then(async () => {
   store = createProductConfigStore(app.getPath("userData"), "member-admin", { port: defaultPort });
   settings = await store.read();
   registerIpc();
+  backendReady = startBackend(settings.port).catch(() => {});
   await createWindow();
-  startBackend(settings.port).catch(() => {});
 });
 
 app.on("window-all-closed", () => app.quit());

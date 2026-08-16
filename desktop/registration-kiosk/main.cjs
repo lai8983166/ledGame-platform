@@ -8,6 +8,7 @@ const { createKioskLifecycle } = require("./runtime.cjs");
 const projectRoot = path.resolve(__dirname, "../..");
 const devUrl = process.env.VITE_REGISTRATION_KIOSK_DEV_URL;
 const lifecycle = createKioskLifecycle();
+const STAFF_EXIT_PASSWORD = "888888";
 let store;
 let settings = { host: "127.0.0.1", port: 8090 };
 let testedTarget = null;
@@ -82,7 +83,7 @@ async function createKioskWindow() {
   let staffExitInProgress = false;
   kioskWindow.on("close", (event) => { if (!staffExitInProgress) event.preventDefault(); });
   kioskWindow.webContents.on("before-input-event", (_event, input) => {
-    if (input.control && input.shift && input.key === "F12") staffExit();
+    if (input.control && input.shift && input.key === "F12") kioskWindow.webContents.send("registration:staff-exit-requested");
   });
   kioskWindow.once("ready-to-show", () => {
     kioskWindow.show();
@@ -151,9 +152,13 @@ function registerIpc() {
     await createKioskWindow();
     return lifecycle.snapshot();
   });
-  ipcMain.handle("registration:staff-exit", (event) => {
+  ipcMain.handle("registration:staff-exit", (event, password) => {
     requireKind(event, "kiosk");
+    if (String(password ?? "") !== STAFF_EXIT_PASSWORD) {
+      throw Object.assign(new Error("STAFF_EXIT_PASSWORD_INVALID"), { code: "STAFF_EXIT_PASSWORD_INVALID" });
+    }
     staffExit();
+    return { ok: true };
   });
 }
 
