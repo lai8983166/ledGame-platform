@@ -99,11 +99,13 @@ test("development shell enforces operator/kiosk lifecycle, permissions and recon
 
     await kiosk.getByTestId("kiosk-staff-exit-hotspot").dblclick();
     await expect(kiosk.getByTestId("kiosk-staff-exit-dialog")).toBeVisible();
-    await kiosk.getByTestId("kiosk-exit-password").fill("123456");
+    const keyboard = kiosk.getByTestId("soft-keyboard");
+    await expect(keyboard).toBeVisible();
+    for (const key of ["1", "2", "3", "4", "5", "6"]) await keyboard.getByRole("button", { name: key, exact: true }).click();
     await kiosk.getByTestId("kiosk-exit-submit").click();
     await expect(kiosk.getByTestId("kiosk-exit-error")).toContainText(/密码|password/i);
-    await kiosk.getByTestId("kiosk-exit-password").fill("888888");
-    await kiosk.getByTestId("kiosk-exit-submit").click();
+    for (let i = 0; i < 6; i += 1) await keyboard.getByRole("button", { name: "8", exact: true }).click();
+    await keyboard.getByRole("button", { name: /Done/i }).click();
     await expect.poll(() => desktop.windows().length).toBe(1);
     await expect(operator.getByTestId("operator-host")).toBeVisible();
   } finally {

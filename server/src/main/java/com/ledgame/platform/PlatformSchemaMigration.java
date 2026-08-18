@@ -27,5 +27,24 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         if (!hasScoringPolicy) {
             jdbc.execute("ALTER TABLE game_play_records ADD COLUMN scoring_policy TEXT");
         }
+        boolean hasParticipantIndex = columns.stream()
+                .anyMatch(column -> "participant_index".equalsIgnoreCase(String.valueOf(column.get("name"))));
+        boolean hasMultiplayerColumns = List.of("device_id", "external_session_id", "binding_id").stream()
+                .allMatch(required -> columns.stream().anyMatch(
+                        column -> required.equalsIgnoreCase(String.valueOf(column.get("name")))));
+        if (hasMultiplayerColumns && !hasParticipantIndex) {
+            jdbc.execute("ALTER TABLE game_play_records ADD COLUMN participant_index INTEGER NOT NULL DEFAULT 0");
+        }
+        if (hasMultiplayerColumns) {
+            jdbc.execute("DROP INDEX IF EXISTS ux_game_play_external_session");
+            jdbc.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_game_play_session_binding
+                    ON game_play_records(device_id, external_session_id, binding_id)
+                """);
+            jdbc.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_game_play_session_participant
+                    ON game_play_records(device_id, external_session_id, participant_index)
+                """);
+        }
     }
 }

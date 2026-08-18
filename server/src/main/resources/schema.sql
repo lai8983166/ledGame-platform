@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS game_play_records (
     device_id TEXT NOT NULL,
     room_id TEXT,
     external_session_id TEXT NOT NULL,
+    participant_index INTEGER NOT NULL DEFAULT 0,
     game_id TEXT NOT NULL,
     game_name TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'ABORTED')),
@@ -60,9 +61,6 @@ CREATE TABLE IF NOT EXISTS game_play_records (
     scoring_policy TEXT,
     result_json TEXT
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_game_play_external_session
-    ON game_play_records(device_id, external_session_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_running_play_binding
     ON game_play_records(binding_id) WHERE status = 'RUNNING';

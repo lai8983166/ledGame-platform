@@ -25,7 +25,7 @@ pnpm test:acceptance:unit
 pnpm test:acceptance
 ```
 
-当前共有八个场景，在开发电脑上完整运行通常需要约 8 分钟。除充值、注册、绑定、游戏和排队外，还会验证自然完成积分、主动中止零积分、平台离线补送、游戏后端重启恢复以及 PRODUCTION 软件形态的 TCP 地砖输入。开发过程中如果只想运行 Debug 黄金流程，可以执行：
+当前共有十个场景，在开发电脑上完整运行通常需要约 10 分钟。除充值、注册、绑定、游戏和排队外，还会验证自然完成积分、主动中止零积分、平台离线补送、游戏后端重启恢复、两人依次刷卡与逐会员结算，以及 PRODUCTION 软件形态的 TCP 地砖输入。开发过程中如果只想运行 Debug 黄金流程，可以执行：
 
 ```shell
 pnpm exec playwright test --config acceptance/playwright.config.ts --grep "门店黄金流程"
@@ -38,6 +38,14 @@ pnpm exec playwright test --config acceptance/playwright.config.ts acceptance/sp
 ```
 
 Debug 黄金流程通常约 1 分钟，PRODUCTION 软件形态通常约 1 分钟；首次运行若 Maven 需要解析依赖会更久。PRODUCTION 场景只有在 acceptance profile 且显式开启测试就绪替身时才跳过实体控制器发现，普通生产配置仍会在控制器缺失时拒绝启动游戏。
+
+只运行多人核心流程（依次验证 `simple`、`normal`、`diffcult`）可以执行：
+
+```shell
+pnpm exec playwright test --config acceptance/playwright.config.ts acceptance/specs/store-multiplayer-flow.spec.ts
+```
+
+该场景会选择 2 人并通过 Electron 键盘读卡路径依次输入两只手环。只刷一只时启动按钮保持禁用且平台不生成游玩记录；刷满后进入一份共享玩法状态，自然结束时为两名会员分别保存同一 session、同分数的记录。
 
 如需观察浏览器端的操作过程，可设置：
 

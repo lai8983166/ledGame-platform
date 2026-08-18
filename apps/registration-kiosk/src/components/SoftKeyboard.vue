@@ -9,7 +9,7 @@ const numericKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 </script>
 
 <template>
-  <section class="soft-keyboard" :class="`soft-keyboard--${props.layout}`" aria-label="On-screen keyboard">
+  <section class="soft-keyboard" :class="`soft-keyboard--${props.layout}`" aria-label="On-screen keyboard" data-testid="soft-keyboard">
     <header class="soft-keyboard__header">
       <div><KioskIcon name="keyboard" :size="20" /><span>Entering <strong>{{ props.fieldLabel }}</strong></span></div>
       <div class="soft-keyboard__utilities"><button type="button" @click="emit('clear')">Clear</button><button type="button" aria-label="Close keyboard" @click="emit('close')"><KioskIcon name="close" :size="19" /></button></div>

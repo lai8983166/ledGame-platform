@@ -1,6 +1,7 @@
 package com.ledgame.platform;
 
 import java.util.Map;
+import java.util.List;
 
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +30,12 @@ public class GamePlayController {
     @PostMapping("/start")
     public Map<String, Object> start(@RequestBody GamePlayService.StartCommand command) {
         return gamePlayService.start(command);
+    }
+
+    @PostMapping("/start-batch")
+    public List<Map<String, Object>> startBatch(
+            @RequestBody GamePlayService.BatchStartCommand command) {
+        return gamePlayService.startBatch(command);
     }
 
     @PutMapping("/{id}/result")

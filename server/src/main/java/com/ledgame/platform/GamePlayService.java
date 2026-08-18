@@ -2,8 +2,10 @@ package com.ledgame.platform;
 
 import java.time.Clock;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +21,7 @@ public class GamePlayService {
     private static final String PLAY_VIEW_SQL = """
         SELECT id, member_id AS memberId, binding_id AS bindingId, wristband_uid AS uid,
                device_id AS deviceId, room_id AS roomId, external_session_id AS externalSessionId,
+               participant_index AS participantIndex,
                game_id AS gameId, game_name AS gameName, status, started_at AS startedAt,
                ended_at AS endedAt, success, termination_reason AS terminationReason,
                raw_score AS rawScore, points_awarded AS pointsAwarded,
@@ -52,6 +55,7 @@ public class GamePlayService {
                    g.binding_id AS bindingId, g.wristband_uid AS uid,
                    g.device_id AS deviceId, g.room_id AS roomId,
                    g.external_session_id AS externalSessionId,
+                   g.participant_index AS participantIndex,
                    g.game_id AS gameId, g.game_name AS gameName, g.status,
                    g.started_at AS startedAt, g.ended_at AS endedAt,
                    g.success, g.termination_reason AS terminationReason,
@@ -67,47 +71,98 @@ public class GamePlayService {
 
     @Transactional
     public Map<String, Object> start(StartCommand command) {
-        requireText(command.deviceId(), "deviceId");
-        requireText(command.externalSessionId(), "externalSessionId");
-        requireText(command.gameId(), "gameId");
-        requireText(command.gameName(), "gameName");
+        return startBatch(new BatchStartCommand(
+                List.of(command.uid()), command.deviceId(), command.roomId(),
+                command.externalSessionId(), command.gameId(), command.gameName())).get(0);
+    }
 
-        List<Map<String, Object>> existing = jdbc.queryForList(
-            PLAY_VIEW_SQL + " WHERE device_id=? AND external_session_id=?",
-            command.deviceId().trim(), command.externalSessionId().trim());
-        if (!existing.isEmpty()) return playView(existing.get(0));
-
-        Map<String, Object> access = accessService.requireActiveAccess(command.uid());
-        long bindingId = number(access.get("bindingId"));
-        List<Map<String, Object>> running = jdbc.queryForList(
-            PLAY_VIEW_SQL + " WHERE binding_id=? AND status='RUNNING'", bindingId);
-        if (!running.isEmpty()) {
+    @Transactional
+    public List<Map<String, Object>> startBatch(BatchStartCommand command) {
+        String deviceId = requireText(command.deviceId(), "deviceId");
+        String externalSessionId = requireText(command.externalSessionId(), "externalSessionId");
+        String gameId = requireText(command.gameId(), "gameId");
+        String gameName = requireText(command.gameName(), "gameName");
+        if (command.uids() == null || command.uids().isEmpty()) {
             throw GameAccessService.error(
-                HttpStatus.CONFLICT, "WRISTBAND_IN_USE", "该手环已有正在进行的游戏");
+                    HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "至少需要一只参与游戏的手环");
+        }
+
+        List<String> uids = command.uids().stream()
+                .map(GameAccessService::normalizeUid)
+                .toList();
+        if (new LinkedHashSet<>(uids).size() != uids.size()) {
+            throw GameAccessService.error(
+                    HttpStatus.CONFLICT, "DUPLICATE_WRISTBAND", "同一只手环不能在一局中重复参与");
+        }
+
+        List<Map<String, Object>> existing = findSessionPlays(deviceId, externalSessionId);
+        if (!existing.isEmpty()) {
+            assertSameParticipants(existing, uids);
+            return existing.stream().map(this::playView).toList();
+        }
+
+        List<Map<String, Object>> accesses = uids.stream()
+                .map(accessService::requireActiveAccess)
+                .toList();
+        Set<Long> bindingIds = new LinkedHashSet<>();
+        Set<Long> memberIds = new LinkedHashSet<>();
+        for (Map<String, Object> access : accesses) {
+            long bindingId = number(access.get("bindingId"));
+            long memberId = number(access.get("memberId"));
+            if (!bindingIds.add(bindingId)) {
+                throw GameAccessService.error(
+                        HttpStatus.CONFLICT, "DUPLICATE_WRISTBAND", "同一只手环不能在一局中重复参与");
+            }
+            if (!memberIds.add(memberId)) {
+                throw GameAccessService.error(
+                        HttpStatus.CONFLICT, "DUPLICATE_MEMBER", "同一会员不能在一局中重复参与");
+            }
+            if (!jdbc.queryForList(
+                    PLAY_VIEW_SQL + " WHERE binding_id=? AND status='RUNNING'", bindingId).isEmpty()) {
+                throw GameAccessService.error(
+                        HttpStatus.CONFLICT, "WRISTBAND_IN_USE", "该手环已有正在进行的游戏");
+            }
         }
 
         try {
-            jdbc.update("""
-                INSERT INTO game_play_records(
-                    member_id, binding_id, wristband_uid, device_id, room_id,
-                    external_session_id, game_id, game_name, status, started_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
-                """,
-                number(access.get("memberId")), bindingId, access.get("uid"),
-                command.deviceId().trim(), blankToNull(command.roomId()),
-                command.externalSessionId().trim(), command.gameId().trim(),
-                command.gameName().trim(), clock.instant().toString());
+            for (int index = 0; index < accesses.size(); index++) {
+                Map<String, Object> access = accesses.get(index);
+                jdbc.update("""
+                    INSERT INTO game_play_records(
+                        member_id, binding_id, wristband_uid, device_id, room_id,
+                        external_session_id, participant_index, game_id, game_name,
+                        status, started_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
+                    """,
+                    number(access.get("memberId")), number(access.get("bindingId")), access.get("uid"),
+                    deviceId, blankToNull(command.roomId()), externalSessionId, index,
+                    gameId, gameName, clock.instant().toString());
+            }
         } catch (DataIntegrityViolationException exception) {
-            List<Map<String, Object>> idempotent = jdbc.queryForList(
-                PLAY_VIEW_SQL + " WHERE device_id=? AND external_session_id=?",
-                command.deviceId().trim(), command.externalSessionId().trim());
-            if (!idempotent.isEmpty()) return playView(idempotent.get(0));
             throw GameAccessService.error(
-                HttpStatus.CONFLICT, "WRISTBAND_IN_USE", "该手环已有正在进行的游戏");
+                    HttpStatus.CONFLICT, "WRISTBAND_IN_USE", "多人游戏启动冲突，请重试");
         }
-        return playView(jdbc.queryForMap(
-            PLAY_VIEW_SQL + " WHERE device_id=? AND external_session_id=?",
-            command.deviceId().trim(), command.externalSessionId().trim()));
+        return findSessionPlays(deviceId, externalSessionId).stream()
+                .map(this::playView)
+                .toList();
+    }
+
+    private List<Map<String, Object>> findSessionPlays(String deviceId, String externalSessionId) {
+        return jdbc.queryForList(
+                PLAY_VIEW_SQL + " WHERE device_id=? AND external_session_id=? ORDER BY participant_index, id",
+                deviceId, externalSessionId);
+    }
+
+    private static void assertSameParticipants(List<Map<String, Object>> existing, List<String> requestedUids) {
+        List<String> existingUids = existing.stream()
+                .map(play -> String.valueOf(play.get("uid")))
+                .toList();
+        if (!existingUids.equals(requestedUids)) {
+            throw GameAccessService.error(
+                    HttpStatus.CONFLICT,
+                    "GAME_PLAY_PARTICIPANTS_CONFLICT",
+                    "该游戏会话已经使用了不同的参与者或刷卡顺序");
+        }
     }
 
     @Transactional
@@ -184,6 +239,15 @@ public class GamePlayService {
 
     public record StartCommand(
         String uid,
+        String deviceId,
+        String roomId,
+        String externalSessionId,
+        String gameId,
+        String gameName
+    ) {}
+
+    public record BatchStartCommand(
+        List<String> uids,
         String deviceId,
         String roomId,
         String externalSessionId,

@@ -148,6 +148,7 @@ em { color: var(--cyan-bright); font-style: normal; text-shadow: 0 0 28px rgba(7
 
 .kiosk-exit-hotspot { position:fixed; z-index:90; inset:0 auto 0 0; width:36px; border:0; padding:0; opacity:0; background:transparent; cursor:default; }
 .staff-exit-backdrop { position:fixed; z-index:120; inset:0; display:grid; place-items:center; padding:24px; background:rgba(3,12,28,.78); backdrop-filter:blur(12px); }
+.kiosk-app.staff-exit-open .soft-keyboard { z-index:130; }
 .staff-exit-dialog { width:min(440px,100%); padding:30px; border:1px solid rgba(99,231,233,.35); border-radius:24px; background:var(--panel-strong); box-shadow:0 28px 90px rgba(0,0,0,.5); animation:modal-in .2s ease both; }
 .staff-exit-dialog h2 { margin:0 0 10px; font-size:28px; }
 .staff-exit-dialog > p:not(.eyebrow):not(.staff-exit-error) { margin:0 0 22px; color:var(--muted); font-size:12px; line-height:1.6; }

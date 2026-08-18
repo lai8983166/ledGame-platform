@@ -69,7 +69,7 @@ const currentTitle = computed(() => text(titleKeys[screen.value]));
 const stepLabels = computed(() => [text("stepPhone"), text("stepProfile"), text("stepWristband")]);
 const stepNumber = computed(() => ({ home: 0, phone: 1, confirm: 2, register: 2, swipe: 3, success: 4, "info-phone": 0, "info-result": 0 }[screen.value]));
 const profileScreen = computed<KioskScreen>(() => foundMember.value ? "confirm" : "register");
-const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day" }[activeInput.value ?? "phone"]));
+const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day", staffExitPassword: text("staffExitPasswordLabel") }[activeInput.value ?? "phone"]));
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
@@ -104,10 +104,11 @@ const resetSession = () => {
 function closeKeyboard() { activeInput.value = null; }
 
 const openStaffExitDialog = () => {
-  closeKeyboard();
   staffExitPassword.value = "";
   staffExitError.value = "";
   staffExitOpen.value = true;
+  activeInput.value = "staffExitPassword";
+  keyboardLayout.value = "numeric";
   nextTick(() => staffExitInput.value?.focus());
 };
 
@@ -115,6 +116,7 @@ const closeStaffExitDialog = () => {
   staffExitOpen.value = false;
   staffExitPassword.value = "";
   staffExitError.value = "";
+  closeKeyboard();
 };
 
 const confirmStaffExit = async () => {
@@ -125,6 +127,7 @@ const confirmStaffExit = async () => {
   } catch {
     staffExitError.value = text("staffExitInvalid");
     staffExitPassword.value = "";
+    activeInput.value = "staffExitPassword";
     nextTick(() => staffExitInput.value?.focus());
   }
 };
@@ -136,16 +139,27 @@ const openInput = (target: InputTarget, layout: KeyboardLayout) => {
   nextTick(() => document.querySelector(`[data-input="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 };
 
-const getInputValue = () => activeInput.value ? session[activeInput.value] : "";
-const setInputValue = (value: string) => { if (activeInput.value) session[activeInput.value] = value; };
+const getInputValue = () => {
+  if (!activeInput.value) return "";
+  return activeInput.value === "staffExitPassword" ? staffExitPassword.value : session[activeInput.value];
+};
+const setInputValue = (value: string) => {
+  if (!activeInput.value) return;
+  if (activeInput.value === "staffExitPassword") staffExitPassword.value = value;
+  else session[activeInput.value] = value;
+};
 const handleKeyboardKey = (value: string) => {
   const target = activeInput.value;
   if (!target) return;
-  const maxLength = target === "phone" || target === "infoPhone" ? 15 : target === "name" ? 24 : target === "birthYear" ? 4 : 2;
+  const maxLength = target === "staffExitPassword" ? 6 : target === "phone" || target === "infoPhone" ? 15 : target === "name" ? 24 : target === "birthYear" ? 4 : 2;
   if (getInputValue().length < maxLength) setInputValue(getInputValue() + (target === "name" ? value : value.replace(/\D/g, "")));
 };
 const backspace = () => setInputValue(getInputValue().slice(0, -1));
 const clearInput = () => setInputValue("");
+const handleKeyboardDone = () => {
+  if (activeInput.value === "staffExitPassword") void confirmStaffExit();
+  else closeKeyboard();
+};
 
 const isPhoneValid = () => /^\d{7,15}$/.test(session.phone);
 const openPlayerInfo = () => {
@@ -256,6 +270,10 @@ const scanWristband = async () => {
 
 const handleNativeInput = (target: InputTarget, event: Event) => {
   const value = (event.target as HTMLInputElement).value;
+  if (target === "staffExitPassword") {
+    staffExitPassword.value = value.replace(/\D/g, "").slice(0, 6);
+    return;
+  }
   session[target] = target === "name" ? value.slice(0, 24) : value.replace(/\D/g, "").slice(0, target === "phone" || target === "infoPhone" ? 15 : target === "birthYear" ? 4 : 2);
 };
 
@@ -296,7 +314,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="kiosk-app" :class="[{ 'keyboard-is-open': keyboardOpen }, `screen-${screen}`]" :data-testid="`kiosk-screen-${screen}`">
+  <main class="kiosk-app" :class="[{ 'keyboard-is-open': keyboardOpen, 'staff-exit-open': staffExitOpen }, `screen-${screen}`]" :data-testid="`kiosk-screen-${screen}`">
     <button
       class="kiosk-exit-hotspot"
       data-testid="kiosk-staff-exit-hotspot"
@@ -316,7 +334,7 @@ onBeforeUnmount(() => {
             v-model="staffExitPassword"
             data-testid="kiosk-exit-password"
             type="password"
-            inputmode="numeric"
+            inputmode="none"
             autocomplete="off"
             :placeholder="text('staffExitPasswordPlaceholder')"
             @keydown.stop.enter.prevent="confirmStaffExit"
@@ -422,7 +440,7 @@ onBeforeUnmount(() => {
       <div class="success-layout"><div class="success-mark"><span class="success-ring"></span><span><KioskIcon name="check" :size="70" /></span></div><div class="success-copy"><p class="eyebrow"><KioskIcon name="spark" :size="16" /> WRISTBAND READY</p><h1>Binding<br /><em>Successful!</em></h1><p>Your member and wristband are linked. Game time begins only after the first swipe at a game system.</p><div class="success-summary"><AvatarArt :avatar="selectedAvatar" size="small" /><div><small>PLAYER</small><strong>{{ session.name }}</strong><b>{{ session.wristbandUid }}</b></div><i></i><div><small>PURCHASED PLAY TIME</small><strong>{{ session.durationMinutes }} <b>min</b></strong></div></div><div class="simulation-label"><KioskIcon name="info" :size="15" /> Saved by local member-admin backend and SQLite</div><button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button></div></div>
     </section>
 
-    <SoftKeyboard v-if="keyboardOpen" :layout="keyboardLayout" :field-label="activeFieldLabel" @key="handleKeyboardKey" @backspace="backspace" @clear="clearInput" @done="closeKeyboard" @close="closeKeyboard" />
+    <SoftKeyboard v-if="keyboardOpen" :layout="keyboardLayout" :field-label="activeFieldLabel" @key="handleKeyboardKey" @backspace="backspace" @clear="clearInput" @done="handleKeyboardDone" @close="closeKeyboard" />
 
     <div v-if="languageOpen" class="modal-backdrop language-modal-backdrop" @mousedown.self="languageOpen = false">
       <section class="kiosk-language-modal tech-panel" role="dialog" aria-modal="true" :aria-label="text('chooseLanguage')">

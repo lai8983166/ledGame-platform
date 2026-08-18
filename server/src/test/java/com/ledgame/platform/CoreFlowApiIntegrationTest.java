@@ -547,7 +547,163 @@ class CoreFlowApiIntegrationTest {
         assertThat(firstProjection).containsEntry("pointsTotal", 50).containsEntry("rank", 1);
     }
 
+    @Test
+    void multiplayerBatchStartIsAtomicIdempotentAndSettlesEveryMember() {
+        long firstMember = createActiveWristband(
+                "2283055701", "13000130101", "多人测试玩家甲");
+        long secondMember = createActiveWristband(
+                "2283055702", "13000130102", "多人测试玩家乙");
+
+        Map<String, Object> request = Map.of(
+                "uids", List.of("2283055701", "2283055702"),
+                "deviceId", "multiplayer-device",
+                "roomId", "multiplayer-room",
+                "externalSessionId", "multiplayer-session-001",
+                "gameId", "simple",
+                "gameName", "多人核心测试");
+        ResponseEntity<List<Map<String, Object>>> started = postList(
+                "/api/game-plays/start-batch", request);
+
+        assertThat(started.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(started.getBody()).hasSize(2);
+        assertThat(started.getBody()).extracting(play -> play.get("uid"))
+                .containsExactly("2283055701", "2283055702");
+        assertThat(started.getBody()).extracting(play -> number(play.get("participantIndex")))
+                .containsExactly(0L, 1L);
+
+        ResponseEntity<List<Map<String, Object>>> repeated = postList(
+                "/api/game-plays/start-batch", request);
+        assertThat(repeated.getBody()).extracting(play -> number(play.get("id")))
+                .containsExactlyElementsOf(started.getBody().stream()
+                        .map(play -> number(play.get("id"))).toList());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, "multiplayer-session-001")).isEqualTo(2);
+
+        for (Map<String, Object> play : started.getBody()) {
+            Map<String, Object> result = Map.of(
+                    "success", true,
+                    "terminationReason", "NATURAL_COMPLETION",
+                    "rawScore", 88,
+                    "pointsAwarded", 999,
+                    "resultPayload", Map.of("shared", true));
+            ResponseEntity<Map<String, Object>> settled = put(
+                    "/api/game-plays/" + number(play.get("id")) + "/result", result);
+            assertThat(settled.getBody())
+                    .containsEntry("status", "COMPLETED")
+                    .containsEntry("rawScore", 88)
+                    .containsEntry("pointsAwarded", 88);
+            assertThat(put(
+                    "/api/game-plays/" + number(play.get("id")) + "/result", result).getBody())
+                    .containsEntry("pointsAwarded", 88);
+        }
+
+        assertThat(jdbc.queryForObject(
+                "SELECT COALESCE(SUM(points_awarded), 0) FROM game_play_records WHERE member_id=?",
+                Long.class, firstMember)).isEqualTo(88L);
+        assertThat(jdbc.queryForObject(
+                "SELECT COALESCE(SUM(points_awarded), 0) FROM game_play_records WHERE member_id=?",
+                Long.class, secondMember)).isEqualTo(88L);
+        assertThat(maps(get("/api/player-info?phone=13000130101").getBody().get("recentPlays")))
+                .hasSize(1);
+        assertThat(maps(get("/api/player-info?phone=13000130102").getBody().get("recentPlays")))
+                .hasSize(1);
+    }
+
+    @Test
+    void multiplayerBatchRejectsIneligibleOrDuplicateParticipantsWithoutPartialRecords() {
+        long firstMember = createActiveWristband(
+                "2283055711", "13000130111", "原子测试玩家甲");
+        long secondMember = number(post("/api/members", Map.of(
+                "phone", "13000130112", "name", "原子测试玩家乙")).getBody().get("id"));
+        chargeAndBind("2283055712", secondMember, 60);
+
+        ResponseEntity<Map<String, Object>> ineligible = post(
+                "/api/game-plays/start-batch", Map.of(
+                        "uids", List.of("2283055711", "2283055712"),
+                        "deviceId", "atomic-device",
+                        "externalSessionId", "atomic-session-001",
+                        "gameId", "normal",
+                        "gameName", "原子失败测试"));
+        assertError(ineligible, HttpStatus.CONFLICT, "WRISTBAND_NOT_ACTIVATED");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, "atomic-session-001")).isZero();
+
+        ResponseEntity<Map<String, Object>> duplicateUid = post(
+                "/api/game-plays/start-batch", Map.of(
+                        "uids", List.of("2283055711", "2283055711"),
+                        "deviceId", "atomic-device",
+                        "externalSessionId", "atomic-session-002",
+                        "gameId", "normal",
+                        "gameName", "重复手环测试"));
+        assertError(duplicateUid, HttpStatus.CONFLICT, "DUPLICATE_WRISTBAND");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, "atomic-session-002")).isZero();
+
+        chargeAndBind("2283055713", firstMember, 60);
+        post("/api/game-access/activate", Map.of(
+                "uid", "2283055713", "deviceId", "atomic-device"));
+        ResponseEntity<Map<String, Object>> duplicateMember = post(
+                "/api/game-plays/start-batch", Map.of(
+                        "uids", List.of("2283055711", "2283055713"),
+                        "deviceId", "atomic-device",
+                        "externalSessionId", "atomic-session-003",
+                        "gameId", "normal",
+                        "gameName", "重复会员测试"));
+        assertError(duplicateMember, HttpStatus.CONFLICT, "DUPLICATE_MEMBER");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, "atomic-session-003")).isZero();
+    }
+
+    @Test
+    void multiplayerBatchRejectsConflictingParticipantOrderAndConcurrentBindingUse() {
+        createActiveWristband("2283055721", "13000130121", "幂等测试玩家甲");
+        createActiveWristband("2283055722", "13000130122", "幂等测试玩家乙");
+        Map<String, Object> first = Map.of(
+                "uids", List.of("2283055721", "2283055722"),
+                "deviceId", "idempotent-device",
+                "externalSessionId", "idempotent-session-001",
+                "gameId", "diffcult",
+                "gameName", "幂等测试");
+        assertThat(postList("/api/game-plays/start-batch", first).getBody()).hasSize(2);
+
+        ResponseEntity<Map<String, Object>> reordered = post(
+                "/api/game-plays/start-batch", Map.of(
+                        "uids", List.of("2283055722", "2283055721"),
+                        "deviceId", "idempotent-device",
+                        "externalSessionId", "idempotent-session-001",
+                        "gameId", "diffcult",
+                        "gameName", "幂等测试"));
+        assertError(reordered, HttpStatus.CONFLICT, "GAME_PLAY_PARTICIPANTS_CONFLICT");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, "idempotent-session-001")).isEqualTo(2);
+
+        ResponseEntity<Map<String, Object>> concurrent = post(
+                "/api/game-plays/start-batch", Map.of(
+                        "uids", List.of("2283055721"),
+                        "deviceId", "other-device",
+                        "externalSessionId", "idempotent-session-002",
+                        "gameId", "simple",
+                        "gameName", "占用测试"));
+        assertError(concurrent, HttpStatus.CONFLICT, "WRISTBAND_IN_USE");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, "idempotent-session-002")).isZero();
+    }
+
     private ResponseEntity<Map<String, Object>> post(String path, Object body) {
+        return http.exchange(
+                path,
+                HttpMethod.POST,
+                new HttpEntity<>(body),
+                new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<List<Map<String, Object>>> postList(String path, Object body) {
         return http.exchange(
                 path,
                 HttpMethod.POST,
@@ -603,6 +759,17 @@ class CoreFlowApiIntegrationTest {
     private void chargeAndBind(String uid, long memberId, int durationMinutes) {
         post("/api/wristbands/charge", Map.of("uid", uid, "durationMinutes", durationMinutes));
         post("/api/wristbands/bind", Map.of("uid", uid, "memberId", memberId));
+    }
+
+    private long createActiveWristband(String uid, String phone, String name) {
+        long memberId = number(post("/api/members", Map.of(
+                "phone", phone, "name", name, "createdBy", "multiplayer-test"))
+                .getBody().get("id"));
+        chargeAndBind(uid, memberId, 60);
+        assertThat(post("/api/game-access/activate", Map.of(
+                "uid", uid, "deviceId", "multiplayer-test-device")).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        return memberId;
     }
 
     private static void assertError(

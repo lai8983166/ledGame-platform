@@ -13,6 +13,31 @@ import {
 import { BidirectionalFloorDevice } from "./bidirectionalFloorDevice";
 
 type MemberFixture = { phone: string; name: string; uid: string };
+type PlayerInfoSnapshot = {
+  points: { total: number; rank: number };
+  recentPlays: Array<{
+    id: number;
+    gameName: string;
+    status: string;
+    terminationReason: string;
+    rawScore: number;
+    pointsAwarded: number;
+    scoringPolicy: string;
+  }>;
+};
+type GamePlaySnapshot = {
+  id: number;
+  uid: string;
+  externalSessionId: string;
+  participantIndex: number;
+  gameName: string;
+  status: string;
+  terminationReason: string;
+  rawScore: number;
+  pointsAwarded: number;
+  scoringPolicy: string;
+  resultJson: string;
+};
 type RuntimePorts = { platform: number; admin: number; kiosk: number; game: number; renderer: number; debugTcp: number; floorTcp: number };
 export type StoreAcceptanceOptions = { runtimeMode?: "SIMULATION" | "PRODUCTION"; platformClients?: "browser" | "desktop" };
 type ResolvedStoreAcceptanceOptions = { runtimeMode: "SIMULATION" | "PRODUCTION"; platformClients: "browser" | "desktop" };
@@ -374,7 +399,11 @@ export class StoreAcceptanceHarness {
   async startGame(uid: string): Promise<void> {
     await this.#openGamePreparation();
     await this.#scanGameWristband(uid);
-    await expect(this.touchPage.getByTestId("game-player-access")).toHaveAttribute("data-wristband-uid", uid);
+    if (this.#options.runtimeMode === "PRODUCTION") {
+      await expect(this.touchPage.getByTestId("game-player-slot-1")).toContainText(uid);
+    } else {
+      await expect(this.touchPage.getByTestId("game-player-access-1")).toContainText(uid);
+    }
     if (this.#options.runtimeMode === "PRODUCTION") {
       await this.touchPage.getByTestId("game-player-next").click();
       await expect(this.touchPage.getByTestId("game-game-next")).toBeEnabled();
@@ -387,6 +416,49 @@ export class StoreAcceptanceHarness {
     await expect(this.touchPage.getByTestId("game-start")).toBeEnabled();
     await this.touchPage.getByTestId("game-start").click();
     await expect(this.touchPage.getByTestId("game-touch")).toHaveAttribute("data-state", "RUNNING", { timeout: 30_000 });
+  }
+
+  async startMultiplayerGame(uids: string[], variantName: string): Promise<void> {
+    if (uids.length < 2 || uids.length > 6) throw new Error("多人验收需要 2 至 6 只手环");
+    await this.#openGamePreparation();
+
+    const game = this.touchPage.locator('[data-testid^="game-option-"]').filter({
+      has: this.touchPage.getByText(variantName, { exact: true }),
+    });
+    await expect(game).toHaveCount(1);
+    await game.click();
+
+    const countInput = this.touchPage.getByTestId("game-player-count-input");
+    await countInput.fill(String(uids.length));
+    await countInput.press("Tab");
+    const participants = this.touchPage.getByTestId("game-player-access");
+    await expect(participants).toHaveAttribute("data-player-progress", `0/${uids.length}`);
+
+    const playsBeforeFirstScan = (await this.#gamePlayRecords()).length;
+    for (let index = 0; index < uids.length; index += 1) {
+      await this.#scanGameWristband(uids[index]);
+      await expect(this.touchPage.getByTestId(`game-player-access-${index + 1}`)).toContainText(uids[index]);
+      await expect(participants).toHaveAttribute("data-player-progress", `${index + 1}/${uids.length}`);
+      if (index === 0) {
+        await expect(this.touchPage.getByTestId("game-start")).toBeDisabled();
+        expect((await this.#gamePlayRecords()).length).toBe(playsBeforeFirstScan);
+        await expect(countInput).toBeDisabled();
+      }
+    }
+
+    await expect(this.touchPage.getByTestId("game-start")).toBeEnabled();
+    await this.touchPage.getByTestId("game-start").click();
+    await expect(this.touchPage.getByTestId("game-touch")).toHaveAttribute("data-state", "RUNNING", { timeout: 30_000 });
+    await expect(this.touchPage.getByTestId("game-player-access")).toHaveCount(1);
+
+    const response = await fetch(`${this.gameBaseUrl}/engine/game/state`);
+    if (!response.ok) throw new Error(`Runtime state query failed with HTTP ${response.status}`);
+    const body = await response.json() as { data?: Record<string, unknown> };
+    const gameplay = body.data?.gameplay as Record<string, unknown> | undefined;
+    const playerAccesses = body.data?.playerAccesses;
+    expect(gameplay?.score).toEqual(expect.any(Number));
+    expect(Array.isArray(playerAccesses) ? playerAccesses.length : -1).toBe(uids.length);
+    expect(body.data?.playerScores).toBeUndefined();
   }
 
   async #openGamePreparation(): Promise<void> {
@@ -501,7 +573,7 @@ export class StoreAcceptanceHarness {
     await this.#openGamePreparation();
     await this.#scanGameWristband(uid);
     await expect(this.touchPage.getByTestId("game-error")).toBeVisible();
-    await expect(this.touchPage.getByTestId("game-player-access")).toHaveCount(0);
+    await expect(this.touchPage.getByTestId("game-player-access-1")).toHaveCount(0);
     const response = await fetch(`${this.platformBaseUrl}/api/game-access/activate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -610,6 +682,78 @@ export class StoreAcceptanceHarness {
     await expect(kioskPlay).toHaveAttribute("data-status", "COMPLETED");
     await expect(kioskPlay.getByTestId("kiosk-info-play-raw-score")).toHaveText("1");
     await expect(kioskPlay.getByTestId("kiosk-info-play-points")).toHaveText("+1");
+  }
+
+  async assertMultiplayerNaturalState(
+    phones: string[],
+    uids: string[],
+    variantName: string,
+    expectedTotalPoints: number,
+  ): Promise<void> {
+    if (phones.length !== uids.length) throw new Error("会员与手环数量不一致");
+    const infos: PlayerInfoSnapshot[] = [];
+    for (const phone of phones) {
+      let info: PlayerInfoSnapshot | null = null;
+      await expect.poll(async () => {
+        const response = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+        if (!response.ok) return null;
+        info = await response.json() as PlayerInfoSnapshot;
+        const play = info.recentPlays[0];
+        return play ? {
+          total: info.points.total,
+          gameName: play.gameName,
+          status: play.status,
+          terminationReason: play.terminationReason,
+        } : null;
+      }, { timeout: 30_000 }).toEqual({
+        total: expectedTotalPoints,
+        gameName: variantName,
+        status: "COMPLETED",
+        terminationReason: "NATURAL_COMPLETION",
+      });
+      if (!info) throw new Error(`Player Info was not loaded: ${phone}`);
+      infos.push(info);
+    }
+
+    const recentIds = infos.map((info) => info.recentPlays[0].id);
+    expect(new Set(recentIds).size).toBe(uids.length);
+    for (let index = 0; index < infos.length; index += 1) {
+      const play = infos[index].recentPlays[0];
+      expect(play).toMatchObject({
+        gameName: variantName,
+        status: "COMPLETED",
+        terminationReason: "NATURAL_COMPLETION",
+        rawScore: 1,
+        pointsAwarded: 1,
+        scoringPolicy: "raw-score-v1",
+      });
+      expect(infos[index].recentPlays.map((item) => item.id)).not.toContain(recentIds[(index + 1) % recentIds.length]);
+    }
+
+    const records = await this.#gamePlayRecords();
+    const sessionRecords = recentIds.map((id) => records.find((record) => record.id === id));
+    expect(sessionRecords.every(Boolean)).toBe(true);
+    const completed = sessionRecords as GamePlaySnapshot[];
+    expect(completed.map((record) => record.uid)).toEqual(uids);
+    expect(completed.map((record) => record.participantIndex)).toEqual(uids.map((_, index) => index));
+    expect(new Set(completed.map((record) => record.externalSessionId)).size).toBe(1);
+    expect(new Set(completed.map((record) => record.resultJson)).size).toBe(1);
+    for (const record of completed) {
+      expect(record).toMatchObject({
+        gameName: variantName,
+        status: "COMPLETED",
+        terminationReason: "NATURAL_COMPLETION",
+        rawScore: 1,
+        pointsAwarded: 1,
+        scoringPolicy: "raw-score-v1",
+      });
+    }
+  }
+
+  async #gamePlayRecords(): Promise<GamePlaySnapshot[]> {
+    const response = await fetch(`${this.platformBaseUrl}/api/game-plays`);
+    if (!response.ok) throw new Error(`Game play query failed with HTTP ${response.status}: ${await response.text()}`);
+    return response.json() as Promise<GamePlaySnapshot[]>;
   }
 
   async assertManualAbortState(phone: string): Promise<void> {
