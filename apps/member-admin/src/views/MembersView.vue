@@ -20,6 +20,7 @@ const statusFilter = ref<"all" | "active" | "inactive">("all");
 const selectedMember = ref<Member | null>(null);
 const creating = ref(false);
 const loading = ref(false);
+const refreshing = ref(false);
 const formError = ref("");
 const connectionError = ref("");
 const memberForm = ref({ name: "", phone: "" });
@@ -36,12 +37,15 @@ const mapMember = (item: BackendMember): Member => {
 };
 
 const loadMembers = async () => {
+  refreshing.value = true;
   try {
     const rows = await request<BackendMember[]>("/members");
     members.value = rows.map(mapMember);
     connectionError.value = "";
   } catch (error) {
     connectionError.value = error instanceof Error ? error.message : "无法连接本机服务";
+  } finally {
+    refreshing.value = false;
   }
 };
 
@@ -82,6 +86,7 @@ onMounted(loadMembers);
 
 <template>
   <section class="toolbar glass-panel">
+    <button class="secondary-button" data-testid="admin-members-refresh" type="button" :disabled="refreshing" @click="loadMembers"><AppIcon name="refresh" :size="17" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新数据" }}</button>
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="查询会员" placeholder="查询姓名、数据库 ID 或手机号" /></div>
     <select v-model="statusFilter" class="select-control" aria-label="会员状态筛选"><option value="all">全部状态</option><option value="active">正常</option><option value="inactive">停用</option></select>
     <span class="result-count">共 {{ filteredMembers.length }} 位会员</span>

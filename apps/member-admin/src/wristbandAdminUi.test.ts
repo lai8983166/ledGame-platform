@@ -21,4 +21,10 @@ describe("member admin wristband operations", () => {
     expect(viewSource).toContain("reclaimFromUid");
     expect(viewSource).toContain("回收已到期手环");
   });
+
+  it("exposes manual refresh and the authoritative remaining duration", () => {
+    expect(viewSource).toContain('data-testid="admin-wristbands-refresh"');
+    expect(viewSource).toContain("remainingSeconds");
+    expect(viewSource).toContain("当前剩余");
+  });
 });

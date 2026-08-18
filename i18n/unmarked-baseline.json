@@ -163,6 +163,7 @@
     "apps/member-admin/src/views/WristbandsView.vue::列表来自本机后端 SQLite，不是页面内置演示数据。",
     "apps/member-admin/src/views/WristbandsView.vue::刷卡后读卡器会自动发送回车，无需手动输入 UID。",
     "apps/member-admin/src/views/WristbandsView.vue::后端手环状态",
+    "apps/member-admin/src/views/WristbandsView.vue::当前剩余",
     "apps/member-admin/src/views/WristbandsView.vue::手环 UID",
     "apps/member-admin/src/views/WristbandsView.vue::手环状态流程",
     "apps/member-admin/src/views/WristbandsView.vue::操作",
