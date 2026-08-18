@@ -429,8 +429,15 @@ export class StoreAcceptanceHarness {
     await game.click();
 
     const countInput = this.touchPage.getByTestId("game-player-count-input");
-    await countInput.fill(String(uids.length));
+    await countInput.click();
+    await countInput.press("ControlOrMeta+A");
+    await countInput.pressSequentially(String(uids.length));
     await countInput.press("Tab");
+    const startLevelInput = this.touchPage.getByTestId("game-start-level-input");
+    await startLevelInput.click();
+    await startLevelInput.press("ControlOrMeta+A");
+    await startLevelInput.pressSequentially("0");
+    await startLevelInput.press("Tab");
     const participants = this.touchPage.getByTestId("game-player-access");
     await expect(participants).toHaveAttribute("data-player-progress", `0/${uids.length}`);
 
