@@ -13,5 +13,6 @@ server:
   port: ${SERVER_PORT:8090}
 
 ledgame:
+  time-zone: ${PLATFORM_TIME_ZONE:Asia/Shanghai}
   room-connection:
     enabled: ${LED_ROOM_CONNECTION_ENABLED:true}

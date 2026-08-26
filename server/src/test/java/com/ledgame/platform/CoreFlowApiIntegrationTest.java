@@ -73,6 +73,7 @@ class CoreFlowApiIntegrationTest {
     @BeforeEach
     void clearData() {
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
+        jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
         jdbc.update("DELETE FROM wristband_bindings");
         jdbc.update("DELETE FROM wristbands");
@@ -482,6 +483,13 @@ class CoreFlowApiIntegrationTest {
         assertThat(map(info.get("points"))).containsEntry("total", 100);
         assertThat(maps(info.get("recentPlays"))).hasSize(1);
         assertThat(maps(info.get("wristbands")).get(0)).containsEntry("uid", "2283055618");
+
+        Map<String, Object> leaderboard = get("/api/leaderboard?period=year").getBody();
+        Map<String, Object> rankedMember = maps(leaderboard.get("entries")).stream()
+                .filter(entry -> number(entry.get("memberId")) == memberId)
+                .findFirst().orElseThrow();
+        assertThat(number(rankedMember.get("points"))).isEqualTo(100L);
+        assertThat(number(rankedMember.get("rank"))).isEqualTo(1L);
     }
 
     @Test

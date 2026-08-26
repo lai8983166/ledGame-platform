@@ -109,19 +109,6 @@ export interface GameConfig {
   status: "enabled" | "disabled";
 }
 
-export type RankingPeriod = "day" | "month" | "year";
-
-export interface RankEntry {
-  rank: number;
-  memberName: string;
-  account: string;
-  initials: string;
-  score: number;
-  games: number;
-  trend: number;
-  color: string;
-}
-
 export interface FeatureSetting {
   id: string;
   name: string;

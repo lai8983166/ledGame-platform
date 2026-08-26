@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
@@ -8,6 +8,12 @@ import type { Member } from "../types";
 import { platformApi } from "../platformApi";
 import { memberAdminCatalogs, type MemberAdminMessageKey } from "../localization";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
+import {
+  cancelMemberDeletion,
+  createMemberDeletionState,
+  openMemberDeletion,
+  submitMemberDeletion,
+} from "../memberDeletionState";
 
 const props = defineProps<{ locale: PlatformLocale }>();
 const text = (key: MemberAdminMessageKey) => memberAdminCatalogs[props.locale][key];
@@ -24,6 +30,7 @@ const refreshing = ref(false);
 const formError = ref("");
 const connectionError = ref("");
 const memberForm = ref({ name: "", phone: "" });
+const deletion = reactive(createMemberDeletionState());
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
@@ -81,6 +88,22 @@ const saveMember = async () => {
   }
 };
 
+const askToDeleteMember = (member: Member) => {
+  openMemberDeletion(deletion, { id: Number(member.id), name: member.name, phone: member.phone });
+};
+
+const closeMemberDeletion = () => {
+  if (deletion.status !== "submitting") cancelMemberDeletion(deletion);
+};
+
+const confirmMemberDeletion = async () => {
+  const deleted = await submitMemberDeletion(deletion, (id) => platformApi.deleteMember(id));
+  if (!deleted) return;
+  selectedMember.value = null;
+  await loadMembers();
+  emit("toast", text("memberDeleteAction"));
+};
+
 onMounted(loadMembers);
 </script>
 
@@ -90,7 +113,7 @@ onMounted(loadMembers);
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="查询会员" placeholder="查询姓名、数据库 ID 或手机号" /></div>
     <select v-model="statusFilter" class="select-control" aria-label="会员状态筛选"><option value="all">全部状态</option><option value="active">正常</option><option value="inactive">停用</option></select>
     <span class="result-count">共 {{ filteredMembers.length }} 位会员</span>
-    <button class="primary-button toolbar__primary" type="button" @click="openCreate"><AppIcon name="plus" :size="18" /> 新增会员</button>
+    <button class="primary-button toolbar__primary" data-testid="admin-member-create" type="button" @click="openCreate"><AppIcon name="plus" :size="18" /> 新增会员</button>
   </section>
 
   <section v-if="connectionError" class="notice-bar" data-testid="admin-members-error"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
@@ -101,7 +124,9 @@ onMounted(loadMembers);
     <footer class="table-footer"><span>当前显示数据库中的会员</span><strong>共 {{ filteredMembers.length }} 位</strong></footer>
   </section>
 
-  <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="selectedMember = null"><div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }">{{ selectedMember.initials }}</span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div><section class="drawer-section"><div class="drawer-section__title"><h3>数据库资料</h3></div><dl class="detail-grid"><div><dt>数据库 ID</dt><dd>{{ selectedMember.id }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div><div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>身份 ID</dt><dd>未设置</dd></div></dl></section><div class="notice-bar"><AppIcon name="card" :size="18" /><div><strong>会员与手环分离</strong><p>请在“手环办理”查看具体手环的可用分钟数和绑定状态。</p></div></div></SideDrawer>
+  <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="selectedMember = null"><div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }">{{ selectedMember.initials }}</span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div><section class="drawer-section"><div class="drawer-section__title"><h3>数据库资料</h3></div><dl class="detail-grid"><div><dt>数据库 ID</dt><dd>{{ selectedMember.id }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div><div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>身份 ID</dt><dd>未设置</dd></div></dl></section><div class="notice-bar"><AppIcon name="card" :size="18" /><div><strong>会员与手环分离</strong><p>请在“手环办理”查看具体手环的可用分钟数和绑定状态。</p></div></div><section class="drawer-section member-danger-zone"><div class="drawer-section__title"><h3>{{ text("memberDeleteDangerTitle") }}</h3></div><p>{{ text("memberDeleteDangerBody") }}</p><button class="danger-button" data-testid="admin-member-delete" type="button" @click="askToDeleteMember(selectedMember)"><AppIcon name="trash" :size="17" />{{ text("memberDeleteAction") }}</button></section></SideDrawer>
 
-  <BaseModal v-if="creating" title="新增会员" description="资料会直接保存到本机 SQLite 数据库。" size="large" @close="creating = false"><div class="form-grid"><label class="form-field"><span>会员姓名 <b>*</b></span><input v-model="memberForm.name" placeholder="请输入姓名" @input="formError = ''" /></label><label class="form-field"><span>联系方式 <b>*</b></span><input v-model="memberForm.phone" inputmode="numeric" placeholder="请输入手机号" @input="formError = ''" /></label></div><p v-if="formError" class="form-error"><AppIcon name="alert" :size="16" /> {{ formError }}</p><template #footer><button class="ghost-button" type="button" @click="creating = false">取消</button><button class="primary-button" type="button" :disabled="loading" @click="saveMember">保存到数据库</button></template></BaseModal>
+  <BaseModal v-if="deletion.target" :title="text('memberDeleteConfirmTitle')" :description="text('memberDeleteModalDescription')" size="small" @close="closeMemberDeletion"><div data-testid="admin-member-delete-dialog" class="danger-confirm"><span><AppIcon name="alert" :size="22" /></span><div><strong>{{ deletion.target.name }} · {{ deletion.target.phone }}</strong><p>{{ text("memberDeleteConsequences") }}</p></div></div><p v-if="deletion.error" class="form-error"><AppIcon name="alert" :size="16" />{{ deletion.error }}</p><template #footer><button class="ghost-button" data-testid="admin-member-delete-cancel" type="button" :disabled="deletion.status === 'submitting'" @click="closeMemberDeletion">取消</button><button class="danger-button danger-button--solid" data-testid="admin-member-delete-confirm" type="button" :disabled="deletion.status === 'submitting'" @click="confirmMemberDeletion">{{ deletion.status === "submitting" ? "删除中…" : text("memberDeleteAction") }}</button></template></BaseModal>
+
+  <BaseModal v-if="creating" title="新增会员" description="资料会直接保存到本机 SQLite 数据库。" size="large" @close="creating = false"><div class="form-grid"><label class="form-field"><span>会员姓名 <b>*</b></span><input v-model="memberForm.name" data-testid="admin-member-name-input" placeholder="请输入姓名" @input="formError = ''" /></label><label class="form-field"><span>联系方式 <b>*</b></span><input v-model="memberForm.phone" data-testid="admin-member-phone-input" inputmode="numeric" placeholder="请输入手机号" @input="formError = ''" /></label></div><p v-if="formError" class="form-error"><AppIcon name="alert" :size="16" /> {{ formError }}</p><template #footer><button class="ghost-button" type="button" @click="creating = false">取消</button><button class="primary-button" data-testid="admin-member-save" type="button" :disabled="loading" @click="saveMember">保存到数据库</button></template></BaseModal>
 </template>

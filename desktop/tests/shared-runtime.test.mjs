@@ -7,6 +7,7 @@ import { createProductConfigStore } from "../shared/config-store.cjs";
 import { createApiTransport, validateApiRequest } from "../shared/api-transport.cjs";
 import { assertPortAvailable, buildHttpBaseUrl, checkHealth, validateHost, validatePort } from "../shared/network.cjs";
 import { createManagedProcess } from "../shared/managed-process.cjs";
+import { createElectronEnvironment } from "../shared/electron-launcher.cjs";
 
 const temporary = [];
 afterEach(async () => {
@@ -14,6 +15,16 @@ afterEach(async () => {
 });
 
 describe("shared desktop runtime", () => {
+  it("removes Electron's Node-only mode before launching a desktop shell", () => {
+    const environment = createElectronEnvironment({
+      PATH: "C:/Windows/System32",
+      ELECTRON_RUN_AS_NODE: "1",
+    });
+
+    expect(environment.PATH).toBe("C:/Windows/System32");
+    expect(environment).not.toHaveProperty("ELECTRON_RUN_AS_NODE");
+  });
+
   it("uses defaults when config is corrupt and replaces it atomically", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ledgame-config-"));
     temporary.push(directory);

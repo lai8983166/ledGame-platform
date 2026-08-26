@@ -25,8 +25,19 @@ export interface PlatformApiClient {
     options?: RequestInit,
   ): Promise<TResponse | null>;
   getPlayerInfo(phone: string): Promise<PlayerInfo>;
+  getLeaderboard(period: LeaderboardPeriod): Promise<LeaderboardResponse>;
+  getDashboardOverview(): Promise<DashboardOverview>;
+  deleteMember(id: number): Promise<DeletedMember>;
   listRooms(): Promise<RoomStatus[]>;
   renameRoom(ip: string, roomName: string): Promise<RoomStatus>;
+}
+
+export interface DeletedMember {
+  id: number;
+  phone: string;
+  name: string;
+  status: "DELETED";
+  deletedAt: string;
 }
 
 interface ErrorResponse {
@@ -76,6 +87,35 @@ export interface PlayerInfo {
   points: { total: number; rank: number };
   wristbands: PlayerWristband[];
   recentPlays: PlayerRecentPlay[];
+}
+
+export type LeaderboardPeriod = "day" | "month" | "year";
+
+export interface LeaderboardEntry {
+  rank: number;
+  memberId: number;
+  memberName: string;
+  avatarId?: string | null;
+  points: number;
+  completedGames: number;
+}
+
+export interface LeaderboardResponse {
+  period: LeaderboardPeriod;
+  periodStart: string;
+  periodEnd: string;
+  generatedAt: string;
+  entries: LeaderboardEntry[];
+}
+
+export interface DashboardOverview {
+  totalMembers: number;
+  newMembersToday: number;
+  wristbandsChargedToday: number;
+  revenueTodayCents: number;
+  periodStart: string;
+  periodEnd: string;
+  generatedAt: string;
 }
 
 export interface RoomStatus {
@@ -181,6 +221,35 @@ export function createPlatformApiClient({
       );
       if (!result) {
         throw new PlatformApiError("会员信息响应为空", 502, "EMPTY_RESPONSE");
+      }
+      return result;
+    },
+    async getLeaderboard(period: LeaderboardPeriod): Promise<LeaderboardResponse> {
+      const result = await client.request<LeaderboardResponse>(
+        `/api/leaderboard?period=${encodeURIComponent(period)}`,
+      );
+      if (!result) {
+        throw new PlatformApiError("排行榜响应为空", 502, "EMPTY_RESPONSE");
+      }
+      return result;
+    },
+    async getDashboardOverview(): Promise<DashboardOverview> {
+      const result = await client.request<DashboardOverview>("/api/dashboard/overview");
+      if (!result) {
+        throw new PlatformApiError("运营总览响应为空", 502, "EMPTY_RESPONSE");
+      }
+      return result;
+    },
+    async deleteMember(id: number): Promise<DeletedMember> {
+      if (!Number.isInteger(id) || id <= 0) {
+        throw new PlatformApiError("会员 ID 无效", 400, "INVALID_MEMBER_ID");
+      }
+      const result = await client.request<DeletedMember>(
+        `/api/members/${encodeURIComponent(String(id))}`,
+        { method: "DELETE" },
+      );
+      if (!result) {
+        throw new PlatformApiError("删除会员响应为空", 502, "EMPTY_RESPONSE");
       }
       return result;
     },

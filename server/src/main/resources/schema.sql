@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS members (
     birthday TEXT,
     gender TEXT,
     status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'FROZEN')),
+    deleted_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     created_by TEXT NOT NULL
@@ -23,6 +24,19 @@ CREATE TABLE IF NOT EXISTS wristbands (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS wristband_charge_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wristband_id INTEGER NOT NULL REFERENCES wristbands(id),
+    wristband_uid TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    unit_price_cents INTEGER NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    charged_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_wristband_charges_charged_at
+    ON wristband_charge_records(charged_at);
 
 CREATE TABLE IF NOT EXISTS wristband_bindings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,7 +1,6 @@
 package com.ledgame.platform;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 
@@ -9,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,10 +24,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class CoreFlowController {
     private final JdbcTemplate jdbc;
     private final GameAccessService gameAccessService;
+    private final Clock clock;
 
-    public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService) {
+    public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService, Clock clock) {
         this.jdbc = jdbc;
         this.gameAccessService = gameAccessService;
+        this.clock = clock;
     }
 
     @GetMapping("/health")
@@ -45,7 +47,7 @@ public class CoreFlowController {
                        COALESCE(SUM(CASE WHEN g.status='COMPLETED' THEN g.points_awarded ELSE 0 END), 0) AS pointsTotal
                   FROM members m
                   LEFT JOIN game_play_records g ON g.member_id=m.id
-                 WHERE m.status='ACTIVE'
+                 WHERE m.status='ACTIVE' AND m.deleted_at IS NULL
                  GROUP BY m.id
             )
             SELECT totals.*,
@@ -63,10 +65,55 @@ public class CoreFlowController {
         String phone = normalizePhone(request.phone());
         if (!phone.matches("\\d{7,15}")) throw badRequest("手机号格式不正确");
         if (request.name() == null || request.name().trim().length() < 2) throw badRequest("会员姓名至少需要 2 个字符");
-        if (!jdbc.queryForList("SELECT id FROM members WHERE phone = ? AND status = 'ACTIVE'", phone).isEmpty()) throw conflict("该手机号已经注册");
+        if (!jdbc.queryForList("SELECT id FROM members WHERE phone = ? AND status = 'ACTIVE' AND deleted_at IS NULL", phone).isEmpty()) throw conflict("该手机号已经注册");
         String now = now();
         jdbc.update("INSERT INTO members(phone, name, avatar_id, birthday, gender, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)", phone, request.name().trim(), request.avatarId(), request.birthday(), request.gender(), now, now, request.createdBy() == null ? "kiosk" : request.createdBy());
         return findMembers(phone).get(0);
+    }
+
+    @DeleteMapping("/members/{id}")
+    @Transactional
+    public Map<String, Object> deleteMember(@PathVariable Long id) {
+        List<Map<String, Object>> members = jdbc.queryForList("""
+            SELECT id, phone, name
+              FROM members
+             WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL
+            """, id);
+        if (members.isEmpty()) {
+            throw GameAccessService.error(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "会员不存在或已经删除");
+        }
+        Integer openBindings = jdbc.queryForObject("""
+            SELECT COUNT(*)
+              FROM wristband_bindings
+             WHERE member_id=? AND status IN ('READY', 'ACTIVE')
+            """, Integer.class, id);
+        if (openBindings != null && openBindings > 0) {
+            throw GameAccessService.error(HttpStatus.CONFLICT, "MEMBER_HAS_OPEN_WRISTBAND", "该会员仍有待游戏或计时中的手环，请先解除绑定或完成手环生命周期");
+        }
+        Integer runningGames = jdbc.queryForObject("""
+            SELECT COUNT(*)
+              FROM game_play_records
+             WHERE member_id=? AND status='RUNNING'
+            """, Integer.class, id);
+        if (runningGames != null && runningGames > 0) {
+            throw GameAccessService.error(HttpStatus.CONFLICT, "MEMBER_HAS_RUNNING_GAME", "该会员仍有运行中的游戏，请先结束游戏");
+        }
+        String deletedAt = now();
+        int updated = jdbc.update("""
+            UPDATE members
+               SET status='FROZEN', deleted_at=?, updated_at=?
+             WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL
+            """, deletedAt, deletedAt, id);
+        if (updated == 0) {
+            throw GameAccessService.error(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "会员不存在或已经删除");
+        }
+        Map<String, Object> member = members.get(0);
+        return Map.of(
+                "id", member.get("id"),
+                "phone", member.get("phone"),
+                "name", member.get("name"),
+                "status", "DELETED",
+                "deletedAt", deletedAt);
     }
 
     @GetMapping("/wristbands")
@@ -93,6 +140,15 @@ public class CoreFlowController {
             if (!status.equals("IN_STOCK")) throw conflict("该手环当前状态为 " + status + "，不能重复充时");
             jdbc.update("UPDATE wristbands SET status='CHARGED', duration_minutes=?, charged_at=?, updated_at=? WHERE card_uid=?", request.durationMinutes(), now, now, uid);
         }
+        Long wristbandId = jdbc.queryForObject("SELECT id FROM wristbands WHERE card_uid=?", Long.class, uid);
+        int unitPriceCents = 100;
+        jdbc.update("""
+            INSERT INTO wristband_charge_records(
+                wristband_id, wristband_uid, duration_minutes,
+                unit_price_cents, amount_cents, charged_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, wristbandId, uid, request.durationMinutes(), unitPriceCents,
+                request.durationMinutes() * unitPriceCents, now);
         return findWristband(uid);
     }
 
@@ -106,7 +162,7 @@ public class CoreFlowController {
             if (String.valueOf(wristband.get("status")).equals("READY") || String.valueOf(wristband.get("status")).equals("ACTIVE")) throw conflict("此手环已绑定");
             throw conflict("该手环当前不能绑定，状态为 " + wristband.get("status"));
         }
-        Integer memberCount = jdbc.queryForObject("SELECT COUNT(*) FROM members WHERE id = ? AND status = 'ACTIVE'", Integer.class, request.memberId());
+        Integer memberCount = jdbc.queryForObject("SELECT COUNT(*) FROM members WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL", Integer.class, request.memberId());
         if (memberCount == null || memberCount == 0) throw badRequest("会员不存在或已冻结");
         Number wristbandId = (Number) wristband.get("id");
         String now = now();
@@ -167,8 +223,8 @@ public class CoreFlowController {
         return raw == null ? "" : raw.replaceAll("\\D", "");
     }
 
-    private static String now() {
-        return OffsetDateTime.now(ZoneOffset.UTC).toString();
+    private String now() {
+        return clock.instant().toString();
     }
 
     private static ResponseStatusException badRequest(String message) {

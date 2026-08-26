@@ -12,22 +12,28 @@ describe("acceptance interaction contracts", () => {
     const wristbands = source(platformRoot, "apps/member-admin/src/views/WristbandsView.vue");
     const rooms = source(platformRoot, "apps/member-admin/src/views/RoomsView.vue");
     const members = source(platformRoot, "apps/member-admin/src/views/MembersView.vue");
+    const dashboard = source(platformRoot, "apps/member-admin/src/views/DashboardView.vue");
 
     expect(app).toContain("admin-nav-${item.id}");
-    for (const selector of ["admin-charge-uid", "admin-charge-submit", "admin-wristband-${wristband.uid}", "admin-wristband-status"]) {
+    for (const selector of ["admin-charge-start", "admin-charge-dialog", "admin-charge-scanned-uid", "admin-charge-submit", "admin-wristband-${wristband.uid}", "admin-wristband-status"]) {
       expect(wristbands).toContain(selector);
     }
     expect(rooms).toContain("admin-room-${room.ip}");
     expect(members).toContain("admin-member-${member.id}");
+    expect(members).toContain("admin-member-delete-confirm");
+    for (const selector of ["admin-dashboard-refresh", "admin-dashboard-total-members", "admin-dashboard-new-members-today", "admin-dashboard-wristbands-charged-today", "admin-dashboard-revenue-today"]) {
+      expect(dashboard).toContain(selector);
+    }
   });
 
-  it("keeps kiosk binding on the keyboard-wedge UID plus Enter path", () => {
+  it("keeps kiosk binding behind an explicit keyboard-wedge scan session", () => {
     const kiosk = source(platformRoot, "apps/registration-kiosk/src/App.vue");
 
-    for (const selector of ["kiosk-member-phone", "kiosk-wristband-uid", "kiosk-bind-submit", "kiosk-bind-success", "kiosk-info-result"]) {
+    for (const selector of ["kiosk-member-phone", "kiosk-scan-start", "kiosk-scan-dialog", "kiosk-scan-cancel", "kiosk-bind-success", "kiosk-info-result"]) {
       expect(kiosk).toContain(selector);
     }
-    expect(kiosk).toMatch(/data-testid="kiosk-wristband-uid"[\s\S]*?@keydown\.enter\.prevent="scanWristband"/);
+    expect(kiosk).not.toContain("kiosk-wristband-uid");
+    expect(kiosk).toContain("consumeWristbandScanKey(wristbandScan, event.key)");
   });
 
   it("exposes Electron lifecycle state without bypassing the production reader", () => {

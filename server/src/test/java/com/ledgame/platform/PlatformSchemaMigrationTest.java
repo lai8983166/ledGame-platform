@@ -14,6 +14,30 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 class PlatformSchemaMigrationTest {
     @Test
+    void addsMemberDeletionMarkerToLegacyDatabaseIdempotently() throws Exception {
+        Path database = Files.createTempFile("platform-member-delete-legacy-", ".db");
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    "jdbc:sqlite:" + database.toAbsolutePath());
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            jdbc.execute("CREATE TABLE members(id INTEGER PRIMARY KEY, phone TEXT NOT NULL, status TEXT NOT NULL)");
+
+            PlatformSchemaMigration migration = new PlatformSchemaMigration(jdbc);
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            migration.run(new DefaultApplicationArguments(new String[0]));
+
+            assertThat(jdbc.queryForList("PRAGMA table_info(members)").stream()
+                    .map(column -> String.valueOf(column.get("name"))))
+                    .contains("deleted_at");
+            assertThat(jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM pragma_table_info('members') WHERE name='deleted_at'", Integer.class))
+                    .isEqualTo(1);
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void addsScoringPolicyToAnExistingLegacySqliteDatabase() throws Exception {
         Path database = Files.createTempFile("platform-legacy-", ".db");
         try {

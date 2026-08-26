@@ -41,6 +41,24 @@ describe("platform api client player info", () => {
     );
   });
 
+  it("queries a typed real leaderboard period", async () => {
+    const response = {
+      period: "month",
+      periodStart: "2026-08-01T00:00:00+08:00",
+      periodEnd: "2026-09-01T00:00:00+08:00",
+      generatedAt: "2026-08-26T12:00:00+08:00",
+      entries: [{ rank: 1, memberId: 7, memberName: "真实玩家", avatarId: "nova", points: 88, completedGames: 2 }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createPlatformApiClient().getLeaderboard("month")).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8090/api/leaderboard?period=month",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
   it("preserves stable server error code and message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ code: "PLAYER_NOT_FOUND", message: "未找到该手机号对应的会员" }),
@@ -61,6 +79,48 @@ describe("platform api client player info", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8090/api/rooms/192.168.1.25",
       expect.objectContaining({ method: "PUT", body: JSON.stringify({ roomName: "A区游戏桌" }) }),
+    );
+  });
+
+  it("soft deletes a member by immutable database id", async () => {
+    const response = { id: 42, phone: "13800138000", status: "DELETED", deletedAt: "2026-08-26T12:00:00Z" };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createPlatformApiClient().deleteMember(42)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8090/api/members/42",
+      expect.objectContaining({ method: "DELETE", headers: expect.any(Headers) }),
+    );
+  });
+
+  it("preserves a stable member deletion conflict", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: "MEMBER_HAS_OPEN_WRISTBAND", message: "请先解除手环绑定" }),
+      { status: 409 },
+    )));
+
+    const error = await createPlatformApiClient().deleteMember(42).catch((reason) => reason);
+    expect(error).toMatchObject({ status: 409, code: "MEMBER_HAS_OPEN_WRISTBAND", message: "请先解除手环绑定" });
+  });
+
+  it("loads typed real dashboard metrics", async () => {
+    const response = {
+      totalMembers: 12,
+      newMembersToday: 2,
+      wristbandsChargedToday: 3,
+      revenueTodayCents: 15000,
+      periodStart: "2026-08-26T00:00:00+08:00",
+      periodEnd: "2026-08-27T00:00:00+08:00",
+      generatedAt: "2026-08-26T12:00:00+08:00",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createPlatformApiClient().getDashboardOverview()).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8090/api/dashboard/overview",
+      expect.objectContaining({ headers: expect.any(Headers) }),
     );
   });
 });

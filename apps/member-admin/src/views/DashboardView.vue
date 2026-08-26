@@ -1,81 +1,96 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import type { DashboardOverview } from "@ledgame/platform-api-client";
+import type { PlatformLocale } from "@ledgame/platform-shared-ui";
+import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import StatusBadge from "../components/StatusBadge.vue";
-import { createRooms } from "../data";
-import type { PageId, StatusTone } from "../types";
+import { memberAdminMessage } from "../localization";
+import { platformApi } from "../platformApi";
+import { mapRoomStatus } from "../roomStatus";
+import type { PageId, Room, StatusTone } from "../types";
 
+const props = defineProps<{ locale: PlatformLocale }>();
 const emit = defineEmits<{ navigate: [page: PageId] }>();
-const rooms = createRooms();
+const text = (key: Parameters<typeof memberAdminMessage>[1]) => memberAdminMessage(props.locale, key);
+
+const overview = ref<DashboardOverview>({ totalMembers: 0, newMembersToday: 0, wristbandsChargedToday: 0, revenueTodayCents: 0, periodStart: "", periodEnd: "", generatedAt: "" });
+const rooms = ref<Room[]>([]);
+const loading = ref(false);
+const loadError = ref(false);
 
 const roomCounts = computed(() => ({
-  playing: rooms.filter((room) => room.status === "playing").length,
-  idle: rooms.filter((room) => room.status === "idle").length,
-  warning: rooms.filter((room) => room.hardware.some((device) => device.status !== "online")).length,
+  playing: rooms.value.filter((room) => room.online && room.status === "playing").length,
+  online: rooms.value.filter((room) => room.online).length,
 }));
+const formatCurrency = (cents: number) => new Intl.NumberFormat(props.locale, { style: "currency", currency: "CNY" }).format(cents / 100);
+const stats = computed<Array<{ testId: string; label: string; value: string; icon: string; tone: StatusTone; helper: string }>>(() => [
+  { testId: "admin-dashboard-total-members", label: text("dashboardTotalMembers"), value: overview.value.totalMembers.toLocaleString(), icon: "members", tone: "info", helper: text("dashboardActiveMembers") },
+  { testId: "admin-dashboard-new-members-today", label: text("dashboardNewMembers"), value: overview.value.newMembersToday.toLocaleString(), icon: "sparkles", tone: "purple", helper: text("dashboardToday") },
+  { testId: "admin-dashboard-wristbands-charged-today", label: text("dashboardChargedWristbands"), value: overview.value.wristbandsChargedToday.toLocaleString(), icon: "card", tone: "success", helper: text("dashboardSuccessfulCharges") },
+  { testId: "admin-dashboard-revenue-today", label: text("dashboardRevenue"), value: formatCurrency(overview.value.revenueTodayCents), icon: "wallet", tone: "warning", helper: text("dashboardRevenueRule") },
+]);
 
-const stats: Array<{ label: string; value: string; change: string; icon: string; tone: StatusTone; helper: string }> = [
-  { label: "总会员数", value: "1,286", change: "+12.8%", icon: "members", tone: "info", helper: "较上月" },
-  { label: "今日新增", value: "18", change: "+6", icon: "sparkles", tone: "purple", helper: "较昨日" },
-  { label: "今日发卡", value: "42", change: "+9.4%", icon: "card", tone: "success", helper: "较昨日" },
-  { label: "今日收款", value: "¥ 6,840", change: "+15.2%", icon: "wallet", tone: "warning", helper: "较昨日" },
-];
+async function loadDashboard() {
+  loading.value = true;
+  loadError.value = false;
+  const [overviewResult, roomsResult] = await Promise.allSettled([platformApi.getDashboardOverview(), platformApi.listRooms()]);
+  if (overviewResult.status === "fulfilled") overview.value = overviewResult.value;
+  if (roomsResult.status === "fulfilled") rooms.value = roomsResult.value.map(mapRoomStatus);
+  loadError.value = overviewResult.status === "rejected" || roomsResult.status === "rejected";
+  loading.value = false;
+}
 
-const formatTime = (seconds = 0) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+onMounted(() => void loadDashboard());
 </script>
 
 <template>
   <section class="welcome-strip glass-panel">
     <div>
-      <p class="section-eyebrow"><AppIcon name="sparkles" :size="15" /> 下午好，管理员</p>
-      <h2>门店状态尽在掌握</h2>
-      <p>当前有 {{ roomCounts.playing }} 个房间正在游戏，{{ roomCounts.warning }} 项硬件状态需要留意。</p>
+      <p class="section-eyebrow"><AppIcon name="sparkles" :size="15" /> {{ text("dashboardEyebrow") }}</p>
+      <h2>{{ text("dashboardTitle") }}</h2>
+      <p>{{ text("dashboardRoomPrefix") }} {{ roomCounts.playing }} {{ text("dashboardPlayingRooms") }}，{{ roomCounts.online }} {{ text("dashboardOnlineRooms") }}。</p>
     </div>
-    <div class="welcome-strip__visual" aria-hidden="true">
-      <div class="orbital orbital--one"></div><div class="orbital orbital--two"></div>
-      <div class="pulse-core"><AppIcon name="game" :size="36" /></div>
+    <div class="welcome-strip__actions">
+      <button data-testid="admin-dashboard-refresh" class="secondary-button" type="button" :disabled="loading" @click="loadDashboard">
+        <AppIcon name="refresh" :size="17" /> {{ loading ? text("dashboardRefreshing") : text("dashboardRefresh") }}
+      </button>
+      <div class="welcome-strip__visual" aria-hidden="true">
+        <div class="orbital orbital--one"></div><div class="orbital orbital--two"></div>
+        <div class="pulse-core"><AppIcon name="game" :size="36" /></div>
+      </div>
     </div>
   </section>
 
-  <section class="stat-grid" aria-label="今日核心统计">
-    <article v-for="stat in stats" :key="stat.label" class="stat-card glass-panel">
+  <div v-if="loadError" data-testid="admin-dashboard-error" class="inline-error dashboard-error">{{ text("dashboardError") }}</div>
+
+  <section class="stat-grid" :aria-label="text('dashboardCoreStats')">
+    <article v-for="stat in stats" :key="stat.testId" :data-testid="stat.testId" class="stat-card glass-panel">
       <div class="stat-card__top">
         <span class="metric-icon" :class="`metric-icon--${stat.tone}`"><AppIcon :name="stat.icon" /></span>
-        <StatusBadge :tone="stat.tone" :dot="false">{{ stat.change }}</StatusBadge>
+        <StatusBadge :tone="stat.tone" :dot="false">{{ text("dashboardRealData") }}</StatusBadge>
       </div>
-      <p>{{ stat.label }}</p>
-      <strong>{{ stat.value }}</strong>
-      <small>{{ stat.helper }}</small>
+      <p>{{ stat.label }}</p><strong>{{ stat.value }}</strong><small>{{ stat.helper }}</small>
     </article>
   </section>
 
-  <div class="dashboard-grid">
+  <div class="dashboard-grid dashboard-grid--single">
     <section class="content-card glass-panel">
       <header class="card-header">
-        <div><p class="section-eyebrow">ROOM STATUS</p><h2>房间实时概况</h2></div>
-        <button class="text-button" type="button" @click="emit('navigate', 'rooms')">查看全部 <AppIcon name="arrow" :size="16" /></button>
+        <div><p class="section-eyebrow">ROOM STATUS</p><h2>{{ text("dashboardRoomStatus") }}</h2></div>
+        <button class="text-button" type="button" @click="emit('navigate', 'rooms')">{{ text("dashboardViewAll") }} <AppIcon name="arrow" :size="16" /></button>
       </header>
-      <div class="room-summary-list">
-        <button v-for="room in rooms.slice(0, 4)" :key="room.id" class="room-summary" type="button" @click="emit('navigate', 'rooms')">
-          <span class="room-summary__number">{{ room.code.slice(-2) }}</span>
-          <span class="room-summary__info"><strong>{{ room.name }}</strong><small>{{ room.status === 'playing' ? room.gameName : '等待玩家刷卡' }}</small></span>
-          <StatusBadge :tone="room.status === 'playing' ? 'purple' : 'success'">{{ room.status === 'playing' ? '游戏中' : '空闲' }}</StatusBadge>
-          <span v-if="room.status === 'playing'" class="room-summary__time"><AppIcon name="clock" :size="15" /> {{ formatTime(room.remainingSeconds) }}</span>
-          <span v-else class="room-summary__time room-summary__time--idle">可使用</span>
+      <div v-if="rooms.length" class="room-summary-list">
+        <button v-for="(room, index) in rooms.slice(0, 6)" :key="room.id" class="room-summary" type="button" @click="emit('navigate', 'rooms')">
+          <span class="room-summary__number">{{ String(index + 1).padStart(2, "0") }}</span>
+          <span class="room-summary__info"><strong>{{ room.name }}</strong><small>{{ room.ip }} · {{ room.status === 'playing' ? room.gameName || text("dashboardInGame") : text("dashboardWaiting") }}</small></span>
+          <StatusBadge :tone="!room.online ? 'danger' : room.status === 'playing' ? 'purple' : 'success'">{{ !room.online ? text("dashboardOffline") : room.status === 'playing' ? text("dashboardInGame") : text("dashboardIdle") }}</StatusBadge>
+          <span class="room-summary__time" :class="{ 'room-summary__time--idle': room.status !== 'playing' }">{{ text("dashboardQueue") }} {{ room.queueLength || 0 }}</span>
           <AppIcon name="chevron" :size="16" />
         </button>
       </div>
-    </section>
-
-    <aside class="content-card glass-panel health-card">
-      <header class="card-header"><div><p class="section-eyebrow">SYSTEM HEALTH</p><h2>设备健康</h2></div><span class="health-score">96%</span></header>
-      <div class="health-ring" aria-label="设备健康度 96%"><div><strong>96</strong><small>健康度</small></div></div>
-      <div class="health-stats">
-        <div><span class="status-dot status-dot--success"></span><p><strong>{{ roomCounts.idle + roomCounts.playing }}</strong><small>房间在线</small></p></div>
-        <div><span class="status-dot status-dot--warning"></span><p><strong>{{ roomCounts.warning }}</strong><small>需要留意</small></p></div>
-        <div><span class="status-dot status-dot--info"></span><p><strong>31</strong><small>硬件设备</small></p></div>
+      <div v-else data-testid="admin-dashboard-empty-rooms" class="empty-state dashboard-empty-state">
+        <AppIcon name="rooms" :size="28" /><strong>{{ text("dashboardNoRoomsTitle") }}</strong><p>{{ text("dashboardNoRoomsBody") }}</p>
       </div>
-      <button class="secondary-button secondary-button--full" type="button" @click="emit('navigate', 'rooms')"><AppIcon name="rooms" :size="17" /> 查看房间硬件</button>
-    </aside>
+    </section>
   </div>
 </template>

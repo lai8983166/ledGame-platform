@@ -20,7 +20,8 @@ public class GameAccessService {
                w.charged_at AS chargedAt, b.id AS bindingId, b.member_id AS memberId,
                b.duration_minutes AS bindingDurationMinutes, b.bound_at AS boundAt,
                b.started_at AS startedAt, b.ended_at AS endedAt,
-               m.phone, m.name AS memberName, m.status AS memberStatus
+               m.phone, m.name AS memberName, m.status AS memberStatus,
+               m.deleted_at AS memberDeletedAt
           FROM wristbands w
           LEFT JOIN wristband_bindings b ON b.wristband_id = w.id AND b.status IN ('READY', 'ACTIVE')
           LEFT JOIN members m ON m.id = b.member_id
@@ -139,7 +140,7 @@ public class GameAccessService {
     }
 
     private void requireActiveMember(Map<String, Object> row) {
-        if (!"ACTIVE".equals(text(row.get("memberStatus")))) {
+        if (!"ACTIVE".equals(text(row.get("memberStatus"))) || row.get("memberDeletedAt") != null) {
             throw error(HttpStatus.CONFLICT, "MEMBER_FROZEN", "会员已被冻结，无法开始游戏");
         }
     }

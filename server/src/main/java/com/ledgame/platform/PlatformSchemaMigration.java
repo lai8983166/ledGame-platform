@@ -21,10 +21,17 @@ public class PlatformSchemaMigration implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
+        boolean hasDeletedAt = memberColumns.stream()
+                .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
+        if (!memberColumns.isEmpty() && !hasDeletedAt) {
+            jdbc.execute("ALTER TABLE members ADD COLUMN deleted_at TEXT");
+        }
+
         List<Map<String, Object>> columns = jdbc.queryForList("PRAGMA table_info(game_play_records)");
         boolean hasScoringPolicy = columns.stream()
                 .anyMatch(column -> "scoring_policy".equalsIgnoreCase(String.valueOf(column.get("name"))));
-        if (!hasScoringPolicy) {
+        if (!columns.isEmpty() && !hasScoringPolicy) {
             jdbc.execute("ALTER TABLE game_play_records ADD COLUMN scoring_policy TEXT");
         }
         boolean hasParticipantIndex = columns.stream()

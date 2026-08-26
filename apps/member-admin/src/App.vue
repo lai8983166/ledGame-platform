@@ -193,12 +193,12 @@ onBeforeUnmount(() => {
       </header>
 
       <div class="page-stage" :data-testid="`admin-page-${activePage}`">
-        <WristbandsView v-if="activePage === 'wristbands'" @toast="showToast" />
-        <DashboardView v-else-if="activePage === 'overview'" @navigate="navigate" />
+        <WristbandsView v-if="activePage === 'wristbands'" :locale="locale" @toast="showToast" />
+        <DashboardView v-else-if="activePage === 'overview'" :locale="locale" @navigate="navigate" />
         <RoomsView v-else-if="activePage === 'rooms'" @toast="showToast" />
         <MembersView v-else-if="activePage === 'members'" :locale="locale" @toast="showToast" />
         <RecordsView v-else-if="activePage === 'records'" :locale="locale" />
-        <LeaderboardView v-else-if="activePage === 'ranking'" />
+        <LeaderboardView v-else-if="activePage === 'ranking'" :locale="locale" />
         <SettingsView v-else :locale="locale" @toast="showToast" />
       </div>
     </main>

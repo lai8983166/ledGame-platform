@@ -335,15 +335,106 @@ export class StoreAcceptanceHarness {
 
   async chargeWristband(uid: string, minutes: number): Promise<void> {
     const page = this.adminPage;
-    const uidInput = page.getByTestId("admin-charge-uid");
-    await uidInput.click();
-    await uidInput.fill("");
+    await page.getByTestId("admin-charge-start").click();
+    await expect(page.getByTestId("admin-charge-dialog")).toBeVisible();
     await page.keyboard.type(uid);
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("admin-charge-scanned-uid")).toHaveText(uid);
     await page.getByTestId("admin-charge-minutes").fill(String(minutes));
-    await uidInput.press("Enter");
+    await page.getByTestId("admin-charge-submit").click();
+    await expect(page.getByTestId("admin-charge-dialog")).toHaveCount(0);
     const row = page.getByTestId(`admin-wristband-${uid}`);
     await expect(row).toBeVisible();
     await expect(row.getByTestId("admin-wristband-status")).toHaveAttribute("data-status", "charged");
+  }
+
+  async assertChargeCancellationHasNoWrite(uid: string): Promise<void> {
+    const page = this.adminPage;
+    await page.getByTestId("admin-charge-start").click();
+    await expect(page.getByTestId("admin-charge-dialog")).toBeVisible();
+    await page.getByTestId("admin-charge-cancel").click();
+    await expect(page.getByTestId("admin-charge-dialog")).toHaveCount(0);
+    expect((await fetch(`${this.platformBaseUrl}/api/wristbands/${uid}`)).status).toBe(404);
+
+    await page.getByTestId("admin-charge-start").click();
+    await page.keyboard.type(uid);
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("admin-charge-scanned-uid")).toHaveText(uid);
+    await page.getByTestId("admin-charge-cancel").click();
+    await expect(page.getByTestId("admin-charge-dialog")).toHaveCount(0);
+    expect((await fetch(`${this.platformBaseUrl}/api/wristbands/${uid}`)).status).toBe(404);
+  }
+
+  async assertDashboardOverview(expected: { totalMembers: number; newMembersToday: number; chargesToday: number; revenueTodayCents: number }): Promise<void> {
+    const response = await fetch(`${this.platformBaseUrl}/api/dashboard/overview`);
+    if (!response.ok) throw new Error(`Dashboard overview failed with HTTP ${response.status}: ${await response.text()}`);
+    expect(await response.json()).toMatchObject({
+      totalMembers: expected.totalMembers,
+      newMembersToday: expected.newMembersToday,
+      wristbandsChargedToday: expected.chargesToday,
+      revenueTodayCents: expected.revenueTodayCents,
+    });
+
+    const page = this.adminPage;
+    await page.getByTestId("admin-nav-overview").click();
+    await page.getByTestId("admin-dashboard-refresh").click();
+    await expect(page.getByTestId("admin-dashboard-total-members")).toContainText(String(expected.totalMembers));
+    await expect(page.getByTestId("admin-dashboard-new-members-today")).toContainText(String(expected.newMembersToday));
+    await expect(page.getByTestId("admin-dashboard-wristbands-charged-today")).toContainText(String(expected.chargesToday));
+    await expect(page.getByTestId("admin-dashboard-revenue-today")).toContainText(String(expected.revenueTodayCents / 100));
+    await expect(page.getByText("Acceptance Room")).toBeVisible();
+  }
+
+  async assertMemberDeletionReregistrationFlows(): Promise<void> {
+    const adminFirstPhone = "13800000031";
+    const kioskFirstPhone = "13800000032";
+
+    const adminOriginalId = await this.#createMemberThroughAdmin(adminFirstPhone, "管理端删除前会员");
+    await this.#deleteMemberThroughAdmin(adminFirstPhone);
+    await this.#registerUntilSwipe({ phone: adminFirstPhone, name: "自助端重新注册会员", uid: "unused" });
+    const kioskReplacement = await this.#playerInfo(adminFirstPhone);
+    expect(kioskReplacement.profile.id).not.toBe(adminOriginalId);
+    expect(kioskReplacement.points.total).toBe(0);
+    await this.kioskPage.goto(`http://127.0.0.1:${this.#ports.kiosk}/`, { waitUntil: "domcontentloaded" });
+
+    await this.#registerUntilSwipe({ phone: kioskFirstPhone, name: "自助端删除前会员", uid: "unused" });
+    const kioskOriginal = await this.#playerInfo(kioskFirstPhone);
+    await this.kioskPage.goto(`http://127.0.0.1:${this.#ports.kiosk}/`, { waitUntil: "domcontentloaded" });
+    await this.#deleteMemberThroughAdmin(kioskFirstPhone);
+    const adminReplacementId = await this.#createMemberThroughAdmin(kioskFirstPhone, "管理端重新注册会员");
+    expect(adminReplacementId).not.toBe(kioskOriginal.profile.id);
+    expect((await this.#playerInfo(kioskFirstPhone)).points.total).toBe(0);
+  }
+
+  async #createMemberThroughAdmin(phone: string, name: string): Promise<number> {
+    const page = this.adminPage;
+    await page.getByTestId("admin-nav-members").click();
+    await page.getByTestId("admin-member-create").click();
+    await page.getByTestId("admin-member-name-input").fill(name);
+    await page.getByTestId("admin-member-phone-input").fill(phone);
+    await page.getByTestId("admin-member-save").click();
+    const row = page.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone });
+    await expect(row).toBeVisible();
+    const testId = await row.getAttribute("data-testid");
+    return Number(testId?.replace("admin-member-", ""));
+  }
+
+  async #deleteMemberThroughAdmin(phone: string): Promise<void> {
+    const page = this.adminPage;
+    await page.getByTestId("admin-nav-members").click();
+    await page.getByTestId("admin-members-refresh").click();
+    const row = page.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone });
+    await expect(row).toBeVisible();
+    await row.getByRole("button").first().click();
+    await page.getByTestId("admin-member-delete").click();
+    await page.getByTestId("admin-member-delete-confirm").click();
+    await expect(row).toHaveCount(0);
+  }
+
+  async #playerInfo(phone: string): Promise<{ profile: { id: number }; points: { total: number } }> {
+    const response = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+    if (!response.ok) throw new Error(`Player Info query failed with HTTP ${response.status}: ${await response.text()}`);
+    return response.json() as Promise<{ profile: { id: number }; points: { total: number } }>;
   }
 
   async registerAndBind(member: MemberFixture): Promise<void> {
@@ -375,8 +466,8 @@ export class StoreAcceptanceHarness {
 
   async #scanKioskWristband(uid: string): Promise<void> {
     const page = this.kioskPage;
-    const scan = page.getByTestId("kiosk-wristband-uid");
-    await scan.click();
+    await page.getByTestId("kiosk-scan-start").click();
+    await expect(page.getByTestId("kiosk-scan-dialog")).toBeVisible();
     await page.keyboard.type(uid);
     await page.keyboard.press("Enter");
   }

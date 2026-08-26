@@ -29,7 +29,7 @@ public class PlayerInfoService {
             SELECT id, phone, name, avatar_id AS avatarId, birthday, gender, status,
                    created_at AS createdAt, created_by AS createdBy
               FROM members
-             WHERE phone=? AND status='ACTIVE'
+             WHERE phone=? AND status='ACTIVE' AND deleted_at IS NULL
             """, phone);
         if (members.isEmpty()) {
             throw GameAccessService.error(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "未找到该手机号对应的会员");
@@ -46,7 +46,7 @@ public class PlayerInfoService {
                 SELECT m.id, COALESCE(SUM(CASE WHEN g.status='COMPLETED' THEN g.points_awarded ELSE 0 END), 0) AS total
                   FROM members m
                   LEFT JOIN game_play_records g ON g.member_id=m.id
-                 WHERE m.status='ACTIVE'
+                 WHERE m.status='ACTIVE' AND m.deleted_at IS NULL
                  GROUP BY m.id
                 HAVING total > ?
             ) ranked

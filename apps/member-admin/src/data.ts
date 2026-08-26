@@ -4,8 +4,6 @@ import type {
   GameConfig,
   Member,
   PlayRecord,
-  RankingPeriod,
-  RankEntry,
   Room,
   TransactionRecord,
 } from "./types";
@@ -142,33 +140,6 @@ export const gameConfigs: GameConfig[] = [
   { id: "game-laser", name: "躲避光束", category: "敏捷闯关", levels: ["低速扫描", "交叉光束", "脉冲风暴"], lives: 3, scoringRule: "每存活 1 秒 +10，通过安全区额外 +200；触碰危险格扣除 1 点生命值。", assetPath: "/assets/games/laser-dodge/v1/runtime/scene-components/", components: ["LaserField", "SafeZone", "LifeBar", "SurvivalClock"], status: "enabled" },
   { id: "game-maze", name: "量子迷宫", category: "解谜协作", levels: ["入口协议", "镜像通道", "量子核心"], lives: 4, scoringRule: "到达节点 +80，团队同步触发 +300；超时每 10 秒扣 50 分。", assetPath: "/assets/games/quantum-maze/v1/staging/interactive-nodes/", components: ["MazeNode", "TeamSync", "PathGuide", "HintPulse"], status: "disabled" },
 ];
-
-export const rankings: Record<RankingPeriod, RankEntry[]> = {
-  day: [
-    { rank: 1, memberName: "许安然", account: "M20260013", initials: "XA", score: 12860, games: 8, trend: 2, color: "#18b6a4" },
-    { rank: 2, memberName: "陈小宇", account: "M20260018", initials: "CY", score: 11420, games: 7, trend: 1, color: "#5b7cff" },
-    { rank: 3, memberName: "林可欣", account: "M20260017", initials: "LX", score: 10890, games: 6, trend: -1, color: "#9b6dff" },
-    { rank: 4, memberName: "沈乐宁", account: "M20260015", initials: "SL", score: 9560, games: 7, trend: 3, color: "#ff8a65" },
-    { rank: 5, memberName: "周子航", account: "M20260016", initials: "ZZ", score: 8820, games: 5, trend: 0, color: "#18b6a4" },
-    { rank: 6, memberName: "顾南星", account: "M20260012", initials: "GN", score: 7490, games: 5, trend: -2, color: "#9b6dff" },
-  ],
-  month: [
-    { rank: 1, memberName: "陈小宇", account: "M20260018", initials: "CY", score: 128600, games: 62, trend: 1, color: "#5b7cff" },
-    { rank: 2, memberName: "许安然", account: "M20260013", initials: "XA", score: 121240, games: 58, trend: 0, color: "#18b6a4" },
-    { rank: 3, memberName: "沈乐宁", account: "M20260015", initials: "SL", score: 108900, games: 55, trend: 2, color: "#ff8a65" },
-    { rank: 4, memberName: "林可欣", account: "M20260017", initials: "LX", score: 101560, games: 48, trend: -2, color: "#9b6dff" },
-    { rank: 5, memberName: "邵雨桐", account: "M20260011", initials: "SY", score: 92820, games: 45, trend: 1, color: "#ff8a65" },
-    { rank: 6, memberName: "周子航", account: "M20260016", initials: "ZZ", score: 87490, games: 42, trend: -1, color: "#18b6a4" },
-  ],
-  year: [
-    { rank: 1, memberName: "沈乐宁", account: "M20260015", initials: "SL", score: 886400, games: 412, trend: 0, color: "#ff8a65" },
-    { rank: 2, memberName: "陈小宇", account: "M20260018", initials: "CY", score: 820120, games: 389, trend: 2, color: "#5b7cff" },
-    { rank: 3, memberName: "许安然", account: "M20260013", initials: "XA", score: 794800, games: 365, trend: -1, color: "#18b6a4" },
-    { rank: 4, memberName: "林可欣", account: "M20260017", initials: "LX", score: 698320, games: 344, trend: 1, color: "#9b6dff" },
-    { rank: 5, memberName: "顾南星", account: "M20260012", initials: "GN", score: 642100, games: 322, trend: -1, color: "#9b6dff" },
-    { rank: 6, memberName: "周子航", account: "M20260016", initials: "ZZ", score: 601870, games: 305, trend: 0, color: "#18b6a4" },
-  ],
-};
 
 export const createFeatureSettings = (): FeatureSetting[] => [
   { id: "self-service", name: "自助激活", description: "允许玩家在自助系统激活已发放的 IC 手环。", enabled: true, critical: true },

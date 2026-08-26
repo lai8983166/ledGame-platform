@@ -3,6 +3,7 @@ export type KioskOverlay = "none" | "avatar-source" | "avatar-library";
 export type KeyboardLayout = "numeric" | "alphabetic";
 export type InputTarget = "phone" | "infoPhone" | "name" | "birthYear" | "birthMonth" | "birthDay" | "staffExitPassword";
 export type Gender = "male" | "female" | "secret" | "";
+export type AvatarAudience = "male" | "female" | "neutral";
 
 export interface KioskSession {
   phone: string;
@@ -16,7 +17,7 @@ export interface KioskSession {
   memberId: number | null;
   wristbandUid: string;
   durationMinutes: number | null;
-  wristbandStatus: "idle" | "waiting" | "detected";
+  wristbandStatus: "idle" | "waiting" | "submitting" | "detected";
 }
 
 export interface DemoMember {
@@ -29,6 +30,7 @@ export interface DemoMember {
 export interface AvatarSpec {
   id: string;
   label: string;
+  audience: AvatarAudience;
   skin: string;
   hair: string;
   shirt: string;

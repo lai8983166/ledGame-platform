@@ -7,7 +7,22 @@ import WristbandArt from "./components/WristbandArt.vue";
 import { avatars } from "./avatars";
 import { platformApi } from "./platformApi";
 import { createPlayerInfoFlow } from "./playerInfoFlow";
-import type { DemoMember, InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
+import {
+  avatarOptionsForGender,
+  createDefaultAvatarId,
+  reconcileAvatarForGender,
+} from "./registrationProfile";
+import {
+  cancelWristbandScan,
+  completeWristbandScan,
+  consumeWristbandScanKey,
+  createWristbandScanSession,
+  failWristbandScan,
+  isWristbandScanCurrent,
+  startWristbandScan,
+  type WristbandScanFrame,
+} from "./wristbandScan";
+import type { DemoMember, Gender, InputTarget, KeyboardLayout, KioskOverlay, KioskScreen, KioskSession } from "./types";
 import {
   PLATFORM_LOCALES,
   applyDocumentLocale,
@@ -24,12 +39,13 @@ import { localeFlagUrls } from "./localeFlags";
 
 type ApiMember = DemoMember & { id: number };
 
-const createSession = (): KioskSession => ({ phone: "", infoPhone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: "", memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
+const createSession = (): KioskSession => ({ phone: "", infoPhone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: createDefaultAvatarId(), memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
 const screen = ref<KioskScreen>("home");
 const overlay = ref<KioskOverlay>("none");
 const languageOpen = ref(false);
 const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, REGISTRATION_KIOSK_LOCALE_STORAGE_KEY));
 const session = reactive<KioskSession>(createSession());
+const wristbandScan = reactive(createWristbandScanSession());
 const activeInput = ref<InputTarget | null>(null);
 const keyboardLayout = ref<KeyboardLayout>("numeric");
 const staffExitOpen = ref(false);
@@ -52,6 +68,8 @@ const playerInfoState = playerInfoFlow.state;
 
 const selectedAvatar = computed(() => avatars.find((avatar) => avatar.id === session.avatarId) ?? avatars[0]);
 const pendingAvatar = computed(() => avatars.find((avatar) => avatar.id === pendingAvatarId.value) ?? avatars[0]);
+const availableAvatars = computed(() => avatarOptionsForGender(session.gender));
+const scanDialogOpen = computed(() => wristbandScan.state !== "idle");
 const keyboardOpen = computed(() => activeInput.value !== null);
 const copy = computed(() => registrationKioskCatalogs[locale.value]);
 const text = (key: RegistrationKioskMessageKey) => copy.value[key];
@@ -84,11 +102,16 @@ const showToast = (message: string) => {
 const goTo = (target: KioskScreen) => {
   closeKeyboard();
   overlay.value = "none";
+  if (target !== "swipe") {
+    cancelWristbandScan(wristbandScan);
+    if (session.wristbandStatus !== "detected") session.wristbandStatus = "idle";
+  }
   screen.value = target;
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
 
 const resetSession = () => {
+  cancelWristbandScan(wristbandScan);
   Object.assign(session, createSession());
   Object.keys(errors).forEach((key) => delete errors[key]);
   pendingAvatarId.value = "";
@@ -193,17 +216,18 @@ const submitPhone = async () => {
   if (foundMember.value) {
     session.memberId = foundMember.value.id;
     session.name = foundMember.value.name;
-    session.avatarId = foundMember.value.avatarId;
+    session.avatarId = foundMember.value.avatarId || createDefaultAvatarId();
     screen.value = "confirm";
   } else {
     session.name = "";
-    session.avatarId = "";
+    session.avatarId = createDefaultAvatarId();
     screen.value = "register";
   }
 };
 
 const confirmExistingMember = () => {
-  session.wristbandStatus = "waiting";
+  cancelWristbandScan(wristbandScan);
+  session.wristbandStatus = "idle";
   activationError.value = "";
   screen.value = "swipe";
 };
@@ -232,7 +256,8 @@ const submitRegistration = async () => {
     const member = await request<ApiMember>("/members", { method: "POST", body: JSON.stringify({ phone: session.phone, name: session.name.trim(), avatarId: session.avatarId, birthday: `${session.birthYear}-${session.birthMonth.padStart(2, "0")}-${session.birthDay.padStart(2, "0")}`, gender: session.gender, createdBy: "registration-kiosk" }) });
     foundMember.value = member;
     session.memberId = member.id;
-    session.wristbandStatus = "waiting";
+    cancelWristbandScan(wristbandScan);
+    session.wristbandStatus = "idle";
     activationError.value = "";
     screen.value = "swipe";
   } catch (error) {
@@ -242,29 +267,56 @@ const submitRegistration = async () => {
 
 const openAvatarSource = () => {
   closeKeyboard();
-  pendingAvatarId.value = session.avatarId || avatars[0].id;
+  pendingAvatarId.value = reconcileAvatarForGender(session.avatarId, session.gender);
   overlay.value = "avatar-source";
 };
-const openAvatarLibrary = () => { pendingAvatarId.value = session.avatarId || avatars[0].id; overlay.value = "avatar-library"; };
+const openAvatarLibrary = () => { pendingAvatarId.value = reconcileAvatarForGender(session.avatarId, session.gender); overlay.value = "avatar-library"; };
 const confirmAvatar = () => { session.avatarId = pendingAvatarId.value; delete errors.avatar; overlay.value = "none"; showToast(`${pendingAvatar.value.label} is now your avatar.`); };
 const takePhoto = () => { overlay.value = "none"; showToast("Camera is not connected in this UI demo."); };
 
-const scanWristband = async () => {
-  if (session.wristbandStatus === "detected") return;
+const selectGender = (gender: Gender) => {
+  session.gender = gender;
+  session.avatarId = reconcileAvatarForGender(session.avatarId, gender);
+  pendingAvatarId.value = reconcileAvatarForGender(pendingAvatarId.value || session.avatarId, gender);
+  delete errors.gender;
+  delete errors.avatar;
+};
+
+const openScanDialog = () => {
   activationError.value = "";
-  const uid = session.wristbandUid.replace(/\D/g, "");
-  if (!uid) return void (activationError.value = "请把已充时手环放到读卡器上");
-  if (!session.memberId) return void (activationError.value = "请先完成会员确认");
+  startWristbandScan(wristbandScan);
+  session.wristbandStatus = "waiting";
+};
+
+const cancelScanDialog = () => {
+  cancelWristbandScan(wristbandScan);
+  session.wristbandStatus = "idle";
+  activationError.value = "";
+};
+
+const bindScannedWristband = async (frame: WristbandScanFrame) => {
+  if (!session.memberId) {
+    if (failWristbandScan(wristbandScan, frame.revision)) {
+      session.wristbandStatus = "waiting";
+      activationError.value = "请先完成会员确认";
+    }
+    return;
+  }
   try {
-    const wristband = await request<Record<string, unknown>>(`/wristbands/${encodeURIComponent(uid)}`);
+    const wristband = await request<Record<string, unknown>>(`/wristbands/${encodeURIComponent(frame.uid)}`);
+    if (!isWristbandScanCurrent(wristbandScan, frame.revision)) return;
+    await request("/wristbands/bind", { method: "POST", body: JSON.stringify({ uid: frame.uid, memberId: session.memberId }) });
+    if (!completeWristbandScan(wristbandScan, frame.revision)) return;
     session.durationMinutes = wristband.durationMinutes == null ? null : Number(wristband.durationMinutes);
-    await request("/wristbands/bind", { method: "POST", body: JSON.stringify({ uid, memberId: session.memberId }) });
-    session.wristbandUid = uid;
+    session.wristbandUid = frame.uid;
     session.wristbandStatus = "detected";
     if (scanTimer) window.clearTimeout(scanTimer);
     scanTimer = window.setTimeout(() => { screen.value = "success"; }, 500);
   } catch (error) {
-    activationError.value = error instanceof Error ? error.message : "手环绑定失败";
+    if (failWristbandScan(wristbandScan, frame.revision)) {
+      session.wristbandStatus = "waiting";
+      activationError.value = error instanceof Error ? error.message : "手环绑定失败";
+    }
   }
 };
 
@@ -278,8 +330,18 @@ const handleNativeInput = (target: InputTarget, event: Event) => {
 };
 
 const onGlobalKeydown = (event: KeyboardEvent) => {
+  if (wristbandScan.state === "waiting" && (/^\d$/.test(event.key) || event.key === "Enter")) {
+    event.preventDefault();
+    event.stopPropagation();
+    activationError.value = "";
+    const frame = consumeWristbandScanKey(wristbandScan, event.key);
+    session.wristbandStatus = wristbandScan.state;
+    if (frame) void bindScannedWristband(frame);
+    return;
+  }
   if (event.key === "Escape") {
-    if (staffExitOpen.value) closeStaffExitDialog();
+    if (scanDialogOpen.value) cancelScanDialog();
+    else if (staffExitOpen.value) closeStaffExitDialog();
     else if (languageOpen.value) languageOpen.value = false;
     else if (overlay.value !== "none") overlay.value = "none";
     else closeKeyboard();
@@ -305,6 +367,7 @@ onMounted(() => {
   }
 });
 onBeforeUnmount(() => {
+  cancelWristbandScan(wristbandScan);
   window.removeEventListener("keydown", onGlobalKeydown);
   removeConnectionListener?.();
   removeStaffExitListener?.();
@@ -423,15 +486,15 @@ onBeforeUnmount(() => {
         <label class="kiosk-field" :class="{ focused: activeInput === 'name', invalid: errors.name }" data-field="name"><span>PLAYER NAME</span><div><KioskIcon name="user" :size="21" /><input data-input="name" data-testid="kiosk-registration-name" :value="session.name" inputmode="none" autocomplete="off" placeholder="Tap to enter name" aria-label="Player name" @focus="openInput('name','alphabetic')" @input="handleNativeInput('name',$event)" @keydown.enter.prevent="closeKeyboard" /></div><b v-if="errors.name" class="field-error">{{ errors.name }}</b></label>
         <label class="kiosk-field" :class="{ focused: activeInput === 'phone', invalid: errors.phone }" data-field="phone"><span>PHONE NUMBER</span><div><KioskIcon name="phone" :size="21" /><input data-input="phone" :value="session.phone" inputmode="none" autocomplete="off" aria-label="Phone number" @focus="openInput('phone','numeric')" @input="handleNativeInput('phone',$event)" /></div><b v-if="errors.phone" class="field-error">{{ errors.phone }}</b></label>
         <div class="birthday-field" :class="{ invalid: errors.birthday }" data-field="birthday"><span class="field-label">DATE OF BIRTH</span><div class="birthday-inputs"><label :class="{ focused: activeInput === 'birthYear' }"><input data-input="birthYear" data-testid="kiosk-registration-birth-year" :value="session.birthYear" inputmode="none" placeholder="YYYY" aria-label="Birth year" @focus="openInput('birthYear','numeric')" @input="handleNativeInput('birthYear',$event)" /><small>YEAR</small></label><i>/</i><label :class="{ focused: activeInput === 'birthMonth' }"><input data-input="birthMonth" data-testid="kiosk-registration-birth-month" :value="session.birthMonth" inputmode="none" placeholder="MM" aria-label="Birth month" @focus="openInput('birthMonth','numeric')" @input="handleNativeInput('birthMonth',$event)" /><small>MONTH</small></label><i>/</i><label :class="{ focused: activeInput === 'birthDay' }"><input data-input="birthDay" data-testid="kiosk-registration-birth-day" :value="session.birthDay" inputmode="none" placeholder="DD" aria-label="Birth day" @focus="openInput('birthDay','numeric')" @input="handleNativeInput('birthDay',$event)" /><small>DAY</small></label></div><b v-if="errors.birthday" class="field-error">{{ errors.birthday }}</b></div>
-        <fieldset class="gender-field" :class="{ invalid: errors.gender }" data-field="gender"><legend>GENDER</legend><div><button v-for="item in [{id:'male',label:'Male'}, {id:'female',label:'Female'}, {id:'secret',label:'Prefer not to say'}]" :key="item.id" type="button" :data-testid="`kiosk-registration-gender-${item.id}`" :class="{ active: session.gender === item.id }" @click="session.gender = item.id as typeof session.gender; delete errors.gender"><span><i></i></span>{{ item.label }}</button></div><b v-if="errors.gender" class="field-error">{{ errors.gender }}</b></fieldset>
+        <fieldset class="gender-field" :class="{ invalid: errors.gender }" data-field="gender"><legend>GENDER</legend><div><button v-for="item in [{id:'male',label:'Male'}, {id:'female',label:'Female'}, {id:'secret',label:'Prefer not to say'}]" :key="item.id" type="button" :data-testid="`kiosk-registration-gender-${item.id}`" :class="{ active: session.gender === item.id }" @click="selectGender(item.id as Gender)"><span><i></i></span>{{ item.label }}</button></div><b v-if="errors.gender" class="field-error">{{ errors.gender }}</b></fieldset>
         <div class="panel-actions register-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="goTo('phone')"><KioskIcon name="back" :size="20" /> Back</button><span><KioskIcon name="signal" :size="17" /> Next: pair a wristband</span><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-registration-submit" type="button" @click="submitRegistration">Next Step <KioskIcon name="arrow" :size="20" /></button></div>
       </div>
     </section>
 
     <section v-else-if="screen === 'swipe'" class="screen screen--swipe">
       <div class="player-chip"><AvatarArt :avatar="selectedAvatar" size="small" /><span><small>PLAYER</small><strong>{{ session.name }}</strong></span></div>
-      <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? 'Wristband bound' : 'Scan your charged wristband' }}</h1><p>{{ session.wristbandStatus === 'detected' ? 'Member and wristband are now linked.' : '请把柜台已充时的手环放到读卡器上。' }}</p><label class="demo-uid-field"><span>READER UID</span><input v-model="session.wristbandUid" data-testid="kiosk-wristband-uid" inputmode="numeric" autocomplete="off" maxlength="32" autofocus :disabled="session.wristbandStatus === 'detected'" placeholder="等待读卡器输入" @input="activationError = ''" @keydown.enter.prevent="scanWristband" /></label><p v-if="activationError" class="activation-error" data-testid="kiosk-bind-error"><KioskIcon name="info" :size="16" />{{ activationError }}</p><div class="waiting-status" data-testid="kiosk-bind-status" :data-status="session.wristbandStatus" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? 'Wristband bound · READY' : 'Waiting for reader…' }}</div></div></div>
-      <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo(profileScreen)"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-bind-submit" type="button" :disabled="session.wristbandStatus === 'detected'" @click="scanWristband"><KioskIcon name="signal" :size="19" /> Bind scanned wristband</button></div>
+      <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? 'Wristband bound' : 'Scan your charged wristband' }}</h1><p>{{ session.wristbandStatus === 'detected' ? 'Member and wristband are now linked.' : '点击下方按钮后，再把柜台已充时的手环放到读卡器上。' }}</p><div class="waiting-status" data-testid="kiosk-bind-status" :data-status="session.wristbandStatus" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? 'Wristband bound · READY' : 'Reader is idle' }}</div></div></div>
+      <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo(profileScreen)"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-scan-start" type="button" :disabled="session.wristbandStatus === 'detected'" @click="openScanDialog"><KioskIcon name="signal" :size="19" /> {{ text('scanStart') }}</button></div>
       <p class="demo-note"><KioskIcon name="info" :size="15" /> UID comes from the keyboard-wedge reader. Timing starts only at the first game-system swipe.</p>
     </section>
 
@@ -456,7 +519,19 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="overlay === 'avatar-library'" class="modal-backdrop modal-backdrop--library">
-      <section class="avatar-library tech-panel" role="dialog" aria-modal="true" aria-label="Select an avatar"><header><div><p class="eyebrow">PLAYER IDENTITY</p><h2>Select an Avatar</h2><p>Choose a character that feels like you.</p></div><div class="avatar-preview"><AvatarArt :avatar="pendingAvatar" size="small" /><span><small>SELECTED</small><strong>{{ pendingAvatar.label }}</strong></span></div></header><div class="avatar-grid"><button v-for="avatar in avatars" :key="avatar.id" type="button" :data-testid="`kiosk-avatar-${avatar.id}`" :class="{ active: pendingAvatarId === avatar.id }" :aria-pressed="pendingAvatarId === avatar.id" @click="pendingAvatarId = avatar.id"><AvatarArt :avatar="avatar" size="medium" /><span>{{ avatar.label }}</span><i v-if="pendingAvatarId === avatar.id"><KioskIcon name="check" :size="15" /></i></button></div><footer><button class="kiosk-button kiosk-button--secondary" type="button" @click="overlay = 'none'"><KioskIcon name="close" :size="18" /> Cancel</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-avatar-confirm" type="button" @click="confirmAvatar">Confirm Avatar <KioskIcon name="check" :size="18" /></button></footer></section>
+      <section class="avatar-library tech-panel" role="dialog" aria-modal="true" aria-label="Select an avatar"><header><div><p class="eyebrow">PLAYER IDENTITY</p><h2>Select an Avatar</h2><p>{{ session.gender === 'male' ? 'Male avatars' : session.gender === 'female' ? 'Female avatars' : 'All built-in avatars' }}</p></div><div class="avatar-preview"><AvatarArt :avatar="pendingAvatar" size="small" /><span><small>SELECTED</small><strong>{{ pendingAvatar.label }}</strong></span></div></header><div class="avatar-grid"><button v-for="avatar in availableAvatars" :key="avatar.id" type="button" :data-testid="`kiosk-avatar-${avatar.id}`" :class="{ active: pendingAvatarId === avatar.id }" :aria-pressed="pendingAvatarId === avatar.id" @click="pendingAvatarId = avatar.id"><AvatarArt :avatar="avatar" size="medium" /><span>{{ avatar.label }}</span><i v-if="pendingAvatarId === avatar.id"><KioskIcon name="check" :size="15" /></i></button></div><footer><button class="kiosk-button kiosk-button--secondary" type="button" @click="overlay = 'none'"><KioskIcon name="close" :size="18" /> Cancel</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-avatar-confirm" type="button" @click="confirmAvatar">Confirm Avatar <KioskIcon name="check" :size="18" /></button></footer></section>
+    </div>
+
+    <div v-if="scanDialogOpen" class="modal-backdrop scan-modal-backdrop" data-testid="kiosk-scan-dialog">
+      <section class="scan-dialog tech-panel" role="dialog" aria-modal="true" aria-labelledby="scan-dialog-title">
+        <div class="scan-dialog__signal"><span></span><WristbandArt :size="86" /></div>
+        <p class="eyebrow">{{ text('scanEyebrow') }}</p>
+        <h2 id="scan-dialog-title">{{ text('scanTitle') }}</h2>
+        <p>{{ text(wristbandScan.state === 'submitting' ? 'scanSubmittingDescription' : 'scanDescription') }}</p>
+        <div class="waiting-status"><span></span>{{ text(wristbandScan.state === 'submitting' ? 'scanConnecting' : 'scanWaiting') }}</div>
+        <p v-if="activationError" class="activation-error" data-testid="kiosk-bind-error"><KioskIcon name="info" :size="16" />{{ activationError }}</p>
+        <button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-scan-cancel" type="button" @click="cancelScanDialog"><KioskIcon name="close" :size="18" /> {{ text('scanCancel') }}</button>
+      </section>
     </div>
 
     <Transition name="toast"><div v-if="toast" class="kiosk-toast" role="status"><KioskIcon name="info" :size="19" /><span>{{ toast }}</span></div></Transition>

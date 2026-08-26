@@ -9,6 +9,22 @@ function readJson(relativePath) {
 }
 
 describe("Windows desktop package contract", () => {
+  it("starts each Vite renderer on the port awaited by its Electron shell", () => {
+    const rootPackage = readJson("package.json");
+    const memberPackage = readJson("apps/member-admin/package.json");
+    const kioskPackage = readJson("apps/registration-kiosk/package.json");
+
+    expect(rootPackage.scripts["dev:member-admin"]).toBe("pnpm --dir apps/member-admin dev");
+    expect(memberPackage.scripts.dev).toContain("--host 127.0.0.1 --port 5177");
+    expect(rootPackage.scripts["dev:member-admin:desktop"]).toContain("wait-on tcp:127.0.0.1:5177");
+    expect(rootPackage.scripts["dev:member-admin:desktop"]).toContain("node desktop/shared/electron-launcher.cjs desktop/member-admin/main.cjs");
+
+    expect(rootPackage.scripts["dev:registration"]).toBe("pnpm --dir apps/registration-kiosk dev");
+    expect(kioskPackage.scripts.dev).toContain("--host 127.0.0.1 --port 5176");
+    expect(rootPackage.scripts["dev:registration:desktop"]).toContain("wait-on tcp:127.0.0.1:5176");
+    expect(rootPackage.scripts["dev:registration:desktop"]).toContain("node desktop/shared/electron-launcher.cjs desktop/registration-kiosk/main.cjs");
+  });
+
   it("uses independent identities and output directories", () => {
     const member = readJson("desktop/electron-builder.member-admin.json");
     const kiosk = readJson("desktop/electron-builder.registration-kiosk.json");
