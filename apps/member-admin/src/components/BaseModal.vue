@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
+import { captureFocusReturnTarget, restoreFocusReturnTarget } from "../focusLifecycle";
 
 const props = withDefaults(defineProps<{ title: string; description?: string; size?: "small" | "medium" | "large" }>(), {
   size: "medium",
 });
 const emit = defineEmits<{ close: [] }>();
 const panel = ref<HTMLElement | null>(null);
+const returnFocusTarget = captureFocusReturnTarget(document.activeElement);
 
 const onKeydown = (event: KeyboardEvent) => {
   if (event.key === "Escape") emit("close");
@@ -17,7 +19,10 @@ onMounted(async () => {
   await nextTick();
   panel.value?.focus();
 });
-onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
+  void nextTick(() => restoreFocusReturnTarget(returnFocusTarget));
+});
 </script>
 
 <template>

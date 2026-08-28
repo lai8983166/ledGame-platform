@@ -35,6 +35,12 @@ type UiWristband = {
   memberName: string | null;
   phone: string | null;
 };
+type WristbandActionKind = "clear" | "reclaim";
+type PendingWristbandAction = {
+  kind: WristbandActionKind;
+  wristband: UiWristband;
+  clearSourceInput: boolean;
+};
 
 const wristbands = ref<UiWristband[]>([]);
 const chargeSession = reactive(createWristbandChargeSession());
@@ -44,6 +50,8 @@ const statusFilter = ref<"all" | WristbandState>("all");
 const actionError = ref("");
 const clearUid = ref("");
 const reclaimUid = ref("");
+const pendingWristbandAction = ref<PendingWristbandAction | null>(null);
+const wristbandActionSubmitting = ref(false);
 
 const stateMeta: Record<WristbandState, { label: string; description: string; tone: StatusTone }> = {
   empty: { label: "待充时", description: "店员可读取 UID 并录入购买时长", tone: "neutral" },
@@ -130,23 +138,16 @@ const updateChargeMinutes = (event: Event) => {
   setChargeMinutes(chargeSession, Number((event.target as HTMLInputElement).value));
 };
 
-const clearBalance = async (wristband: UiWristband) => {
+const clearBalance = (wristband: UiWristband, clearSourceInput = false) => {
   actionError.value = "";
   if (!canClearWristbandBalance(wristband.state)) {
     actionError.value = "只有未绑定的已充时手环可以清除可用余额";
     return;
   }
-  if (!window.confirm(`确认清除手环 ${wristband.uid} 的可用余额吗？此操作不可恢复。`)) return;
-  try {
-    await request(`/wristbands/clear`, { method: "POST", body: JSON.stringify({ uid: wristband.uid }) });
-    emit("toast", `手环 ${wristband.uid} 的可用余额已清除`);
-    await loadWristbands();
-  } catch (error) {
-    actionError.value = error instanceof Error ? error.message : "清除余额失败";
-  }
+  pendingWristbandAction.value = { kind: "clear", wristband, clearSourceInput };
 };
 
-const clearBalanceFromUid = async () => {
+const clearBalanceFromUid = () => {
   actionError.value = "";
   const uid = normalizeWristbandUid(clearUid.value);
   if (!uid) {
@@ -162,27 +163,19 @@ const clearBalanceFromUid = async () => {
     actionError.value = "只有未绑定的已充时手环可以清除可用余额；已绑定手环请先解除绑定";
     return;
   }
-  await clearBalance(wristband);
-  clearUid.value = "";
+  clearBalance(wristband, true);
 };
 
-const reclaimWristband = async (wristband: UiWristband) => {
+const reclaimWristband = (wristband: UiWristband, clearSourceInput = false) => {
   actionError.value = "";
   if (!canReclaimWristband(wristband.state)) {
     actionError.value = "只有已到期的手环可以回收";
     return;
   }
-  if (!window.confirm(`确认回收手环 ${wristband.uid} 吗？回收后将清除旧状态并回到库存。`)) return;
-  try {
-    await request(`/wristbands/reclaim`, { method: "POST", body: JSON.stringify({ uid: wristband.uid }) });
-    emit("toast", `手环 ${wristband.uid} 已回收到库存`);
-    await loadWristbands();
-  } catch (error) {
-    actionError.value = error instanceof Error ? error.message : "回收手环失败";
-  }
+  pendingWristbandAction.value = { kind: "reclaim", wristband, clearSourceInput };
 };
 
-const reclaimFromUid = async () => {
+const reclaimFromUid = () => {
   actionError.value = "";
   const uid = normalizeWristbandUid(reclaimUid.value);
   if (!uid) {
@@ -194,8 +187,39 @@ const reclaimFromUid = async () => {
     actionError.value = "未找到该手环，请先刷新后端状态";
     return;
   }
-  await reclaimWristband(wristband);
-  reclaimUid.value = "";
+  reclaimWristband(wristband, true);
+};
+
+const cancelWristbandAction = () => {
+  if (wristbandActionSubmitting.value) return;
+  pendingWristbandAction.value = null;
+  actionError.value = "";
+};
+
+const confirmWristbandAction = async () => {
+  const action = pendingWristbandAction.value;
+  if (!action || wristbandActionSubmitting.value) return;
+  wristbandActionSubmitting.value = true;
+  actionError.value = "";
+  try {
+    const endpoint = action.kind === "clear" ? "/wristbands/clear" : "/wristbands/reclaim";
+    await request(endpoint, { method: "POST", body: JSON.stringify({ uid: action.wristband.uid }) });
+    if (action.kind === "clear") {
+      if (action.clearSourceInput) clearUid.value = "";
+      emit("toast", `手环 ${action.wristband.uid} 的可用余额已清除`);
+    } else {
+      if (action.clearSourceInput) reclaimUid.value = "";
+      emit("toast", `手环 ${action.wristband.uid} 已回收到库存`);
+    }
+    pendingWristbandAction.value = null;
+    await loadWristbands();
+  } catch (error) {
+    actionError.value = error instanceof Error
+      ? error.message
+      : action.kind === "clear" ? "清除余额失败" : "回收手环失败";
+  } finally {
+    wristbandActionSubmitting.value = false;
+  }
 };
 
 const unbind = async (wristband: UiWristband) => {
@@ -251,6 +275,28 @@ onBeforeUnmount(() => {
       <p v-if="chargeSession.error" class="form-error" data-testid="admin-charge-error"><AppIcon name="alert" :size="16" />{{ chargeSession.error }}</p>
     </div>
     <template #footer><button class="ghost-button" data-testid="admin-charge-cancel" type="button" :disabled="chargeSession.status === 'submitting'" @click="cancelChargeSession(chargeSession)">取消</button><button v-if="chargeSession.status === 'details' || chargeSession.status === 'submitting'" class="primary-button" data-testid="admin-charge-submit" type="button" :disabled="chargeSession.status === 'submitting'" @click="chargeWristband">{{ chargeSession.status === "submitting" ? "充值中…" : text("chargeConfirm") }}</button></template>
+  </BaseModal>
+
+  <BaseModal
+    v-if="pendingWristbandAction"
+    :title="pendingWristbandAction.kind === 'clear' ? '确认清除可用余额' : '确认回收手环'"
+    :description="pendingWristbandAction.kind === 'clear' ? '此操作不可恢复，请确认实体手环 UID。' : '回收后将清除旧状态并回到库存。'"
+    size="small"
+    @close="cancelWristbandAction"
+  >
+    <div data-testid="admin-wristband-action-confirm-dialog">
+      <label class="form-field">
+        <span>手环 UID</span>
+        <strong class="charge-scanned-uid">{{ pendingWristbandAction.wristband.uid }}</strong>
+      </label>
+      <p v-if="actionError" class="form-error" data-testid="admin-wristband-action-confirm-error"><AppIcon name="alert" :size="16" />{{ actionError }}</p>
+    </div>
+    <template #footer>
+      <button class="ghost-button" data-testid="admin-wristband-action-cancel" type="button" :disabled="wristbandActionSubmitting" @click="cancelWristbandAction">取消</button>
+      <button class="primary-button" data-testid="admin-wristband-action-confirm" type="button" :disabled="wristbandActionSubmitting" @click="confirmWristbandAction">
+        {{ wristbandActionSubmitting ? "处理中…" : "确认操作" }}
+      </button>
+    </template>
   </BaseModal>
 
   <section class="process-card wristband-workbench-card glass-panel wristband-clear-card" data-testid="admin-wristband-clear-card">
