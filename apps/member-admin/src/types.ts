@@ -26,7 +26,9 @@ export interface Room {
   status: "idle" | "playing";
   gameName?: string;
   phase?: string;
-  remainingSeconds?: number;
+  gameTimeMode?: "LIMITED" | "UNLIMITED";
+  gameTimeRemainingMillis?: number | null;
+  gameTimeRunning?: boolean;
   players: LivePlayer[];
   hardware: HardwareDevice[];
   ip?: string;

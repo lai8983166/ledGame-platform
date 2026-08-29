@@ -32,6 +32,8 @@ describe("中文验收报告", () => {
     await reporter.onEnd({ status: "passed" } as FullResult);
 
     const report = await readFile(outputFile, "utf8");
+    expect(report).toContain("本局全局游戏时间");
+    expect(report).toContain("不是会员手环可用余额");
     expect(report).toContain("测试结论：通过");
     expect(report).toContain("中文业务场景");
     expect(report).toContain("中文业务步骤：通过");

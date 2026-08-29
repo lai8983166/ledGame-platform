@@ -16,7 +16,9 @@ const rooms: Room[] = [
     status: "playing",
     gameName: "能量追逐",
     phase: "第 3 / 5 关",
-    remainingSeconds: 754,
+    gameTimeMode: "LIMITED",
+    gameTimeRemainingMillis: 754_000,
+    gameTimeRunning: false,
     players: [
       { id: "p1", name: "陈小宇", initials: "CY", score: 3280, rank: 1, color: "#5b7cff" },
       { id: "p2", name: "林可欣", initials: "LX", score: 2940, rank: 2, color: "#9b6dff" },
@@ -35,7 +37,9 @@ const rooms: Room[] = [
     status: "playing",
     gameName: "节奏方阵",
     phase: "第 2 / 4 关",
-    remainingSeconds: 423,
+    gameTimeMode: "LIMITED",
+    gameTimeRemainingMillis: 423_000,
+    gameTimeRunning: false,
     players: [
       { id: "p4", name: "沈乐宁", initials: "SL", score: 1860, rank: 1, color: "#ff8a65" },
       { id: "p5", name: "王一诺", initials: "WY", score: 1740, rank: 2, color: "#5b7cff" },
@@ -75,7 +79,9 @@ const rooms: Room[] = [
     status: "playing",
     gameName: "躲避光束",
     phase: "第 1 / 3 关",
-    remainingSeconds: 1088,
+    gameTimeMode: "LIMITED",
+    gameTimeRemainingMillis: 1_088_000,
+    gameTimeRunning: false,
     players: [
       { id: "p6", name: "许安然", initials: "XA", score: 980, rank: 1, color: "#18b6a4" },
       { id: "p7", name: "顾南星", initials: "GN", score: 820, rank: 2, color: "#9b6dff" },

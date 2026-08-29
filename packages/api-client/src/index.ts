@@ -118,6 +118,18 @@ export interface DashboardOverview {
   generatedAt: string;
 }
 
+export interface GameTimeState {
+  mode: "LIMITED" | "UNLIMITED";
+  remainingMillis: number | null;
+  running: boolean;
+}
+
+export interface RoomRuntimeState extends Record<string, unknown> {
+  engineState?: string;
+  gameName?: string;
+  gameTime?: GameTimeState | null;
+}
+
 export interface RoomStatus {
   ip: string;
   deviceId: string;
@@ -125,7 +137,7 @@ export interface RoomStatus {
   roomName: string;
   connectionId: string;
   online: boolean;
-  state: Record<string, unknown>;
+  state: RoomRuntimeState;
   lastSequence: number;
   lastEventType: string | null;
   lastEventAt: string | null;

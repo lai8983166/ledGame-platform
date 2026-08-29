@@ -1,0 +1,60 @@
+{
+  "scenarios": [
+    {
+      "name": "有限游戏自然倒数",
+      "eventType": "GAME_STARTED",
+      "eventAt": "2026-08-09T12:00:00.000Z",
+      "displayAt": "2026-08-09T12:00:01.100Z",
+      "state": { "engineState": "RUNNING", "gameTime": { "mode": "LIMITED", "remainingMillis": 61000, "running": true } },
+      "expectedText": "01:00"
+    },
+    {
+      "name": "结算暂停冻结",
+      "eventType": "GAME_TIMING_CHANGED",
+      "eventAt": "2026-08-09T12:00:00.000Z",
+      "displayAt": "2026-08-09T13:00:00.000Z",
+      "state": { "engineState": "SETTLING", "gameTime": { "mode": "LIMITED", "remainingMillis": 42200, "running": false } },
+      "expectedText": "00:43"
+    },
+    {
+      "name": "下一关恢复倒数",
+      "eventType": "GAME_TIMING_CHANGED",
+      "eventAt": "2026-08-09T12:01:00.000Z",
+      "displayAt": "2026-08-09T12:01:01.100Z",
+      "state": { "engineState": "RUNNING", "gameTime": { "mode": "LIMITED", "remainingMillis": 41000, "running": true } },
+      "expectedText": "00:40"
+    },
+    {
+      "name": "无限游戏",
+      "eventType": "GAME_STARTED",
+      "eventAt": "2026-08-09T12:00:00.000Z",
+      "displayAt": "2026-08-09T13:00:00.000Z",
+      "state": { "engineState": "RUNNING", "gameTime": { "mode": "UNLIMITED", "remainingMillis": null, "running": true } },
+      "expectedText": "无限"
+    },
+    {
+      "name": "运行中断线重连快照",
+      "eventType": "ROOM_SNAPSHOT",
+      "eventAt": "2026-08-09T12:10:00.000Z",
+      "displayAt": "2026-08-09T12:10:30.100Z",
+      "state": { "engineState": "RUNNING", "gameTime": { "mode": "LIMITED", "remainingMillis": 90000, "running": true } },
+      "expectedText": "01:00"
+    },
+    {
+      "name": "旧游戏端兼容占位",
+      "eventType": "ROOM_SNAPSHOT",
+      "eventAt": "2026-08-09T12:00:00.000Z",
+      "displayAt": "2026-08-09T12:00:01.000Z",
+      "state": { "engineState": "RUNNING" },
+      "expectedText": "--"
+    },
+    {
+      "name": "手动结束后隐藏",
+      "eventType": "GAME_ENDED",
+      "eventAt": "2026-08-09T12:02:00.000Z",
+      "displayAt": "2026-08-09T12:02:01.000Z",
+      "state": { "engineState": "IDLE", "gameTime": null },
+      "expectedText": null
+    }
+  ]
+}

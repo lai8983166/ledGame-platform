@@ -5,17 +5,24 @@ import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import type { Room } from "../types";
-import { mapRoomStatus } from "../roomStatus";
+import { mapRoomStatus, roomGameTimeText } from "../roomStatus";
 import { platformApi } from "../platformApi";
+import { memberAdminMessage } from "../localization";
+import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 
 const emit = defineEmits<{ toast: [message: string] }>();
+const props = defineProps<{ locale: PlatformLocale }>();
+const text = (key: Parameters<typeof memberAdminMessage>[1]) => memberAdminMessage(props.locale, key);
 const rooms = ref<Room[]>([]);
 const loading = ref(false);
 const loadError = ref("");
 let refreshTimer: number | undefined;
+let clockTimer: number | undefined;
+const clockNow = ref(Date.now());
 const filter = ref<"all" | "playing" | "idle" | "warning">("all");
 const search = ref("");
-const selectedRoom = ref<Room | null>(null);
+const selectedRoomId = ref<string | null>(null);
+const selectedRoom = computed(() => rooms.value.find((room) => room.id === selectedRoomId.value) ?? null);
 const editingRoom = ref<Room | null>(null);
 const editName = ref("");
 const editError = ref("");
@@ -27,7 +34,7 @@ const filteredRooms = computed(() => rooms.value.filter((room) => {
   return matchesSearch && matchesFilter;
 }));
 
-const formatTime = (seconds = 0) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+const roomTimeText = (room: Room) => roomGameTimeText(room, clockNow.value, text("roomUnlimited"));
 const formatEventTime = (value?: string | null) => value ? new Date(value).toLocaleTimeString() : "--";
 const roomTone = (room: Room) => !room.online ? "danger" : room.status === "playing" ? "purple" : "success";
 const roomConnectionLabel = (room: Room) => {
@@ -56,10 +63,12 @@ const loadRooms = async () => {
 onMounted(() => {
   void loadRooms();
   refreshTimer = window.setInterval(() => void loadRooms(), 2000);
+  clockTimer = window.setInterval(() => { clockNow.value = Date.now(); }, 1000);
 });
 
 onBeforeUnmount(() => {
   if (refreshTimer) window.clearInterval(refreshTimer);
+  if (clockTimer) window.clearInterval(clockTimer);
 });
 
 const openEdit = (room: Room) => {
@@ -106,13 +115,13 @@ const saveRoomName = async () => {
         <StatusBadge data-testid="admin-room-status" :data-status="room.status" :tone="roomTone(room)">{{ room.status === "playing" ? "游戏中" : "空闲" }}</StatusBadge>
       </header>
       <div class="room-card__title"><div><h2>{{ room.name }}</h2><p>{{ room.status === 'playing' ? room.gameName : '等待玩家刷卡开始' }}</p></div><button class="icon-button" type="button" aria-label="编辑房间名称" @click="openEdit(room)"><AppIcon name="edit" :size="17" /></button></div>
-      <div v-if="room.status === 'playing'" class="room-timer"><span><AppIcon name="clock" :size="18" /> 游戏剩余</span><strong>{{ formatTime(room.remainingSeconds) }}</strong><small>{{ room.phase }}</small></div>
+      <div v-if="room.status === 'playing'" class="room-timer"><span><AppIcon name="clock" :size="18" /> {{ text("roomGameRemaining") }}</span><strong data-testid="admin-room-game-time">{{ roomTimeText(room) }}</strong><small>{{ room.phase }}</small></div>
       <div v-else class="idle-state"><span class="idle-state__icon"><AppIcon name="sparkles" /></span><div><strong>房间已就绪</strong><small>刷卡后开始计算游戏时长</small></div></div>
       <div class="room-card__stats">
         <span><AppIcon name="members" :size="16" /> {{ room.players.length }} 位玩家</span>
         <span :class="{ 'text-warning': room.hardware.some((item) => item.status !== 'online') }"><AppIcon :name="room.hardware.some((item) => item.status !== 'online') ? 'alert' : 'check'" :size="16" /> {{ room.hardware.some((item) => item.status !== 'online') ? '硬件需留意' : '硬件正常' }}</span>
       </div>
-      <button class="secondary-button secondary-button--full" type="button" @click="selectedRoom = room">查看实时详情 <AppIcon name="arrow" :size="16" /></button>
+      <button class="secondary-button secondary-button--full" type="button" @click="selectedRoomId = room.id">查看实时详情 <AppIcon name="arrow" :size="16" /></button>
     </article>
   </div>
   <div v-else class="empty-state glass-panel"><span><AppIcon name="search" :size="28" /></span><h2>没有匹配的房间</h2><p>尝试调整搜索词或状态筛选。</p></div>
@@ -122,11 +131,11 @@ const saveRoomName = async () => {
     <template #footer><button class="ghost-button" type="button" @click="editingRoom = null">取消</button><button class="primary-button" type="button" @click="saveRoomName">保存名称</button></template>
   </BaseModal>
 
-  <SideDrawer v-if="selectedRoom" :title="selectedRoom.name" :eyebrow="`${selectedRoom.code} · 实时详情`" @close="selectedRoom = null">
+  <SideDrawer v-if="selectedRoom" :title="selectedRoom.name" :eyebrow="`${selectedRoom.code} · 实时详情`" @close="selectedRoomId = null">
     <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>临时数据 · 断电不保存</strong><p>积分、排名、游戏与硬件状态仅用于当前实时监控。</p></div></div>
     <div class="drawer-room-status">
       <div><StatusBadge :tone="roomTone(selectedRoom)">{{ selectedRoom.status === 'playing' ? '游戏中' : '空闲' }}</StatusBadge><h3>{{ selectedRoom.status === 'playing' ? selectedRoom.gameName : '等待游戏开始' }}</h3><p>{{ selectedRoom.status === 'playing' ? selectedRoom.phase : '玩家首次在游戏系统刷卡后开始计时' }}</p></div>
-      <strong v-if="selectedRoom.status === 'playing'">{{ formatTime(selectedRoom.remainingSeconds) }}<small>剩余时间</small></strong>
+      <strong v-if="selectedRoom.status === 'playing'" data-testid="admin-room-detail-game-time">{{ roomTimeText(selectedRoom) }}<small>{{ text("roomGameRemaining") }}</small></strong>
     </div>
     <section class="drawer-section">
       <div class="drawer-section__title"><h3>实时积分与排名</h3><span>{{ selectedRoom.players.length }} 位玩家</span></div>

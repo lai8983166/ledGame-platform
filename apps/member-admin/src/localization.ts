@@ -101,6 +101,8 @@ export const memberAdminBaseCatalog = {
   dashboardQueue: "Queue",
   dashboardNoRoomsTitle: "No game terminal is connected",
   dashboardNoRoomsBody: "A room appears here after its game terminal connects.",
+  roomGameRemaining: "Global game time remaining",
+  roomUnlimited: "Unlimited",
   wristbandFlowDescription: "Charge at the counter first; the customer then finds or creates a member and binds the wristband at the kiosk. Timing starts on the first scan at a game terminal.",
 };
 
@@ -126,6 +128,8 @@ const navigation = (
 
 export const memberAdminAuthoredCatalogs = {
   "zh-CN": {
+    roomGameRemaining: "全局游戏剩余",
+    roomUnlimited: "无限",
     language: "语言",
     chooseLanguage: "选择语言",
     close: "关闭",

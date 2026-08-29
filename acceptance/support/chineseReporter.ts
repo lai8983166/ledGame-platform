@@ -80,6 +80,13 @@ export default class ChineseAcceptanceReporter implements Reporter {
       "",
     ];
 
+    lines.push("## 全局游戏时间口径");
+    lines.push("");
+    lines.push("- 副屏和房间管理显示的是本局全局游戏时间，不是会员手环可用余额。");
+    lines.push("- 有限模式实时倒数，暂停阶段冻结，无限模式显示“无限”；旧游戏端缺少计时字段时显示 `--`。");
+    lines.push("- 详细自动化命令和人工核对步骤见 `acceptance/全局游戏时间验收说明.md`。");
+    lines.push("");
+
     for (const { test, result: testResult } of this.#tests) {
       lines.push(`### ${test.title}`);
       lines.push("");

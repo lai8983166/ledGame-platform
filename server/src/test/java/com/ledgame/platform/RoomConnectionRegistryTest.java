@@ -73,6 +73,39 @@ class RoomConnectionRegistryTest {
         assertThat(registry.find("192.168.1.27")).containsEntry("online", false);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void preservesGlobalGameTimeAcrossStartPauseAndResumeAnchors() throws Exception {
+        WebSocketSession session = session("session-timing", "192.168.1.28");
+        registry.register(session, objectMapper.readTree("{\"type\":\"HELLO\"}"));
+        registry.accept(session, objectMapper.readTree("""
+                {"type":"GAME_STARTED","eventId":"timing-1","sequence":1,"state":{"engineState":"RUNNING","gameId":7,"gameTime":{"mode":"LIMITED","remainingMillis":60000,"running":true}}}
+                """));
+        String startedAt = String.valueOf(registry.find("192.168.1.28").get("lastEventAt"));
+        Thread.sleep(2L);
+
+        registry.accept(session, objectMapper.readTree("""
+                {"type":"GAME_TIMING_CHANGED","eventId":"timing-2","sequence":2,"state":{"engineState":"SETTLING","gameId":7,"gameTime":{"mode":"LIMITED","remainingMillis":57000,"running":false}}}
+                """));
+
+        Map<String, Object> paused = registry.find("192.168.1.28");
+        assertThat(paused).containsEntry("lastEventType", "GAME_TIMING_CHANGED");
+        assertThat(paused.get("lastEventAt")).isNotEqualTo(startedAt);
+        Map<String, Object> state = (Map<String, Object>) paused.get("state");
+        assertThat((Map<String, Object>) state.get("gameTime"))
+                .containsEntry("mode", "LIMITED")
+                .containsEntry("remainingMillis", 57_000)
+                .containsEntry("running", false);
+
+        registry.accept(session, objectMapper.readTree("""
+                {"type":"ROOM_SNAPSHOT","eventId":"timing-3","sequence":3,"state":{"engineState":"RUNNING","gameId":7,"gameTime":{"mode":"LIMITED","remainingMillis":55000,"running":true}}}
+                """));
+        Map<String, Object> resumedState = (Map<String, Object>) registry.find("192.168.1.28").get("state");
+        assertThat((Map<String, Object>) resumedState.get("gameTime"))
+                .containsEntry("remainingMillis", 55_000)
+                .containsEntry("running", true);
+    }
+
     private static WebSocketSession session(String id, String ip) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);

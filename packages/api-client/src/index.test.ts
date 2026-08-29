@@ -82,6 +82,18 @@ describe("platform api client player info", () => {
     );
   });
 
+  it("preserves the optional global game-time contract in room snapshots", async () => {
+    const response = [{
+      ip: "192.168.1.25", deviceId: "game-01", roomId: "room-01", roomName: "A区游戏桌",
+      connectionId: "connection-1", online: true,
+      state: { engineState: "RUNNING", gameTime: { mode: "LIMITED", remainingMillis: 61_000, running: true } },
+      lastSequence: 4, lastEventType: "GAME_STARTED", lastEventAt: "2026-08-09T12:00:00.000Z", queueLength: 0,
+    }];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })));
+
+    await expect(createPlatformApiClient().listRooms()).resolves.toEqual(response);
+  });
+
   it("soft deletes a member by immutable database id", async () => {
     const response = { id: 42, phone: "13800138000", status: "DELETED", deletedAt: "2026-08-26T12:00:00Z" };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));

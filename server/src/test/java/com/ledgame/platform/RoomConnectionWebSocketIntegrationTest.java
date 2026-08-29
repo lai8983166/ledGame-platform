@@ -46,6 +46,13 @@ class RoomConnectionWebSocketIntegrationTest {
             Map<String, Object> online = awaitRoom(room -> Boolean.TRUE.equals(room.get("online"))
                     && "127.0.0.1".equals(room.get("ip")));
             assertThat(online).containsEntry("queueLength", 1);
+            session.sendMessage(new TextMessage("""
+                    {"type":"GAME_TIMING_CHANGED","eventId":"integration-game-2","sequence":2,"state":{"engineState":"RUNNING","gameName":"Color Rush","gameTime":{"mode":"UNLIMITED","remainingMillis":null,"running":true}}}
+                    """));
+            Map<String, Object> timed = awaitRoom(room -> "GAME_TIMING_CHANGED".equals(room.get("lastEventType")));
+            assertThat((Map<String, Object>) ((Map<String, Object>) timed.get("state")).get("gameTime"))
+                    .containsEntry("mode", "UNLIMITED")
+                    .containsEntry("running", true);
             ResponseEntity<Map> renamed = http.exchange(
                     "/api/rooms/127.0.0.1", HttpMethod.PUT,
                     new HttpEntity<>(Map.of("roomName", "测试房间")), Map.class);
@@ -55,7 +62,7 @@ class RoomConnectionWebSocketIntegrationTest {
 
             session.close();
             Map<String, Object> offline = awaitRoom(room -> Boolean.FALSE.equals(room.get("online")));
-            assertThat(offline).containsEntry("lastSequence", 1);
+            assertThat(offline).containsEntry("lastSequence", 2);
             assertThat(offline).containsEntry("roomName", "测试房间");
         } finally {
             if (session.isOpen()) session.close();
