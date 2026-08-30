@@ -24,6 +24,15 @@ describe("authoritative points projections", () => {
     expect(records).toContain("item.terminationReason");
   });
 
+  it("uses real binding and charge records without the obsolete game data tab", () => {
+    expect(records).toContain('/api/records/wristband-bindings');
+    expect(records).toContain('/api/records/wristband-charges');
+    expect(records).toContain('data-testid="admin-binding-records"');
+    expect(records).toContain('data-testid="admin-charge-records"');
+    expect(records).not.toContain('id: "games"');
+    expect(records).not.toContain("gameConfigs");
+  });
+
   it("gives acceptance stable Player Info business selectors", () => {
     expect(kiosk).toContain('data-testid="kiosk-info-points-total"');
     expect(kiosk).toContain('data-testid="kiosk-info-rank"');

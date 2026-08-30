@@ -191,6 +191,36 @@ class CoreFlowApiIntegrationTest {
     }
 
     @Test
+    void listsRealWristbandBindingAndChargeRecords() {
+        long memberId = createReadyWristband("13900139000", "流水玩家", 45);
+
+        ResponseEntity<List<Map<String, Object>>> bindings = http.exchange(
+                "/api/records/wristband-bindings",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<>() {});
+        assertThat(bindings.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(bindings.getBody()).singleElement().satisfies(record -> assertThat(record)
+                .containsEntry("uid", "2283055618")
+                .containsEntry("memberName", "流水玩家")
+                .containsEntry("status", "READY")
+                .containsEntry("durationMinutes", 45));
+        assertThat(number(bindings.getBody().get(0).get("memberId"))).isEqualTo(memberId);
+
+        ResponseEntity<List<Map<String, Object>>> charges = http.exchange(
+                "/api/records/wristband-charges",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<>() {});
+        assertThat(charges.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(charges.getBody()).singleElement().satisfies(record -> assertThat(record)
+                .containsEntry("uid", "2283055618")
+                .containsEntry("durationMinutes", 45)
+                .containsEntry("unitPriceCents", 100)
+                .containsEntry("amountCents", 4500));
+    }
+
+    @Test
     void firstValidGameSwipeActivatesReadyBindingAndRepeatedSwipeDoesNotResetTime() {
         long memberId = createReadyWristband("13700137000", "计时玩家", 60);
 

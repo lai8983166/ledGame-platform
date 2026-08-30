@@ -21,6 +21,8 @@ import {
   startChargeSession,
   succeedChargeSubmit,
 } from "../wristbandChargeSession";
+import { operatorSession } from "../operatorSession";
+import { canUseOperatorCapability } from "../operatorPolicy";
 
 const emit = defineEmits<{ toast: [message: string] }>();
 const props = defineProps<{ locale: PlatformLocale }>();
@@ -52,6 +54,7 @@ const clearUid = ref("");
 const reclaimUid = ref("");
 const pendingWristbandAction = ref<PendingWristbandAction | null>(null);
 const wristbandActionSubmitting = ref(false);
+const canClearBalances = computed(() => canUseOperatorCapability(operatorSession.current.value, "clearWristbandBalance"));
 
 const stateMeta: Record<WristbandState, { label: string; description: string; tone: StatusTone }> = {
   empty: { label: "待充时", description: "店员可读取 UID 并录入购买时长", tone: "neutral" },
@@ -299,7 +302,7 @@ onBeforeUnmount(() => {
     </template>
   </BaseModal>
 
-  <section class="process-card wristband-workbench-card glass-panel wristband-clear-card" data-testid="admin-wristband-clear-card">
+  <section v-if="canClearBalances" class="process-card wristband-workbench-card glass-panel wristband-clear-card" data-testid="admin-wristband-clear-card">
     <header><span class="process-step process-step--danger">!</span><div><p class="section-eyebrow">OPERATOR ACTION</p><h2>主动清除手环可用余额</h2><p>需要作废尚未绑定的已充时手环时，直接刷真实 UID 后清除。已绑定或计时中的手环不会被误清。</p></div></header>
     <div class="process-form">
       <label class="form-field"><span>手环 UID <b>*</b></span><input v-model="clearUid" inputmode="numeric" autocomplete="off" maxlength="32" placeholder="请刷手环，例：2283055618" @input="actionError = ''" @keydown.enter.prevent="clearBalanceFromUid" /><small>读卡器会自动输入数字并发送回车。</small></label>
@@ -320,7 +323,7 @@ onBeforeUnmount(() => {
   <section class="wristband-table-card glass-panel">
     <header class="wristband-table-header"><div><p class="section-eyebrow">SERVER DATA</p><h2>后端手环状态</h2><p>列表来自本机后端 SQLite，不是页面内置演示数据。</p></div><div class="wristband-table-actions"><button class="secondary-button compact-button" data-testid="admin-wristbands-refresh" type="button" :disabled="refreshing" @click="loadWristbands"><AppIcon name="refresh" :size="17" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新数据" }}</button><select v-model="statusFilter" class="select-control" aria-label="筛选手环状态"><option value="all">全部状态</option><option v-for="state in ['empty','charged','ready','active','expired'] as WristbandState[]" :key="state" :value="state">{{ stateMeta[state].label }}</option></select></div></header>
     <p v-if="actionError" class="form-error"><AppIcon name="alert" :size="16" />{{ actionError }}</p>
-    <div class="data-table-wrap"><table class="data-table"><thead><tr><th>手环 UID</th><th>状态</th><th>本次时长</th><th>当前剩余</th><th>关联会员</th><th>状态说明</th><th>操作</th></tr></thead><tbody><tr v-for="wristband in filteredWristbands" :key="wristband.uid" :data-testid="`admin-wristband-${wristband.uid}`"><td><code data-testid="admin-wristband-uid">{{ wristband.uid }}</code></td><td data-testid="admin-wristband-status" :data-status="wristband.state"><StatusBadge :tone="stateMeta[wristband.state].tone">{{ stateMeta[wristband.state].label }}</StatusBadge></td><td><strong data-testid="admin-wristband-duration">{{ wristband.durationMinutes ? `${wristband.durationMinutes} 分钟` : '—' }}</strong></td><td data-testid="admin-wristband-remaining"><strong>{{ formatRemaining(wristband) }}</strong></td><td data-testid="admin-wristband-member"><template v-if="wristband.memberName"><strong>{{ wristband.memberName }}</strong><small class="cell-sub">{{ wristband.phone }}</small></template><span v-else>尚未绑定</span></td><td>{{ stateMeta[wristband.state].description }}</td><td><button v-if="wristband.state === 'charged'" class="secondary-button compact-button" data-testid="admin-wristband-clear" type="button" @click="clearBalance(wristband)">清除可用余额</button><button v-else-if="wristband.state === 'ready'" class="secondary-button compact-button" data-testid="admin-wristband-unbind" type="button" @click="unbind(wristband)">解除绑定</button><button v-else-if="wristband.state === 'expired'" class="secondary-button compact-button" data-testid="admin-wristband-reclaim" type="button" @click="reclaimWristband(wristband)">回收手环</button><span v-else>—</span></td></tr><tr v-if="!filteredWristbands.length"><td colspan="7">暂无后端数据。请先启动服务并为实体手环充时。</td></tr></tbody></table></div>
+    <div class="data-table-wrap"><table class="data-table"><thead><tr><th>手环 UID</th><th>状态</th><th>本次时长</th><th>当前剩余</th><th>关联会员</th><th>状态说明</th><th>操作</th></tr></thead><tbody><tr v-for="wristband in filteredWristbands" :key="wristband.uid" :data-testid="`admin-wristband-${wristband.uid}`"><td><code data-testid="admin-wristband-uid">{{ wristband.uid }}</code></td><td data-testid="admin-wristband-status" :data-status="wristband.state"><StatusBadge :tone="stateMeta[wristband.state].tone">{{ stateMeta[wristband.state].label }}</StatusBadge></td><td><strong data-testid="admin-wristband-duration">{{ wristband.durationMinutes ? `${wristband.durationMinutes} 分钟` : '—' }}</strong></td><td data-testid="admin-wristband-remaining"><strong>{{ formatRemaining(wristband) }}</strong></td><td data-testid="admin-wristband-member"><template v-if="wristband.memberName"><strong>{{ wristband.memberName }}</strong><small class="cell-sub">{{ wristband.phone }}</small></template><span v-else>尚未绑定</span></td><td>{{ stateMeta[wristband.state].description }}</td><td><button v-if="canClearBalances && wristband.state === 'charged'" class="secondary-button compact-button" data-testid="admin-wristband-clear" type="button" @click="clearBalance(wristband)">清除可用余额</button><button v-else-if="wristband.state === 'ready'" class="secondary-button compact-button" data-testid="admin-wristband-unbind" type="button" @click="unbind(wristband)">解除绑定</button><button v-else-if="wristband.state === 'expired'" class="secondary-button compact-button" data-testid="admin-wristband-reclaim" type="button" @click="reclaimWristband(wristband)">回收手环</button><span v-else>—</span></td></tr><tr v-if="!filteredWristbands.length"><td colspan="7">暂无后端数据。请先启动服务并为实体手环充时。</td></tr></tbody></table></div>
     <footer class="table-footer"><span>所有状态来自本机后端</span><strong>共 {{ filteredWristbands.length }} 只</strong></footer>
   </section>
 </template>

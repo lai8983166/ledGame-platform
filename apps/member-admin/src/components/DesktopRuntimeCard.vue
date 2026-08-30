@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 import { memberAdminCatalogs, type MemberAdminMessageKey } from "../localization";
+import { platformApi } from "../platformApi";
 
 const emit = defineEmits<{ toast: [message: string] }>();
 const props = defineProps<{ locale: PlatformLocale }>();
@@ -23,7 +24,16 @@ async function restart() {
   busy.value = true;
   try {
     diagnostics.value = await desktop.restartBackend(Number(port.value));
-    emit("toast", diagnostics.value.state === "online" ? "本机服务已在新端口启动" : diagnostics.value.message);
+    if (diagnostics.value.state === "online") {
+      try {
+        await platformApi.recordSystemSettingsChange();
+        emit("toast", "本机服务已在新端口启动");
+      } catch {
+        emit("toast", "本机服务已在新端口启动，但操作留痕写入失败");
+      }
+    } else {
+      emit("toast", diagnostics.value.message);
+    }
   } finally { busy.value = false; }
 }
 

@@ -6,6 +6,16 @@ import os from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "../..");
+const factoryUsername = "desktop-admin";
+const factoryPassword = "desktop-password";
+
+async function login(page) {
+  await expect(page.getByTestId("operator-login-page")).toBeVisible();
+  await page.getByTestId("operator-login-username").fill(factoryUsername);
+  await page.getByTestId("operator-login-password").fill(factoryPassword);
+  await page.getByTestId("operator-login-submit").click();
+  await expect(page.getByTestId("operator-authenticated-app")).toBeVisible();
+}
 
 async function freePort() {
   return await new Promise((resolve, reject) => {
@@ -48,13 +58,22 @@ test("member admin owns an isolated backend, SQLite and restartable dynamic port
         VITE_MEMBER_ADMIN_DEV_URL: `http://127.0.0.1:${rendererPort}`,
         LEDGAME_USER_DATA: userData,
         LEDGAME_PLATFORM_PORT: String(firstPort),
+        PLATFORM_FACTORY_ADMIN_USERNAME: factoryUsername,
+        PLATFORM_FACTORY_ADMIN_PASSWORD: factoryPassword,
+        PLATFORM_FACTORY_ADMIN_DISPLAY_NAME: "桌面测试管理员",
       },
     });
     const page = await desktop.firstWindow();
     await expect(page.locator("#app")).toBeVisible();
-    await expect(page.getByTestId("admin-platform-connection")).toContainText(/已连接本机后端|connected/i, { timeout: 45000 });
-
     await expect.poll(async () => (await page.evaluate(() => window.memberAdminDesktop?.diagnostics())).state, { timeout: 45000 }).toBe("online");
+    await login(page);
+    await expect(page.getByTestId("admin-platform-connection")).toContainText(/已连接本机后端|connected/i, { timeout: 45000 });
+    await page.getByTestId("operator-logout").click();
+    await expect(page.getByTestId("operator-login-page")).toBeVisible();
+    await login(page);
+    await page.reload();
+    await expect(page.getByTestId("operator-login-page")).toBeVisible();
+    await login(page);
     let diagnostics = await page.evaluate(() => window.memberAdminDesktop.diagnostics());
     expect(diagnostics.port).toBe(firstPort);
     expect(diagnostics.dataPath).toContain(userData);

@@ -66,51 +66,6 @@ export interface Wristband {
   startedAt: string | null;
 }
 
-export interface CardIssueRecord {
-  id: string;
-  braceletId: string;
-  memberName: string;
-  memberAccount: string;
-  issuedAt: string;
-  duration: number;
-  status: "activated" | "unused" | "expired";
-}
-
-export interface PlayRecord {
-  id: string;
-  memberName: string;
-  braceletId: string;
-  roomName: string;
-  score: number;
-  pointsAwarded?: number;
-  scoringPolicy?: string | null;
-  status?: string;
-  terminationReason?: string | null;
-  startedAt: string;
-  endedAt: string;
-}
-
-export interface TransactionRecord {
-  id: string;
-  memberName: string;
-  memberAccount: string;
-  amount: number;
-  tradedAt: string;
-  status: "success" | "refunded" | "pending";
-}
-
-export interface GameConfig {
-  id: string;
-  name: string;
-  category: string;
-  levels: string[];
-  lives: number;
-  scoringRule: string;
-  assetPath: string;
-  components: string[];
-  status: "enabled" | "disabled";
-}
-
 export interface FeatureSetting {
   id: string;
   name: string;

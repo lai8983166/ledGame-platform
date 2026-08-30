@@ -44,6 +44,18 @@ describe("shared desktop runtime", () => {
     expect(() => validateApiRequest({ path: "/api/../secret" })).toThrow();
   });
 
+  it("whitelists only the operator attribution header from the renderer", () => {
+    expect(validateApiRequest({
+      path: "/api/members",
+      method: "POST",
+      body: "{}",
+      headers: { "X-Operator-Id": "42", Authorization: "not-allowed", "X-Arbitrary": "drop-me" },
+    }).headers).toEqual({ "content-type": "application/json", "x-operator-id": "42" });
+    expect(() => validateApiRequest({
+      path: "/api/members", method: "POST", body: "{}", headers: { "X-Operator-Id": "not-a-number" },
+    })).toThrowError(expect.objectContaining({ code: "INVALID_OPERATOR_ID" }));
+  });
+
   it("limits response size and supports a bounded health timeout", async () => {
     const oversized = "x".repeat(1024 * 1024 + 1);
     const transport = createApiTransport(() => "http://127.0.0.1:8090", {

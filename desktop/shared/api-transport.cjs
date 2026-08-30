@@ -21,7 +21,17 @@ function validateApiRequest(request) {
     throw Object.assign(new Error("请求正文过大"), { code: "REQUEST_TOO_LARGE" });
   }
   if (body) JSON.parse(body);
-  return { path, method, body, headers: { "content-type": "application/json" } };
+  const headers = { "content-type": "application/json" };
+  const operatorHeader = Object.entries(request?.headers || {})
+    .find(([name]) => name.toLowerCase() === "x-operator-id")?.[1];
+  if (operatorHeader !== undefined) {
+    const value = String(operatorHeader).trim();
+    if (!/^[1-9]\d{0,18}$/.test(value) || BigInt(value) > 9223372036854775807n) {
+      throw Object.assign(new Error("操作账号 ID 无效"), { code: "INVALID_OPERATOR_ID" });
+    }
+    headers["x-operator-id"] = value;
+  }
+  return { path, method, body, headers };
 }
 
 function createApiTransport(getTarget, { fetchImpl = fetch, timeoutMs = 10000 } = {}) {

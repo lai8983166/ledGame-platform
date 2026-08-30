@@ -25,7 +25,7 @@ pnpm test:acceptance:unit
 pnpm test:acceptance
 ```
 
-当前共有十个场景，在开发电脑上完整运行通常需要约 10 分钟。除充值、注册、绑定、游戏和排队外，还会验证自然完成积分、主动中止零积分、平台离线补送、游戏后端重启恢复、两人依次刷卡与逐会员结算，以及 PRODUCTION 软件形态的 TCP 地砖输入。开发过程中如果只想运行 Debug 黄金流程，可以执行：
+完整验收在开发电脑上通常需要约 10 分钟。除充值、注册、绑定、游戏和排队外，还会验证操作账号登录与界面权限、自然完成积分、主动中止零积分、平台离线补送、游戏后端重启恢复、两人依次刷卡与逐会员结算，以及 PRODUCTION 软件形态的 TCP 地砖输入。开发过程中如果只想运行 Debug 黄金流程，可以执行：
 
 ```shell
 pnpm exec playwright test --config acceptance/playwright.config.ts --grep "门店黄金流程"
@@ -65,6 +65,8 @@ ACCEPTANCE_HEADED=1 pnpm test:acceptance
 - 本次测试各进程的日志文件。
 
 自助注册端没有自己的数据库，它通过 HTTP 请求本次测试启动的会员管理后端。测试不会读取或改写门店的正式数据库和操作员配置。正常结束后，测试只会停止自己启动的进程树，并删除本次测试的临时运行目录。
+
+验收环境使用集中定义的专用出厂账号 `acceptance-admin / acceptance-password`，不会依赖或修改产品默认的 `admin / 888888`。所有需要操作会员管理端页面的场景都会先通过同一登录 helper 完成登录；账号、会员和操作日志都只写入该场景的临时 SQLite。
 
 ## 测试报告与故障诊断
 

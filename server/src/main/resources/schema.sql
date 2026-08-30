@@ -88,3 +88,30 @@ CREATE TABLE IF NOT EXISTS room_settings (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS operator_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    display_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    account_type TEXT NOT NULL CHECK (account_type IN ('FACTORY_ADMIN', 'OPERATOR')),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_by_operator_id INTEGER REFERENCES operator_accounts(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS operator_action_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    operator_id INTEGER NOT NULL REFERENCES operator_accounts(id),
+    operator_username TEXT NOT NULL,
+    operator_display_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    summary_json TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_operator_action_logs_operator_created
+    ON operator_action_logs(operator_id, created_at DESC);

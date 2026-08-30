@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
+import type { OperatorAccount } from "@ledgame/platform-api-client";
 import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import StatusBadge from "../components/StatusBadge.vue";
@@ -7,10 +8,14 @@ import DesktopRuntimeCard from "../components/DesktopRuntimeCard.vue";
 import { createFeatureSettings } from "../data";
 import type { FeatureSetting } from "../types";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
+import { platformApi } from "../platformApi";
+import { createOperatorAccountManager } from "../operatorAccountState";
+import { memberAdminMessage } from "../localization";
 
-type SettingsTab = "basic" | "features" | "upload";
+type SettingsTab = "accounts" | "basic" | "features" | "upload";
 const emit = defineEmits<{ toast: [message: string] }>();
-defineProps<{ locale: PlatformLocale }>();
+const props = defineProps<{ locale: PlatformLocale }>();
+const text = (key: Parameters<typeof memberAdminMessage>[1]) => memberAdminMessage(props.locale, key);
 const activeTab = ref<SettingsTab>("basic");
 const braceletMinutes = ref<number | null>(60);
 const savedMinutes = ref(60);
@@ -24,6 +29,57 @@ const automaticUpload = ref(false);
 const uploadError = ref("");
 const testing = ref(false);
 const lastResult = ref("今日 14:30 · 模拟任务完成");
+const accountManager = reactive(createOperatorAccountManager(platformApi));
+const accountDialog = ref<"create" | "edit" | "password" | null>(null);
+const selectedAccount = ref<OperatorAccount | null>(null);
+const accountForm = reactive({ username: "", displayName: "", password: "" });
+
+const openCreateAccount = () => {
+  selectedAccount.value = null;
+  Object.assign(accountForm, { username: "", displayName: "", password: "" });
+  accountManager.error = "";
+  accountDialog.value = "create";
+};
+
+const openEditAccount = (account: OperatorAccount) => {
+  selectedAccount.value = account;
+  Object.assign(accountForm, { username: account.username, displayName: account.displayName, password: "" });
+  accountManager.error = "";
+  accountDialog.value = "edit";
+};
+
+const openPasswordReset = (account: OperatorAccount) => {
+  selectedAccount.value = account;
+  accountForm.password = "";
+  accountManager.error = "";
+  accountDialog.value = "password";
+};
+
+const submitAccountDialog = async () => {
+  let succeeded = false;
+  if (accountDialog.value === "create") {
+    succeeded = await accountManager.create({ ...accountForm });
+  } else if (accountDialog.value === "edit" && selectedAccount.value) {
+    succeeded = await accountManager.update(selectedAccount.value.id, {
+      username: accountForm.username,
+      displayName: accountForm.displayName,
+    });
+  } else if (accountDialog.value === "password" && selectedAccount.value) {
+    succeeded = await accountManager.resetPassword(selectedAccount.value.id, accountForm.password);
+  }
+  if (succeeded) {
+    accountDialog.value = null;
+    emit("toast", "操作账号已更新");
+  }
+};
+
+const toggleAccount = async (account: OperatorAccount) => {
+  if (await accountManager.setEnabled(account.id, !account.enabled)) {
+    emit("toast", `账号 ${account.username} 已${account.enabled ? "停用" : "启用"}`);
+  }
+};
+
+onMounted(() => void accountManager.load());
 
 const addressPlaceholder = computed(() => targetType.value === "email" ? "name@example.com" : "https://server.example.com/upload");
 
@@ -80,12 +136,19 @@ const testUpload = () => {
 <template>
   <section class="settings-layout">
     <nav class="settings-nav glass-panel" aria-label="设置分类">
-      <button v-for="item in [{id:'basic',label:'基础设置',icon:'clock',desc:'手环与计时规则'}, {id:'features',label:'功能开关',icon:'settings',desc:'启用或关闭功能'}, {id:'upload',label:'数据上传',icon:'upload',desc:'邮箱与服务器目标'}]" :key="item.id" type="button" :class="{ active: activeTab === item.id }" @click="activeTab = item.id as SettingsTab"><span><AppIcon :name="item.icon" /></span><div><strong>{{ item.label }}</strong><small>{{ item.desc }}</small></div><AppIcon name="chevron" :size="16" /></button>
+      <button v-for="item in [{id:'accounts',label:'操作账号',icon:'members',desc:'创建与停用次级账号'}, {id:'basic',label:'基础设置',icon:'clock',desc:'手环与计时规则'}, {id:'features',label:'功能开关',icon:'settings',desc:'启用或关闭功能'}, {id:'upload',label:'数据上传',icon:'upload',desc:'邮箱与服务器目标'}]" :key="item.id" type="button" :class="{ active: activeTab === item.id }" @click="activeTab = item.id as SettingsTab"><span><AppIcon :name="item.icon" /></span><div><strong>{{ item.label }}</strong><small>{{ item.desc }}</small></div><AppIcon name="chevron" :size="16" /></button>
     </nav>
 
     <div class="settings-content">
       <DesktopRuntimeCard :locale="locale" @toast="emit('toast', $event)" />
-      <section v-if="activeTab === 'basic'" class="settings-card glass-panel">
+      <section v-if="activeTab === 'accounts'" class="settings-card glass-panel" data-testid="operator-account-management">
+        <header class="settings-card__header"><span class="settings-icon"><AppIcon name="members" /></span><div><p class="section-eyebrow">{{ text("operatorAccountsEyebrow") }}</p><h2>{{ text("operatorAccountsTitle") }}</h2><p>{{ text("operatorAccountsDescription") }}</p></div><button class="primary-button" data-testid="operator-account-create" type="button" @click="openCreateAccount"><AppIcon name="plus" :size="17" />{{ text("operatorAccountsCreate") }}</button></header>
+        <p v-if="accountManager.error" class="form-error" data-testid="operator-account-error"><AppIcon name="alert" :size="16" />{{ accountManager.error }}</p>
+        <div class="data-table-wrap"><table class="data-table"><thead><tr><th>{{ text("operatorAccountColumnAccount") }}</th><th>{{ text("operatorAccountColumnDisplayName") }}</th><th>{{ text("operatorAccountColumnType") }}</th><th>{{ text("operatorAccountColumnStatus") }}</th><th>{{ text("operatorAccountColumnActions") }}</th></tr></thead><tbody><tr v-for="account in accountManager.accounts" :key="account.id" :data-testid="`operator-account-${account.id}`"><td><strong>{{ account.username }}</strong></td><td>{{ account.displayName }}</td><td><StatusBadge :tone="account.accountType === 'FACTORY_ADMIN' ? 'info' : 'neutral'">{{ account.accountType === "FACTORY_ADMIN" ? "出厂管理员" : "操作员" }}</StatusBadge></td><td><StatusBadge :tone="account.enabled ? 'success' : 'danger'">{{ account.enabled ? "已启用" : "已停用" }}</StatusBadge></td><td><div class="wristband-table-actions"><template v-if="account.accountType === 'OPERATOR'"><button class="secondary-button compact-button" type="button" @click="openEditAccount(account)">{{ text("operatorAccountEdit") }}</button><button class="secondary-button compact-button" type="button" @click="openPasswordReset(account)">{{ text("operatorAccountResetPassword") }}</button><button class="secondary-button compact-button" type="button" :disabled="accountManager.submitting" @click="toggleAccount(account)">{{ account.enabled ? "停用" : "启用" }}</button></template><button v-else class="secondary-button compact-button" type="button" @click="openPasswordReset(account)">修改自己的密码</button></div></td></tr><tr v-if="!accountManager.accounts.length"><td colspan="5">{{ accountManager.loading ? "正在读取账号…" : "暂无账号" }}</td></tr></tbody></table></div>
+        <footer class="settings-actions"><button class="secondary-button" type="button" :disabled="accountManager.loading" @click="accountManager.load"><AppIcon name="refresh" :size="17" />刷新账号列表</button></footer>
+      </section>
+
+      <section v-else-if="activeTab === 'basic'" class="settings-card glass-panel">
         <header class="settings-card__header"><span class="settings-icon"><AppIcon name="clock" /></span><div><p class="section-eyebrow">DURATION SHORTCUT</p><h2>常用充时快捷值</h2><p>仅作为柜台录入本次购买时长时的快捷选择，不会自动写入所有手环。</p></div><StatusBadge tone="info">常用 {{ savedMinutes }} 分钟</StatusBadge></header>
         <div class="duration-editor">
           <label class="form-field"><span>常用分钟数 <b>*</b></span><div class="duration-input"><input v-model.number="braceletMinutes" type="number" min="1" max="1440" @input="durationError = ''" /><span>分钟</span></div><small v-if="durationError" class="field-error">{{ durationError }}</small><small v-else>每只手环仍可在办理时输入不同分钟数</small></label>
@@ -119,6 +182,16 @@ const testUpload = () => {
       </section>
     </div>
   </section>
+
+  <BaseModal v-if="accountDialog" :title="accountDialog === 'create' ? '新建操作员' : accountDialog === 'edit' ? '编辑操作员' : '重设账号密码'" description="账号修改后对下一次登录立即生效。" size="small" @close="accountDialog = null">
+    <div v-if="accountDialog === 'create' || accountDialog === 'edit'" class="form-grid">
+      <label class="form-field"><span>用户名 <b>*</b></span><input v-model="accountForm.username" data-testid="operator-account-username" autocomplete="off" maxlength="32" @input="accountManager.error = ''" /></label>
+      <label class="form-field"><span>显示名称 <b>*</b></span><input v-model="accountForm.displayName" data-testid="operator-account-display-name" maxlength="40" @input="accountManager.error = ''" /></label>
+    </div>
+    <label v-if="accountDialog === 'create' || accountDialog === 'password'" class="form-field"><span>{{ accountDialog === "create" ? "初始密码" : "新密码" }} <b>*</b></span><input v-model="accountForm.password" data-testid="operator-account-password" type="password" autocomplete="new-password" @input="accountManager.error = ''" /><small>6 到 72 个字符</small></label>
+    <p v-if="accountManager.error" class="form-error"><AppIcon name="alert" :size="16" />{{ accountManager.error }}</p>
+    <template #footer><button class="ghost-button" type="button" :disabled="accountManager.submitting" @click="accountDialog = null">取消</button><button class="primary-button" data-testid="operator-account-submit" type="button" :disabled="accountManager.submitting" @click="submitAccountDialog">{{ accountManager.submitting ? "提交中…" : "确认保存" }}</button></template>
+  </BaseModal>
 
   <BaseModal v-if="pendingFeature" :title="`${pendingFeature.enabled ? '关闭' : '启用'}${pendingFeature.name}？`" description="这是会影响主要流程的功能开关。" size="small" @close="pendingFeature = null"><div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>确认功能影响</strong><p>{{ pendingFeature.description }}</p></div></div><p class="modal-copy">本次操作只更新当前演示界面，不会修改真实系统配置。</p><template #footer><button class="ghost-button" type="button" @click="pendingFeature = null">取消</button><button class="primary-button" type="button" @click="confirmFeatureToggle">确认{{ pendingFeature.enabled ? '关闭' : '启用' }}</button></template></BaseModal>
 </template>

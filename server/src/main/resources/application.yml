@@ -14,5 +14,10 @@ server:
 
 ledgame:
   time-zone: ${PLATFORM_TIME_ZONE:Asia/Shanghai}
+  operator-accounts:
+    factory:
+      username: ${PLATFORM_FACTORY_ADMIN_USERNAME:admin}
+      password: ${PLATFORM_FACTORY_ADMIN_PASSWORD:888888}
+      display-name: ${PLATFORM_FACTORY_ADMIN_DISPLAY_NAME:出厂管理员}
   room-connection:
     enabled: ${LED_ROOM_CONNECTION_ENABLED:true}

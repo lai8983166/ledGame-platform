@@ -20,6 +20,65 @@ describe("platform api client transport", () => {
     }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("adds only the current in-memory operator id to mutating requests", async () => {
+    const transport = vi.fn().mockResolvedValue({ status: 200, body: JSON.stringify({ ok: true }) });
+    const client = createPlatformApiClient({ transport, operatorIdProvider: () => 42 });
+
+    await client.request("/api/wristbands/charge", { method: "POST", body: "{}" });
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({ "x-operator-id": "42" }),
+    }));
+
+    await client.request("/api/rooms");
+    expect(transport.mock.calls[1][0].headers).not.toHaveProperty("x-operator-id");
+  });
+
+  it("does not add an operator header while logged out", async () => {
+    const transport = vi.fn().mockResolvedValue({ status: 200, body: "{}" });
+    const client = createPlatformApiClient({ transport, operatorIdProvider: () => null });
+    await client.request("/api/members", { method: "POST", body: "{}" });
+    expect(transport.mock.calls[0][0].headers).not.toHaveProperty("x-operator-id");
+  });
+});
+
+describe("platform operator account api", () => {
+  it("logs in and manages accounts without exposing password fields", async () => {
+    const responses = [
+      { id: 1, username: "admin", displayName: "出厂管理员", accountType: "FACTORY_ADMIN" },
+      [{ id: 1, username: "admin", displayName: "出厂管理员", accountType: "FACTORY_ADMIN", enabled: true }],
+      { id: 2, username: "counter", displayName: "前台", accountType: "OPERATOR", enabled: true },
+    ];
+    const transport = vi.fn()
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(responses[0]) })
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(responses[1]) })
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(responses[2]) });
+    const client = createPlatformApiClient({ transport });
+
+    await expect(client.loginOperator("admin", "888888")).resolves.toEqual(responses[0]);
+    await expect(client.listOperatorAccounts()).resolves.toEqual(responses[1]);
+    await expect(client.createOperatorAccount({
+      username: "counter", displayName: "前台", password: "123456",
+    })).resolves.toEqual(responses[2]);
+
+    expect(transport.mock.calls.map(([request]) => [request.path, request.method, request.body])).toEqual([
+      ["/api/operator-auth/login", "POST", JSON.stringify({ username: "admin", password: "888888" })],
+      ["/api/operator-accounts", "GET", undefined],
+      ["/api/operator-accounts", "POST", JSON.stringify({ username: "counter", displayName: "前台", password: "123456" })],
+    ]);
+  });
+
+  it("records a successful persistent system setting change", async () => {
+    const transport = vi.fn().mockResolvedValue({ status: 204, body: "" });
+    const client = createPlatformApiClient({ transport, operatorIdProvider: () => 7 });
+
+    await expect(client.recordSystemSettingsChange()).resolves.toBeUndefined();
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/api/operator-actions/system-settings",
+      method: "POST",
+      headers: expect.objectContaining({ "x-operator-id": "7" }),
+    }));
+  });
 });
 
 describe("platform api client player info", () => {

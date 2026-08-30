@@ -9,6 +9,11 @@ server:
   port: ${ACCEPTANCE_PLATFORM_PORT:0}
 
 ledgame:
+  operator-accounts:
+    factory:
+      username: ${ACCEPTANCE_FACTORY_ADMIN_USERNAME:acceptance-admin}
+      password: ${ACCEPTANCE_FACTORY_ADMIN_PASSWORD:acceptance-password}
+      display-name: ${ACCEPTANCE_FACTORY_ADMIN_DISPLAY_NAME:验收出厂管理员}
   acceptance:
     clock-offset-seconds: ${ACCEPTANCE_CLOCK_OFFSET_SECONDS:0}
   room-connection:

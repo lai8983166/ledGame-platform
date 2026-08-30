@@ -9,6 +9,10 @@ import MembersView from "./views/MembersView.vue";
 import RecordsView from "./views/RecordsView.vue";
 import RoomsView from "./views/RoomsView.vue";
 import SettingsView from "./views/SettingsView.vue";
+import LoginView from "./views/LoginView.vue";
+import type { OperatorProfile } from "@ledgame/platform-api-client";
+import { operatorSession } from "./operatorSession";
+import { canUseOperatorCapability } from "./operatorPolicy";
 import type { PageId } from "./types";
 import {
   PLATFORM_LOCALES,
@@ -29,6 +33,7 @@ const mobileNavOpen = ref(false);
 const languageOpen = ref(false);
 const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, MEMBER_ADMIN_LOCALE_STORAGE_KEY));
 const toastMessage = ref("");
+const currentOperator = operatorSession.current;
 let toastTimer: number | undefined;
 
 const copy = computed(() => memberAdminCatalogs[locale.value]);
@@ -51,7 +56,9 @@ const descriptionKeys: Record<PageId, MemberAdminMessageKey> = {
   ranking: "descRanking",
   settings: "descSettings",
 };
-const navItems = computed(() => navDefinitions.map((item) => ({ ...item, label: text(item.labelKey) })));
+const navItems = computed(() => navDefinitions
+  .filter((item) => item.id !== "settings" || canUseOperatorCapability(currentOperator.value, "settings"))
+  .map((item) => ({ ...item, label: text(item.labelKey) })));
 const currentMeta = computed(() => ({
   title: navItems.value.find((item) => item.id === activePage.value)?.label ?? "",
   description: text(descriptionKeys[activePage.value]),
@@ -73,6 +80,21 @@ const showToast = (message: string) => {
   toastMessage.value = message;
   if (toastTimer) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => (toastMessage.value = ""), 2600);
+};
+
+const completeLogin = (profile: OperatorProfile) => {
+  operatorSession.login(profile);
+  activePage.value = "wristbands";
+  mobileNavOpen.value = false;
+  languageOpen.value = false;
+};
+
+const logout = () => {
+  activePage.value = "wristbands";
+  mobileNavOpen.value = false;
+  languageOpen.value = false;
+  toastMessage.value = "";
+  operatorSession.logout();
 };
 
 const onKeydown = (event: KeyboardEvent) => {
@@ -99,7 +121,9 @@ onBeforeUnmount(() => {
     <span class="ambient ambient--three"></span>
   </div>
 
-  <div class="admin-layout">
+  <LoginView v-if="!currentOperator" :locale="locale" @authenticated="completeLogin" />
+
+  <div v-else class="admin-layout" data-testid="operator-authenticated-app">
     <div v-if="mobileNavOpen" class="mobile-nav-backdrop" aria-hidden="true" @click="mobileNavOpen = false"></div>
     <aside class="sidebar glass-panel" :class="{ 'sidebar--open': mobileNavOpen }">
       <div class="brand">
@@ -127,19 +151,14 @@ onBeforeUnmount(() => {
         >
           <span class="nav-item__icon"><AppIcon :name="item.icon" /></span>
           <span>{{ item.label }}</span>
-          <span v-if="item.id === 'rooms'" class="nav-item__count">3</span>
         </button>
       </nav>
 
       <div class="sidebar__status">
-        <div class="connection-card">
-          <span class="connection-card__icon"><AppIcon name="cloud" :size="19" /></span>
-          <div><strong>{{ text('systemHealthy') }}</strong><small><i></i> {{ text('roomsConnected') }}</small></div>
-        </div>
         <div class="admin-profile">
-          <span class="avatar avatar--admin">AD</span>
-          <div><strong>{{ text('storeManager') }}</strong><small>LED GAME</small></div>
-          <button class="icon-button" type="button" aria-label="退出演示账号"><AppIcon name="logout" :size="18" /></button>
+          <span class="avatar avatar--admin">{{ currentOperator.displayName.slice(0, 2).toUpperCase() }}</span>
+          <div><strong data-testid="current-operator-name">{{ currentOperator.displayName }}</strong><small>{{ currentOperator.username }}</small></div>
+          <button class="icon-button" data-testid="operator-logout" type="button" :aria-label="text('logout')" @click="logout"><AppIcon name="logout" :size="18" /></button>
         </div>
       </div>
     </aside>
@@ -183,12 +202,6 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <div class="live-chip"><span></span> {{ text('demoData') }}</div>
-          <button class="icon-button notification-button" type="button" :aria-label="text('notifications')">
-            <AppIcon name="bell" />
-            <span class="notification-button__dot"></span>
-          </button>
-          <div class="today"><strong>08月02日</strong><small>星期日 · 15:36</small></div>
         </div>
       </header>
 

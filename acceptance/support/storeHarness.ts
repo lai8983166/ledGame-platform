@@ -46,6 +46,8 @@ const platformRoot = path.resolve(process.cwd());
 const gameRoot = path.resolve(platformRoot, "..", "ledGame");
 const gameBackendRoot = path.resolve(platformRoot, "..", "ledGame-backend");
 const runtimeBase = path.resolve(platformRoot, "acceptance", ".runtime");
+export const ACCEPTANCE_FACTORY_USERNAME = "acceptance-admin";
+export const ACCEPTANCE_FACTORY_PASSWORD = "acceptance-password";
 
 async function httpOk(url: string): Promise<boolean> {
   const response = await fetch(url);
@@ -185,6 +187,7 @@ export class StoreAcceptanceHarness {
         this.#kioskPage.goto(`http://127.0.0.1:${this.#ports.kiosk}/`, { waitUntil: "domcontentloaded" }),
       ]);
     }
+    await this.#loginMemberAdmin();
     await expect(this.#adminPage.getByTestId("admin-page-wristbands")).toBeVisible();
     await expect(this.#kioskPage.getByTestId("kiosk-screen-home")).toBeVisible();
 
@@ -221,6 +224,9 @@ export class StoreAcceptanceHarness {
         VITE_MEMBER_ADMIN_DEV_URL: `http://127.0.0.1:${this.#ports.admin}`,
         LEDGAME_USER_DATA: path.join(electronUserData, "member-admin"),
         LEDGAME_PLATFORM_PORT: String(this.#ports.platform),
+        PLATFORM_FACTORY_ADMIN_USERNAME: ACCEPTANCE_FACTORY_USERNAME,
+        PLATFORM_FACTORY_ADMIN_PASSWORD: ACCEPTANCE_FACTORY_PASSWORD,
+        PLATFORM_FACTORY_ADMIN_DISPLAY_NAME: "验收出厂管理员",
       },
     });
     this.#adminPage = await this.#memberAdminElectron.firstWindow();
@@ -248,6 +254,15 @@ export class StoreAcceptanceHarness {
     await expect.poll(() => this.#registrationElectron!.windows().length).toBe(2);
     this.#kioskPage = this.#registrationElectron.windows().find((page) => page !== this.#registrationOperatorPage) ?? null;
     if (!this.#kioskPage) throw new Error("Registration kiosk customer window is missing");
+  }
+
+  async #loginMemberAdmin(): Promise<void> {
+    const page = this.adminPage;
+    await expect(page.getByTestId("operator-login-page")).toBeVisible();
+    await page.getByTestId("operator-login-username").fill(ACCEPTANCE_FACTORY_USERNAME);
+    await page.getByTestId("operator-login-password").fill(ACCEPTANCE_FACTORY_PASSWORD);
+    await page.getByTestId("operator-login-submit").click();
+    await expect(page.getByTestId("operator-authenticated-app")).toBeVisible();
   }
 
   async exitRegistrationKioskToOperator(): Promise<void> {
@@ -318,6 +333,9 @@ export class StoreAcceptanceHarness {
       ACCEPTANCE_PLATFORM_DB_PATH: path.join(this.#runDirectory, "platform.db"),
       ACCEPTANCE_PLATFORM_PORT: String(this.#ports.platform),
       ACCEPTANCE_CLOCK_OFFSET_SECONDS: String(clockOffsetSeconds),
+      ACCEPTANCE_FACTORY_ADMIN_USERNAME: ACCEPTANCE_FACTORY_USERNAME,
+      ACCEPTANCE_FACTORY_ADMIN_PASSWORD: ACCEPTANCE_FACTORY_PASSWORD,
+      ACCEPTANCE_FACTORY_ADMIN_DISPLAY_NAME: "验收出厂管理员",
     });
     await this.#ready("Platform server", `${this.platformBaseUrl}/api/health`, this.#platformProcess, 90_000);
   }

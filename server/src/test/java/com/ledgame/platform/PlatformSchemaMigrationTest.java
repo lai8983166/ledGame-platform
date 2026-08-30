@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -11,8 +14,87 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.dao.DataAccessException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class PlatformSchemaMigrationTest {
+    @Test
+    void bootstrapsOneConfigurableFactoryAdminAndNeverOverwritesExistingAccounts() throws Exception {
+        Path database = Files.createTempFile("platform-operator-bootstrap-", ".db");
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    "jdbc:sqlite:" + database.toAbsolutePath());
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            try (var connection = dataSource.getConnection()) {
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            }
+
+            OperatorAccountProperties properties = new OperatorAccountProperties();
+            properties.getFactory().setUsername("factory-test");
+            properties.getFactory().setPassword("test-password");
+            properties.getFactory().setDisplayName("测试出厂管理员");
+            BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
+            OperatorAccountBootstrap bootstrap = new OperatorAccountBootstrap(
+                    jdbc, encoder, properties,
+                    Clock.fixed(Instant.parse("2026-08-30T02:00:00Z"), ZoneOffset.UTC));
+
+            bootstrap.run(new DefaultApplicationArguments(new String[0]));
+            String originalHash = jdbc.queryForObject(
+                    "SELECT password_hash FROM operator_accounts WHERE username='factory-test'", String.class);
+            assertThat(originalHash).startsWith("$2").doesNotContain("test-password");
+            assertThat(encoder.matches("test-password", originalHash)).isTrue();
+
+            properties.getFactory().setPassword("replacement-must-not-apply");
+            bootstrap.run(new DefaultApplicationArguments(new String[0]));
+
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_accounts", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForMap("SELECT * FROM operator_accounts"))
+                    .containsEntry("username", "factory-test")
+                    .containsEntry("display_name", "测试出厂管理员")
+                    .containsEntry("account_type", "FACTORY_ADMIN")
+                    .containsEntry("enabled", 1);
+            assertThat(jdbc.queryForObject("SELECT password_hash FROM operator_accounts", String.class))
+                    .isEqualTo(originalHash);
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
+    void currentSchemaDefinesOperatorAccountsAndActionLogsWithCaseInsensitiveUsernames() throws Exception {
+        Path database = Files.createTempFile("platform-operator-schema-", ".db");
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    "jdbc:sqlite:" + database.toAbsolutePath());
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            try (var connection = dataSource.getConnection()) {
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            }
+
+            assertThat(jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='operator_accounts'",
+                    Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='operator_action_logs'",
+                    Integer.class)).isEqualTo(1);
+
+            jdbc.update("""
+                INSERT INTO operator_accounts(
+                    username, display_name, password_hash, account_type,
+                    enabled, created_at, updated_at)
+                VALUES ('StoreUser', '门店操作员', 'hash-a', 'OPERATOR', 1, 'now', 'now')
+                """);
+            org.junit.jupiter.api.Assertions.assertThrows(DataAccessException.class, () -> jdbc.update("""
+                INSERT INTO operator_accounts(
+                    username, display_name, password_hash, account_type,
+                    enabled, created_at, updated_at)
+                VALUES ('storeuser', '重名操作员', 'hash-b', 'OPERATOR', 1, 'now', 'now')
+                """));
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
     @Test
     void addsMemberDeletionMarkerToLegacyDatabaseIdempotently() throws Exception {
         Path database = Files.createTempFile("platform-member-delete-legacy-", ".db");

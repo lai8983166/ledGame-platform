@@ -1,6 +1,7 @@
 export interface PlatformApiClientOptions {
   baseUrl?: string;
   transport?: PlatformApiTransport;
+  operatorIdProvider?: () => number | null | undefined;
 }
 
 export interface PlatformApiTransportRequest {
@@ -30,6 +31,39 @@ export interface PlatformApiClient {
   deleteMember(id: number): Promise<DeletedMember>;
   listRooms(): Promise<RoomStatus[]>;
   renameRoom(ip: string, roomName: string): Promise<RoomStatus>;
+  loginOperator(username: string, password: string): Promise<OperatorProfile>;
+  listOperatorAccounts(): Promise<OperatorAccount[]>;
+  createOperatorAccount(input: CreateOperatorAccountInput): Promise<OperatorAccount>;
+  updateOperatorAccount(id: number, input: UpdateOperatorAccountInput): Promise<OperatorAccount>;
+  resetOperatorPassword(id: number, password: string): Promise<OperatorAccount>;
+  setOperatorEnabled(id: number, enabled: boolean): Promise<OperatorAccount>;
+  recordSystemSettingsChange(): Promise<void>;
+}
+
+export type OperatorAccountType = "FACTORY_ADMIN" | "OPERATOR";
+
+export interface OperatorProfile {
+  id: number;
+  username: string;
+  displayName: string;
+  accountType: OperatorAccountType;
+}
+
+export interface OperatorAccount extends OperatorProfile {
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOperatorAccountInput {
+  username: string;
+  displayName: string;
+  password: string;
+}
+
+export interface UpdateOperatorAccountInput {
+  username: string;
+  displayName: string;
 }
 
 export interface DeletedMember {
@@ -177,6 +211,7 @@ export function resolvePlatformBaseUrl(value?: string | null): string {
 export function createPlatformApiClient({
   baseUrl = DEFAULT_PLATFORM_BASE_URL,
   transport,
+  operatorIdProvider,
 }: PlatformApiClientOptions = {}): PlatformApiClient {
   const normalizedBaseUrl = resolvePlatformBaseUrl(baseUrl);
 
@@ -191,6 +226,12 @@ export function createPlatformApiClient({
       }
 
       const method = String(options.method || "GET").toUpperCase();
+      if (method !== "GET" && method !== "HEAD") {
+        const operatorId = operatorIdProvider?.();
+        if (Number.isInteger(operatorId) && Number(operatorId) > 0) {
+          headers.set("X-Operator-Id", String(operatorId));
+        }
+      }
       const transportResponse = transport
         ? await transport({
             path,
@@ -279,6 +320,50 @@ export function createPlatformApiClient({
       }
       return result;
     },
+    async loginOperator(username: string, password: string): Promise<OperatorProfile> {
+      return requireResponse(await client.request<OperatorProfile>("/api/operator-auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      }), "登录响应为空");
+    },
+    async listOperatorAccounts(): Promise<OperatorAccount[]> {
+      const result = await client.request<OperatorAccount[]>("/api/operator-accounts");
+      return Array.isArray(result) ? result : [];
+    },
+    async createOperatorAccount(input: CreateOperatorAccountInput): Promise<OperatorAccount> {
+      return requireResponse(await client.request<OperatorAccount>("/api/operator-accounts", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }), "创建账号响应为空");
+    },
+    async updateOperatorAccount(id: number, input: UpdateOperatorAccountInput): Promise<OperatorAccount> {
+      return requireResponse(await client.request<OperatorAccount>(`/api/operator-accounts/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }), "修改账号响应为空");
+    },
+    async resetOperatorPassword(id: number, password: string): Promise<OperatorAccount> {
+      return requireResponse(await client.request<OperatorAccount>(`/api/operator-accounts/${id}/password`, {
+        method: "PUT",
+        body: JSON.stringify({ password }),
+      }), "重设密码响应为空");
+    },
+    async setOperatorEnabled(id: number, enabled: boolean): Promise<OperatorAccount> {
+      return requireResponse(await client.request<OperatorAccount>(`/api/operator-accounts/${id}/enabled`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }), "修改账号状态响应为空");
+    },
+    async recordSystemSettingsChange(): Promise<void> {
+      await client.request("/api/operator-actions/system-settings", { method: "POST" });
+    },
   };
   return client;
+}
+
+function requireResponse<T>(value: T | null, message: string): T {
+  if (value === null) {
+    throw new PlatformApiError(message, 502, "EMPTY_RESPONSE");
+  }
+  return value;
 }

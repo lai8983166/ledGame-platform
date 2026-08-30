@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -61,13 +62,19 @@ public class CoreFlowController {
     }
 
     @PostMapping("/members")
-    public Map<String, Object> createMember(@RequestBody MemberRequest request) {
+    public Map<String, Object> createMember(
+            @RequestBody MemberRequest request,
+            @RequestAttribute(value = OperatorAuditInterceptor.OPERATOR_ATTRIBUTE, required = false)
+            OperatorSnapshot operator) {
         String phone = normalizePhone(request.phone());
         if (!phone.matches("\\d{7,15}")) throw badRequest("手机号格式不正确");
         if (request.name() == null || request.name().trim().length() < 2) throw badRequest("会员姓名至少需要 2 个字符");
         if (!jdbc.queryForList("SELECT id FROM members WHERE phone = ? AND status = 'ACTIVE' AND deleted_at IS NULL", phone).isEmpty()) throw conflict("该手机号已经注册");
         String now = now();
-        jdbc.update("INSERT INTO members(phone, name, avatar_id, birthday, gender, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)", phone, request.name().trim(), request.avatarId(), request.birthday(), request.gender(), now, now, request.createdBy() == null ? "kiosk" : request.createdBy());
+        String createdBy = operator == null
+                ? (request.createdBy() == null ? "kiosk" : request.createdBy())
+                : "operator:" + operator.username();
+        jdbc.update("INSERT INTO members(phone, name, avatar_id, birthday, gender, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)", phone, request.name().trim(), request.avatarId(), request.birthday(), request.gender(), now, now, createdBy);
         return findMembers(phone).get(0);
     }
 
@@ -119,6 +126,31 @@ public class CoreFlowController {
     @GetMapping("/wristbands")
     public List<Map<String, Object>> listWristbands() {
         return gameAccessService.listWristbands();
+    }
+
+    @GetMapping("/records/wristband-bindings")
+    public List<Map<String, Object>> listWristbandBindingRecords() {
+        return jdbc.queryForList("""
+            SELECT b.id, w.card_uid AS uid, b.member_id AS memberId,
+                   m.phone, m.name AS memberName, b.status,
+                   b.duration_minutes AS durationMinutes, b.bound_at AS boundAt,
+                   b.started_at AS startedAt, b.ended_at AS endedAt
+              FROM wristband_bindings b
+              JOIN wristbands w ON w.id=b.wristband_id
+              JOIN members m ON m.id=b.member_id
+             ORDER BY b.bound_at DESC, b.id DESC
+            """);
+    }
+
+    @GetMapping("/records/wristband-charges")
+    public List<Map<String, Object>> listWristbandChargeRecords() {
+        return jdbc.queryForList("""
+            SELECT id, wristband_uid AS uid, duration_minutes AS durationMinutes,
+                   unit_price_cents AS unitPriceCents, amount_cents AS amountCents,
+                   charged_at AS chargedAt
+              FROM wristband_charge_records
+             ORDER BY charged_at DESC, id DESC
+            """);
     }
 
     @GetMapping("/wristbands/{uid}")

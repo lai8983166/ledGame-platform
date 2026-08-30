@@ -9,6 +9,8 @@ import { mapRoomStatus, roomGameTimeText } from "../roomStatus";
 import { platformApi } from "../platformApi";
 import { memberAdminMessage } from "../localization";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
+import { operatorSession } from "../operatorSession";
+import { canUseOperatorCapability } from "../operatorPolicy";
 
 const emit = defineEmits<{ toast: [message: string] }>();
 const props = defineProps<{ locale: PlatformLocale }>();
@@ -26,6 +28,7 @@ const selectedRoom = computed(() => rooms.value.find((room) => room.id === selec
 const editingRoom = ref<Room | null>(null);
 const editName = ref("");
 const editError = ref("");
+const canRenameRooms = computed(() => canUseOperatorCapability(operatorSession.current.value, "renameRoom"));
 
 const filteredRooms = computed(() => rooms.value.filter((room) => {
   const matchesSearch = room.name.toLowerCase().includes(search.value.trim().toLowerCase()) || room.code.toLowerCase().includes(search.value.trim().toLowerCase());
@@ -114,7 +117,7 @@ const saveRoomName = async () => {
         <div class="room-code"><span>{{ room.code.slice(-2) }}</span><small>{{ room.code }}</small></div>
         <StatusBadge data-testid="admin-room-status" :data-status="room.status" :tone="roomTone(room)">{{ room.status === "playing" ? "游戏中" : "空闲" }}</StatusBadge>
       </header>
-      <div class="room-card__title"><div><h2>{{ room.name }}</h2><p>{{ room.status === 'playing' ? room.gameName : '等待玩家刷卡开始' }}</p></div><button class="icon-button" type="button" aria-label="编辑房间名称" @click="openEdit(room)"><AppIcon name="edit" :size="17" /></button></div>
+      <div class="room-card__title"><div><h2>{{ room.name }}</h2><p>{{ room.status === 'playing' ? room.gameName : '等待玩家刷卡开始' }}</p></div><button v-if="canRenameRooms" class="icon-button" type="button" aria-label="编辑房间名称" @click="openEdit(room)"><AppIcon name="edit" :size="17" /></button></div>
       <div v-if="room.status === 'playing'" class="room-timer"><span><AppIcon name="clock" :size="18" /> {{ text("roomGameRemaining") }}</span><strong data-testid="admin-room-game-time">{{ roomTimeText(room) }}</strong><small>{{ room.phase }}</small></div>
       <div v-else class="idle-state"><span class="idle-state__icon"><AppIcon name="sparkles" /></span><div><strong>房间已就绪</strong><small>刷卡后开始计算游戏时长</small></div></div>
       <div class="room-card__stats">
