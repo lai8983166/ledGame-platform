@@ -31,6 +31,8 @@ describe("authoritative points projections", () => {
     expect(records).toContain('data-testid="admin-charge-records"');
     expect(records).not.toContain('id: "games"');
     expect(records).not.toContain("gameConfigs");
+    expect(records).not.toContain("来自 SQLite");
+    expect(records).not.toContain("dataSourceLabel");
   });
 
   it("gives acceptance stable Player Info business selectors", () => {

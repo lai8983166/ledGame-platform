@@ -24,6 +24,9 @@ describe("real member admin dashboard", () => {
     expect(source).not.toContain("设备健康");
     expect(source).not.toContain("6,840");
     expect(source).toContain("revenueTodayCents");
+    expect(source).not.toContain("dashboard" + "Title");
+    expect(source).not.toContain("dashboard" + "RealData");
+    expect(source).toContain("dashboard-refresh-button");
   });
 
   it("does not retain unused room/member samples or fixed shell indicators", () => {

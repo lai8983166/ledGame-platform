@@ -142,8 +142,6 @@ const filteredMembers = computed(() => members.value.filter((item) => [item.name
   .some((value) => value.toLowerCase().includes(query.value))));
 const visibleCount = computed(() => ({ cards: filteredCards.value.length, plays: filteredPlays.value.length,
   transactions: filteredTransactions.value.length, members: filteredMembers.value.length })[activeTab.value]);
-const dataSourceLabel = computed(() => ({ cards: "来自 SQLite 手环绑定记录", plays: "来自 SQLite 游玩记录",
-  transactions: "来自 SQLite 充时流水", members: "来自 SQLite 会员数据" })[activeTab.value]);
 const searchPlaceholder = computed(() => activeTab.value === "members" ? "搜索会员资料"
   : activeTab.value === "transactions" ? "搜索流水、手环或分钟数" : "搜索编号、会员、房间或手环");
 const bindingStatusLabel = (status: string) => ({ READY: "待游戏", ACTIVE: "计时中", EXPIRED: "已到期", RETURNED: "已归还" }[status] ?? status);
@@ -160,7 +158,6 @@ onMounted(() => void loadRecords());
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="搜索记录" :placeholder="searchPlaceholder" /></div>
     <select v-if="activeTab !== 'members'" v-model="dateFilter" class="select-control" aria-label="时间范围"><option value="all">全部时间</option><option value="today">今天</option><option value="week">近 7 天</option><option value="month">本月</option></select>
     <button class="secondary-button compact-button" data-testid="admin-records-refresh" type="button" :disabled="refreshing" @click="loadRecords"><AppIcon name="refresh" :size="16" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新" }}</button>
-    <span class="result-count"><AppIcon name="database" :size="15" /> {{ dataSourceLabel }}</span>
   </section>
   <p v-if="loadError" class="form-error"><AppIcon name="alert" :size="16" />{{ loadError }}</p>
 
@@ -171,7 +168,7 @@ onMounted(() => void loadRecords());
       <table v-else-if="activeTab === 'transactions'" class="data-table" data-testid="admin-charge-records"><thead><tr><th>交易流水</th><th>手环 UID</th><th>购买时长</th><th>分钟单价</th><th>交易金额</th><th>交易时间</th><th>状态</th></tr></thead><tbody><tr v-for="item in filteredTransactions" :key="item.id"><td><code>{{ item.id }}</code></td><td><strong>{{ item.braceletId }}</strong></td><td>{{ item.durationMinutes }} 分钟</td><td>¥{{ (item.unitPriceCents / 100).toFixed(2) }}</td><td><strong class="money-value">+ ¥{{ (item.amountCents / 100).toFixed(2) }}</strong></td><td>{{ formatTime(item.chargedAt) }}</td><td><StatusBadge tone="success">成功</StatusBadge></td></tr><tr v-if="!filteredTransactions.length"><td colspan="7">暂无符合条件的真实交易记录</td></tr></tbody></table>
       <table v-else class="data-table"><thead><tr><th>会员账号</th><th>会员</th><th>联系方式</th><th>身份 ID</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="item in filteredMembers" :key="item.id"><td><code>{{ item.account }}</code></td><td><span class="member-inline"><span class="avatar avatar--small" :style="{ background: item.color }">{{ item.initials }}</span><strong>{{ item.name }}</strong></span></td><td>{{ item.phone }}</td><td>{{ item.identityId }}</td><td>{{ item.joinedAt }}</td><td><StatusBadge :tone="item.status === 'active' ? 'success' : 'neutral'">{{ item.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="text-button" type="button" @click="selectedMember = item">详情 <AppIcon name="arrow" :size="14" /></button></td></tr><tr v-if="!filteredMembers.length"><td colspan="7">暂无符合条件的真实会员数据</td></tr></tbody></table>
     </div>
-    <footer class="table-footer"><span>{{ dataSourceLabel }}</span><strong>共 {{ visibleCount }} 条</strong></footer>
+    <footer class="table-footer records-count-footer"><strong>共 {{ visibleCount }} 条</strong></footer>
   </section>
 
   <SideDrawer v-if="selectedMember" :title="selectedMember.name" eyebrow="会员数据详情" @close="selectedMember = null"><div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }">{{ selectedMember.initials }}</span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.account }}</p><StatusBadge tone="success">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div><section class="drawer-section"><div class="drawer-section__title"><h3>完整数据</h3></div><dl class="detail-grid"><div><dt>会员账号</dt><dd>{{ selectedMember.account }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div><div><dt>身份 ID</dt><dd>{{ selectedMember.identityId }}</dd></div><div><dt>头像标识</dt><dd>{{ selectedMember.initials }}</dd></div><div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div></dl></section><div class="notice-bar"><AppIcon name="card" :size="18" /><div><strong>购买时长不属于会员资料</strong><p>请前往“手环办理”查看具体手环的分钟数和状态。</p></div></div></SideDrawer>

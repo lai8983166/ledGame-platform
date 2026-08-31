@@ -47,11 +47,10 @@ onMounted(() => void loadDashboard());
   <section class="welcome-strip glass-panel">
     <div>
       <p class="section-eyebrow"><AppIcon name="sparkles" :size="15" /> {{ text("dashboardEyebrow") }}</p>
-      <h2>{{ text("dashboardTitle") }}</h2>
       <p>{{ text("dashboardRoomPrefix") }} {{ roomCounts.playing }} {{ text("dashboardPlayingRooms") }}，{{ roomCounts.online }} {{ text("dashboardOnlineRooms") }}。</p>
     </div>
     <div class="welcome-strip__actions">
-      <button data-testid="admin-dashboard-refresh" class="secondary-button" type="button" :disabled="loading" @click="loadDashboard">
+      <button data-testid="admin-dashboard-refresh" class="secondary-button dashboard-refresh-button" type="button" :disabled="loading" @click="loadDashboard">
         <AppIcon name="refresh" :size="17" /> {{ loading ? text("dashboardRefreshing") : text("dashboardRefresh") }}
       </button>
       <div class="welcome-strip__visual" aria-hidden="true">
@@ -67,7 +66,6 @@ onMounted(() => void loadDashboard());
     <article v-for="stat in stats" :key="stat.testId" :data-testid="stat.testId" class="stat-card glass-panel">
       <div class="stat-card__top">
         <span class="metric-icon" :class="`metric-icon--${stat.tone}`"><AppIcon :name="stat.icon" /></span>
-        <StatusBadge :tone="stat.tone" :dot="false">{{ text("dashboardRealData") }}</StatusBadge>
       </div>
       <p>{{ stat.label }}</p><strong>{{ stat.value }}</strong><small>{{ stat.helper }}</small>
     </article>

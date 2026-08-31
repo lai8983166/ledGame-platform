@@ -12,6 +12,14 @@ describe("real leaderboard and explicit kiosk scan UI", () => {
     expect(source).toContain('data-testid="admin-leaderboard-state"');
   });
 
+  it("removes preview copy while keeping the secondary-screen entry disabled in code", () => {
+    expect(source).not.toContain("每一次跃动，都值得被看见");
+    expect(source).not.toContain("真实积分数据 · 当前为本机 UI 预览，未连接电视设备");
+    expect(source).not.toContain("leaderboardSourceNote");
+    expect(source).toContain("const secondaryScreenPreviewEnabled = false");
+    expect(source).toContain('v-if="secondaryScreenPreviewEnabled"');
+  });
+
   it("starts scanning with a button and no customer-editable UID field", () => {
     expect(kiosk).toContain('data-testid="kiosk-scan-start"');
     expect(kiosk).toContain('data-testid="kiosk-scan-dialog"');

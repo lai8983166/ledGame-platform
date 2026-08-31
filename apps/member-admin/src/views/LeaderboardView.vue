@@ -12,6 +12,7 @@ const text = (key: MemberAdminMessageKey) => memberAdminMessage(props.locale, ke
 
 const state = reactive(createLeaderboardState());
 const preview = ref(false);
+const secondaryScreenPreviewEnabled = false;
 const colors = ["#18b6a4", "#5b7cff", "#9b6dff", "#ff8a65", "#31a6d8", "#e06ca8"];
 const periodItems: Array<{ id: LeaderboardPeriod; label: string }> = [
   { id: "day", label: "日榜" },
@@ -62,16 +63,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
         <div class="segmented-control segmented-control--large" aria-label="排行榜周期">
           <button v-for="item in periodItems" :key="item.id" type="button" :class="{ active: state.period === item.id }" @click="selectPeriod(item.id)">{{ item.label }}</button>
         </div>
-        <div class="ranking-toolbar__note"><AppIcon name="monitor" :size="17" /> {{ text('leaderboardSourceNote') }}</div>
-        <button class="secondary-button" data-testid="admin-leaderboard-refresh" type="button" :disabled="state.status === 'loading'" @click="refresh"><AppIcon name="refresh" :size="18" /> {{ state.status === 'loading' ? '加载中' : '刷新' }}</button>
-        <button class="primary-button" type="button" @click="preview = true"><AppIcon name="monitor" :size="18" /> 进入副屏预览</button>
+        <button class="secondary-button ranking-toolbar__refresh" data-testid="admin-leaderboard-refresh" type="button" :disabled="state.status === 'loading'" @click="refresh"><AppIcon name="refresh" :size="18" /> {{ state.status === 'loading' ? '加载中' : '刷新' }}</button>
+        <button v-if="secondaryScreenPreviewEnabled" class="primary-button" type="button" @click="preview = true"><AppIcon name="monitor" :size="18" /> 进入副屏预览</button>
       </div>
       <button v-else class="preview-close" type="button" @click="closePreview"><AppIcon name="close" /> 退出预览 <kbd>Esc</kbd></button>
 
       <section class="leaderboard glass-panel">
         <header class="leaderboard__header">
           <div class="leaderboard__brand"><span class="brand__mark brand__mark--small" aria-hidden="true"><i></i><i></i><i></i><i></i></span><div><strong>LED GAME</strong><small>SCORE LEADERBOARD</small></div></div>
-          <div class="leaderboard__title"><p>{{ periodDate || '实时数据' }}</p><h2>{{ periodLabels[state.period] }} · 积分排行榜</h2><span>每一次跃动，都值得被看见</span></div>
+          <div class="leaderboard__title"><p>{{ periodDate || '实时数据' }}</p><h2>{{ periodLabels[state.period] }} · 积分排行榜</h2></div>
           <div class="preview-label"><span></span> UI PREVIEW</div>
         </header>
 
@@ -97,7 +97,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
             </div>
           </template>
         </div>
-        <footer class="leaderboard__footer"><span>真实积分数据 · 当前为本机 UI 预览，未连接电视设备</span><span>更新时间 {{ updatedAt }}</span></footer>
+        <footer class="leaderboard__footer"><span>更新时间 {{ updatedAt }}</span></footer>
       </section>
     </div>
   </Teleport>
