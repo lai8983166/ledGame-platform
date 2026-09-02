@@ -51,4 +51,16 @@ describe("operator UI capability boundaries", () => {
     expect(settings).toContain("account.accountType === 'OPERATOR'");
     expect(settings).not.toContain("deleteOperatorAccount");
   });
+
+  it("keeps database import behind the factory account and outside the startup window", () => {
+    expect(settings).toContain('accountType === "FACTORY_ADMIN"');
+    expect(settings).toContain('data-testid="database-backup-management"');
+    expect(settings).toContain("要将版本为 {{ pendingImport.revision }}");
+    expect(settings).toContain("最后修改时间为 {{ formatBackupTime(pendingImport.lastBusinessModifiedAt) }}");
+    expect(settings).toContain("text('importOverwriteTitle')");
+    expect(app).toContain('data-testid="database-backup-warning"');
+    expect(settings).toContain('data-testid="database-keep-current"');
+    expect(settings).toContain("pendingImport.factoryAdminUsername");
+    expect(settings).toContain("pendingImport.memberCount");
+  });
 });

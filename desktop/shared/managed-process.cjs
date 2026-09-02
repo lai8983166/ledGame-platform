@@ -13,6 +13,25 @@ function createManagedProcess({ maxTailLines = 200, maxLogBytes = 5 * 1024 * 102
     if (tail.length > maxTailLines) tail.splice(0, tail.length - maxTailLines);
   }
 
+  function waitForExit(target, timeoutMs) {
+    if (!target || target.exitCode !== null) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), Math.max(0, timeoutMs));
+      target.once("exit", () => { clearTimeout(timer); resolve(true); });
+    });
+  }
+
+  function forceKillTree(pid) {
+    return new Promise((resolve) => {
+      const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+      killer.once("error", () => resolve());
+      killer.once("exit", () => resolve());
+    });
+  }
+
   return {
     get child() { return child; },
     get running() { return Boolean(child && child.exitCode === null); },
@@ -40,18 +59,13 @@ function createManagedProcess({ maxTailLines = 200, maxLogBytes = 5 * 1024 * 102
     async stop(timeoutMs = 5000) {
       const target = child;
       if (!target || target.exitCode !== null) return;
-      await new Promise((resolve) => {
-        const timer = setTimeout(() => {
-          if (target.exitCode === null) {
-            if (process.platform === "win32") {
-              spawn("taskkill", ["/pid", String(target.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
-            } else target.kill("SIGKILL");
-          }
-          resolve();
-        }, timeoutMs);
-        target.once("exit", () => { clearTimeout(timer); resolve(); });
-        target.kill("SIGTERM");
-      });
+      target.kill("SIGTERM");
+      const exitedNormally = await waitForExit(target, timeoutMs);
+      if (!exitedNormally && target.exitCode === null) {
+        if (process.platform === "win32") await forceKillTree(target.pid);
+        else target.kill("SIGKILL");
+        await waitForExit(target, 2000);
+      }
       if (child === target) child = null;
     },
   };

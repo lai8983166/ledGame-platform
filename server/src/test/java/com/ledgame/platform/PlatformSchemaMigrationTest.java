@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -18,6 +19,54 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class PlatformSchemaMigrationTest {
+    @Test
+    void currentSchemaTracksEveryProtectedBusinessTableWithTransactionalRevisionTriggers() throws Exception {
+        Path database = Files.createTempFile("platform-backup-revision-", ".db");
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    "jdbc:sqlite:" + database.toAbsolutePath());
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            try (var connection = dataSource.getConnection()) {
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            }
+            new PlatformSchemaMigration(jdbc).run(new DefaultApplicationArguments(new String[0]));
+
+            List<String> protectedTables = List.of(
+                    "members", "wristbands", "wristband_charge_records", "wristband_bindings",
+                    "game_play_records", "room_settings", "operator_accounts", "operator_action_logs");
+            for (String table : protectedTables) {
+                assertThat(jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM sqlite_master
+                     WHERE type='trigger' AND tbl_name=? AND name LIKE 'backup_revision_%'
+                    """, Integer.class, table)).as(table).isEqualTo(3);
+            }
+
+            long before = jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class);
+            jdbc.update("""
+                INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
+                VALUES ('13800138000', '版本测试', 'ACTIVE', 'now', 'now', 'test')
+                """);
+            assertThat(jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class))
+                    .isGreaterThan(before);
+
+            try (var connection = dataSource.getConnection()) {
+                connection.setAutoCommit(false);
+                try (var statement = connection.prepareStatement("""
+                    INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
+                    VALUES ('13900139000', '回滚测试', 'ACTIVE', 'now', 'now', 'test')
+                    """)) {
+                    statement.executeUpdate();
+                }
+                connection.rollback();
+            }
+            assertThat(jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class))
+                    .isEqualTo(before + 1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM members", Integer.class)).isEqualTo(1);
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
     @Test
     void bootstrapsOneConfigurableFactoryAdminAndNeverOverwritesExistingAccounts() throws Exception {
         Path database = Files.createTempFile("platform-operator-bootstrap-", ".db");

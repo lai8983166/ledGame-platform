@@ -115,3 +115,20 @@ CREATE TABLE IF NOT EXISTS operator_action_logs (
 
 CREATE INDEX IF NOT EXISTS ix_operator_action_logs_operator_created
     ON operator_action_logs(operator_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS database_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    instance_id TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0,
+    last_business_modified_at TEXT NOT NULL,
+    imported_from_revision INTEGER,
+    imported_at TEXT
+);
+
+INSERT OR IGNORE INTO database_state(
+    id, instance_id, revision, last_business_modified_at,
+    imported_from_revision, imported_at)
+VALUES (
+    1, lower(hex(randomblob(16))), 0,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL, NULL
+);

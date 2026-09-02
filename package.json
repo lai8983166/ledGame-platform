@@ -30,7 +30,7 @@
     "test:acceptance:unit": "vitest run acceptance/support/runtime.test.ts acceptance/support/config.test.ts acceptance/support/selectors.test.ts acceptance/support/bidirectionalFloorDevice.test.ts acceptance/support/chineseReporter.test.ts acceptance/support/gameTimeContract.test.ts",
     "test:acceptance": "playwright test --config acceptance/playwright.config.ts",
     "test:acceptance:desktop": "pnpm prepare:member-admin:dev && playwright test --config acceptance/playwright.config.ts acceptance/specs/store-platform-desktop.spec.ts",
-    "test:desktop": "vitest run desktop/tests/member-admin-runtime.test.mjs desktop/tests/registration-kiosk-shell.test.mjs desktop/tests/package-contract.test.mjs desktop/tests/shared-runtime.test.mjs",
+    "test:desktop": "vitest run desktop/tests/member-admin-runtime.test.mjs desktop/tests/database-import.test.mjs desktop/tests/registration-kiosk-shell.test.mjs desktop/tests/package-contract.test.mjs desktop/tests/shared-runtime.test.mjs",
     "test:desktop:electron": "playwright test desktop/tests/registration-kiosk.electron.spec.mjs --workers=1",
     "test:desktop:member": "pnpm prepare:member-admin:dev && playwright test desktop/tests/member-admin.electron.spec.mjs --workers=1",
     "portable:prepare": "node scripts/prepare-platform-portable.cjs",

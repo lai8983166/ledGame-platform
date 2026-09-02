@@ -26,15 +26,43 @@ async function findExe(productDirectory) {
   return path.join(productDirectory, name);
 }
 
+async function waitForWindow(app, selector, timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const page of app.windows()) {
+      try {
+        if (!page.isClosed() && await page.locator(selector).count()) return page;
+      } catch {
+        // The startup check window is intentionally destroyed when the main window opens.
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`打包应用未在限定时间内打开目标窗口：${selector}`);
+}
+
 async function smokeMember() {
   const userData = await fs.mkdtemp(path.join(os.tmpdir(), "ledgame-member-smoke-"));
+  const backupRoot = path.join(userData, "database-backup-test");
   const port = await freePort();
-  const executablePath = await findExe(path.join(root, "release", "member-admin", "win-unpacked"));
-  const app = await electron.launch({ executablePath, env: { ...electronEnv, LEDGAME_USER_DATA: userData, LEDGAME_PLATFORM_PORT: String(port) } });
+  const productDirectory = process.env.LEDGAME_MEMBER_ADMIN_PACKAGE_DIR
+    ? path.resolve(process.env.LEDGAME_MEMBER_ADMIN_PACKAGE_DIR)
+    : path.join(root, "release", "member-admin", "win-unpacked");
+  const executablePath = await findExe(productDirectory);
+  const app = await electron.launch({ executablePath, env: { ...electronEnv, LEDGAME_USER_DATA: userData,
+    LEDGAME_PLATFORM_PORT: String(port), LEDGAME_DATABASE_BACKUP_ENABLED: "true",
+    LEDGAME_DATABASE_BACKUP_ROOT: backupRoot, LEDGAME_DATABASE_BACKUP_ENVIRONMENT: "TEST" } });
   try {
-    const page = await app.firstWindow();
-    await page.waitForSelector("#app", { timeout: 30000 });
+    const page = await waitForWindow(app, "#app");
     await page.waitForFunction(() => window.memberAdminDesktop?.diagnostics().then((value) => value.state === "online"), null, { timeout: 45000 });
+    const metadata = JSON.parse(await fs.readFile(path.join(backupRoot, "latest", "metadata.json"), "utf8"));
+    if (metadata.format !== "ledgame-platform-backup-v2" || metadata.environment !== "TEST") {
+      throw new Error("打包会员管理端未生成隔离的 TEST v2 备份");
+    }
+  } catch (error) {
+    let serverLog = "";
+    try { serverLog = await fs.readFile(path.join(userData, "logs", "server.log"), "utf8"); } catch { /* no backend log */ }
+    throw new Error(`${error.message}${serverLog ? `\n会员管理端后端日志：\n${serverLog.slice(-4000)}` : "\n会员管理端未生成后端日志。"}`);
   } finally {
     await app.close();
     await fs.rm(userData, { recursive: true, force: true });

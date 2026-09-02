@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import type { OperatorAccount } from "@ledgame/platform-api-client";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import type { DatabaseBackupCandidate, DatabaseBackupStatus, OperatorAccount } from "@ledgame/platform-api-client";
 import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import StatusBadge from "../components/StatusBadge.vue";
@@ -11,12 +11,13 @@ import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 import { platformApi } from "../platformApi";
 import { createOperatorAccountManager } from "../operatorAccountState";
 import { memberAdminMessage } from "../localization";
+import { operatorSession } from "../operatorSession";
 
-type SettingsTab = "accounts" | "basic" | "features" | "upload";
-const emit = defineEmits<{ toast: [message: string] }>();
-const props = defineProps<{ locale: PlatformLocale }>();
+type SettingsTab = "accounts" | "basic" | "features" | "upload" | "backup";
+const emit = defineEmits<{ toast: [message: string]; backupChanged: []; logoutRequired: [] }>();
+const props = defineProps<{ locale: PlatformLocale; backupStatus: DatabaseBackupStatus | null }>();
 const text = (key: Parameters<typeof memberAdminMessage>[1]) => memberAdminMessage(props.locale, key);
-const activeTab = ref<SettingsTab>("basic");
+const activeTab = ref<SettingsTab>(props.backupStatus?.state === "MAINTENANCE_LOGIN_REQUIRED" ? "backup" : "basic");
 const braceletMinutes = ref<number | null>(60);
 const savedMinutes = ref(60);
 const durationError = ref("");
@@ -33,6 +34,81 @@ const accountManager = reactive(createOperatorAccountManager(platformApi));
 const accountDialog = ref<"create" | "edit" | "password" | null>(null);
 const selectedAccount = ref<OperatorAccount | null>(null);
 const accountForm = reactive({ username: "", displayName: "", password: "" });
+const isFactory = computed(() => operatorSession.current.value?.accountType === "FACTORY_ADMIN");
+const backupTab = { id: "backup", label: "数据库备份", icon: "database", desc: "异盘保护与受控导入" } as const;
+const settingsTabs = computed(() => props.backupStatus?.state === "MAINTENANCE_LOGIN_REQUIRED"
+  ? (isFactory.value ? [backupTab] : [])
+  : [
+  { id: "accounts", label: "操作账号", icon: "members", desc: "创建与停用次级账号" },
+  { id: "basic", label: "基础设置", icon: "clock", desc: "手环与计时规则" },
+  { id: "features", label: "功能开关", icon: "settings", desc: "启用或关闭功能" },
+  { id: "upload", label: "数据上传", icon: "upload", desc: "邮箱与服务器目标" },
+  ...(isFactory.value ? [backupTab] : []),
+] as Array<{ id: SettingsTab; label: string; icon: string; desc: string }>);
+const backupCandidates = ref<DatabaseBackupCandidate[]>([]);
+const backupLoading = ref(false);
+const backupError = ref("");
+const pendingImport = ref<DatabaseBackupCandidate | null>(null);
+const pendingKeepCurrent = ref(false);
+const canKeepCurrent = computed(() => props.backupStatus?.state === "MAINTENANCE_LOGIN_REQUIRED"
+  && ["DATABASE_IDENTITY_CONFLICT", "DATABASE_VERSION_CONFLICT"].includes(props.backupStatus?.errorCode || ""));
+
+const formatBackupTime = (value?: string | null) => value
+  ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value)) : "暂无";
+const backupStateLabels: Record<string, string> = {
+  READY_PROTECTED: "备份正常", READY_DEGRADED: "备份不可用", CHECKING: "正在检查",
+  MAINTENANCE_LOGIN_REQUIRED: "需要维护", IMPORTING: "正在导入", BLOCKED: "数据库已阻断",
+};
+const backupStateLabel = computed(() => backupStateLabels[props.backupStatus?.state || ""] || "状态未知");
+const desktopAvailable = Boolean(window.memberAdminDesktop);
+
+const loadBackupCandidates = async () => {
+  if (!isFactory.value) return;
+  backupLoading.value = true;
+  backupError.value = "";
+  try { backupCandidates.value = await platformApi.listDatabaseBackupCandidates(); }
+  catch (error) { backupError.value = error instanceof Error ? error.message : "无法读取备份候选"; }
+  finally { backupLoading.value = false; }
+};
+
+const chooseExternalBackup = async () => {
+  const operator = operatorSession.current.value;
+  if (!operator || !window.memberAdminDesktop?.chooseBackupDatabase) return;
+  try {
+    const candidate = await window.memberAdminDesktop.chooseBackupDatabase(operator.id);
+    if (candidate) {
+      backupCandidates.value = [candidate, ...backupCandidates.value];
+      pendingImport.value = candidate;
+    }
+  } catch (error) { backupError.value = error instanceof Error ? error.message : "所选数据库无效"; }
+};
+
+const executeImport = async () => {
+  const operator = operatorSession.current.value;
+  const candidate = pendingImport.value;
+  if (!operator || !candidate || !window.memberAdminDesktop?.importBackupDatabase) return;
+  backupLoading.value = true;
+  backupError.value = "";
+  try {
+    await window.memberAdminDesktop.importBackupDatabase(candidate.candidateId, operator.id);
+    pendingImport.value = null;
+    emit("backupChanged");
+    emit("logoutRequired");
+  } catch (error) { backupError.value = error instanceof Error ? error.message : "数据库导入失败"; }
+  finally { backupLoading.value = false; }
+};
+
+const executeKeepCurrent = async () => {
+  backupLoading.value = true;
+  backupError.value = "";
+  try {
+    await platformApi.keepCurrentDatabase();
+    pendingKeepCurrent.value = false;
+    emit("backupChanged");
+    emit("toast", "已保留当前数据库，冲突备份已移入隔离目录");
+  } catch (error) { backupError.value = error instanceof Error ? error.message : "无法保留当前数据库"; }
+  finally { backupLoading.value = false; }
+};
 
 const openCreateAccount = () => {
   selectedAccount.value = null;
@@ -80,6 +156,7 @@ const toggleAccount = async (account: OperatorAccount) => {
 };
 
 onMounted(() => void accountManager.load());
+watch(activeTab, (tab) => { if (tab === "backup") void loadBackupCandidates(); });
 
 const addressPlaceholder = computed(() => targetType.value === "email" ? "name@example.com" : "https://server.example.com/upload");
 
@@ -134,9 +211,22 @@ const testUpload = () => {
 </script>
 
 <template>
+  <BaseModal v-if="pendingImport" v-bind="{ title: text('importModalTitle') }" description="这是覆盖当前主数据库的维护操作。" size="small" @close="pendingImport = null">
+    <p class="modal-copy">要将版本为 {{ pendingImport.revision }}，最后修改时间为 {{ formatBackupTime(pendingImport.lastBusinessModifiedAt) }} 的数据库导入吗？</p>
+    <div class="backup-detail-grid"><div><small>{{ text('importFactoryUsername') }}</small><strong>{{ pendingImport.factoryAdminUsername }}</strong></div><div><small>{{ text('importMemberCount') }}</small><strong>{{ pendingImport.memberCount }}</strong></div></div>
+    <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>{{ text('importOverwriteTitle') }}</strong><p>{{ text('importOverwriteBody') }}</p></div></div>
+    <p class="modal-copy">{{ text('importAccountWarning') }}</p>
+    <template #footer><button class="ghost-button" type="button" :disabled="backupLoading" @click="pendingImport = null">取消</button><button class="primary-button" data-testid="database-import-confirm" type="button" :disabled="backupLoading" @click="executeImport">{{ backupLoading ? "正在导入…" : "确认覆盖并导入" }}</button></template>
+  </BaseModal>
+
+  <BaseModal v-if="pendingKeepCurrent" :title="text('keepCurrentTitle')" :description="text('keepCurrentBody')" size="small" @close="pendingKeepCurrent = false">
+    <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>{{ text('keepCurrentAction') }}</strong><p>{{ text('keepCurrentBody') }}</p></div></div>
+    <template #footer><button class="ghost-button" type="button" :disabled="backupLoading" @click="pendingKeepCurrent = false">取消</button><button class="primary-button" data-testid="database-keep-current-confirm" type="button" :disabled="backupLoading" @click="executeKeepCurrent">{{ backupLoading ? "处理中…" : text('keepCurrentAction') }}</button></template>
+  </BaseModal>
+
   <section class="settings-layout">
     <nav class="settings-nav glass-panel" aria-label="设置分类">
-      <button v-for="item in [{id:'accounts',label:'操作账号',icon:'members',desc:'创建与停用次级账号'}, {id:'basic',label:'基础设置',icon:'clock',desc:'手环与计时规则'}, {id:'features',label:'功能开关',icon:'settings',desc:'启用或关闭功能'}, {id:'upload',label:'数据上传',icon:'upload',desc:'邮箱与服务器目标'}]" :key="item.id" type="button" :class="{ active: activeTab === item.id }" @click="activeTab = item.id as SettingsTab"><span><AppIcon :name="item.icon" /></span><div><strong>{{ item.label }}</strong><small>{{ item.desc }}</small></div><AppIcon name="chevron" :size="16" /></button>
+      <button v-for="item in settingsTabs" :key="item.id" :data-testid="`settings-tab-${item.id}`" type="button" :class="{ active: activeTab === item.id }" @click="activeTab = item.id"><span><AppIcon :name="item.icon" /></span><div><strong>{{ item.label }}</strong><small>{{ item.desc }}</small></div><AppIcon name="chevron" :size="16" /></button>
     </nav>
 
     <div class="settings-content">
@@ -171,7 +261,7 @@ const testUpload = () => {
         <div class="notice-bar"><AppIcon name="sparkles" :size="18" /><div><strong>演示设置</strong><p>开关只改变当前页面状态，刷新后恢复默认配置。</p></div></div>
       </section>
 
-      <section v-else class="settings-card glass-panel">
+      <section v-else-if="activeTab === 'upload'" class="settings-card glass-panel">
         <header class="settings-card__header"><span class="settings-icon"><AppIcon name="upload" /></span><div><p class="section-eyebrow">DATA UPLOAD</p><h2>数据上传</h2><p>联网后将相关硬件信息发送至指定目标。</p></div><button class="network-status" :class="{ offline: !online }" type="button" @click="online = !online"><span></span>{{ online ? '互联网已连接' : '当前离线' }}</button></header>
         <div class="upload-status-panel"><span class="upload-status-panel__icon"><AppIcon :name="online ? 'cloud' : 'alert'" :size="28" /></span><div><strong>{{ online ? '连接状态正常' : '网络连接已断开' }}</strong><p>{{ online ? '可进行模拟连接测试；不会发送任何真实数据。' : '恢复联网状态后才可测试上传目标。' }}</p></div><StatusBadge :tone="online ? 'success' : 'danger'">{{ online ? '在线' : '离线' }}</StatusBadge></div>
         <div class="target-picker"><p>上传目标类型</p><div><button type="button" :class="{ active: targetType === 'email' }" @click="switchTarget('email')"><span><AppIcon name="records" /></span><strong>指定邮箱</strong><small>发送硬件信息摘要</small></button><button type="button" :class="{ active: targetType === 'server' }" @click="switchTarget('server')"><span><AppIcon name="database" /></span><strong>服务器地址</strong><small>上传至 HTTPS 接口</small></button></div></div>
@@ -179,6 +269,23 @@ const testUpload = () => {
         <div class="feature-item feature-item--compact"><span class="feature-item__icon"><AppIcon name="refresh" /></span><div><strong>联网后自动上传</strong><p>检测到互联网连接时自动执行上传任务。</p></div><button class="switch-control" :class="{ active: automaticUpload }" type="button" role="switch" :aria-checked="automaticUpload" aria-label="联网后自动上传" @click="automaticUpload = !automaticUpload"><span></span></button></div>
         <div class="last-upload"><span><AppIcon name="check" :size="17" /></span><div><strong>最近上传结果</strong><p>{{ lastResult }}</p></div><small>演示结果</small></div>
         <footer class="settings-actions"><button class="secondary-button" type="button" :disabled="!online || testing" :title="!online ? '当前离线，无法测试' : ''" @click="testUpload"><AppIcon :name="testing ? 'refresh' : 'wifi'" :size="17" :class="{ spinning: testing }" /> {{ testing ? '测试中…' : '测试连接' }}</button><button class="primary-button" type="button" @click="saveUpload">保存上传设置</button></footer>
+      </section>
+
+      <section v-else class="settings-card glass-panel" data-testid="database-backup-management">
+        <header class="settings-card__header"><span class="settings-icon"><AppIcon name="database" /></span><div><p class="section-eyebrow">DATABASE PROTECTION</p><h2>数据库异盘备份</h2><p>自动备份到另一块物理硬盘；导入只允许出厂账号在登录后执行。</p></div><StatusBadge :tone="backupStatus?.protectedData ? 'success' : 'danger'">{{ backupStateLabel }}</StatusBadge></header>
+        <div class="backup-detail-grid">
+          <div><small>保护状态</small><strong>{{ backupStatus?.protectedData ? "已受异盘保护" : "当前未受异盘保护" }}</strong></div>
+          <div><small>目标卷</small><strong>{{ backupStatus?.targetVolume || "未找到可用异盘" }}</strong></div>
+          <div><small>最后成功备份</small><strong>{{ formatBackupTime(backupStatus?.lastSuccessfulBackupAt) }}</strong></div>
+          <div><small>数据库版本</small><strong>主库 {{ backupStatus?.sourceRevision ?? "-" }} / 备份 {{ backupStatus?.backupRevision ?? "-" }}</strong></div>
+        </div>
+        <div v-if="backupStatus?.message" class="notice-bar" :class="{ 'notice-bar--warning': !backupStatus.protectedData }"><AppIcon :name="backupStatus.protectedData ? 'check' : 'alert'" :size="18" /><div><strong>{{ backupStatus.errorCode || "自动备份" }}</strong><p>{{ backupStatus.message }}</p></div><button v-if="canKeepCurrent" class="secondary-button" data-testid="database-keep-current" type="button" :disabled="backupLoading" @click="pendingKeepCurrent = true">{{ text('keepCurrentAction') }}</button></div>
+        <div class="backup-candidates">
+          <header><div><strong>可导入的已验证备份</strong><p>导入会覆盖当前数据库，并保留一份导入前回滚副本。</p></div><div><button class="secondary-button" type="button" :disabled="backupLoading" @click="loadBackupCandidates"><AppIcon name="refresh" :size="16" />刷新</button><button class="secondary-button" type="button" :disabled="backupLoading || !desktopAvailable" @click="chooseExternalBackup">选择本地数据库</button></div></header>
+          <p v-if="backupError" class="form-error"><AppIcon name="alert" :size="16" />{{ backupError }}</p>
+          <div v-for="candidate in backupCandidates" :key="candidate.candidateId" class="backup-candidate-row"><div><strong>版本 {{ candidate.revision }}</strong><small>{{ candidate.sourceType }} · 出厂账号 {{ candidate.factoryAdminUsername }} · 会员 {{ candidate.memberCount }} 人 · 最后业务修改 {{ formatBackupTime(candidate.lastBusinessModifiedAt) }}</small></div><button class="primary-button compact-button" type="button" :disabled="backupLoading" @click="pendingImport = candidate">导入此版本</button></div>
+          <p v-if="!backupLoading && !backupCandidates.length" class="empty-copy">没有发现可导入的有效备份。</p>
+        </div>
       </section>
     </div>
   </section>

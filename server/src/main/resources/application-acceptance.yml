@@ -18,6 +18,8 @@ ledgame:
     clock-offset-seconds: ${ACCEPTANCE_CLOCK_OFFSET_SECONDS:0}
   room-connection:
     enabled: true
+  database-backup:
+    enabled: false
 
 logging:
   level:

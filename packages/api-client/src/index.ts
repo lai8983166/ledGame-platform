@@ -38,6 +38,9 @@ export interface PlatformApiClient {
   resetOperatorPassword(id: number, password: string): Promise<OperatorAccount>;
   setOperatorEnabled(id: number, enabled: boolean): Promise<OperatorAccount>;
   recordSystemSettingsChange(): Promise<void>;
+  getDatabaseBackupStatus(): Promise<DatabaseBackupStatus>;
+  listDatabaseBackupCandidates(): Promise<DatabaseBackupCandidate[]>;
+  keepCurrentDatabase(): Promise<DatabaseBackupStatus>;
 }
 
 export type OperatorAccountType = "FACTORY_ADMIN" | "OPERATOR";
@@ -152,6 +155,39 @@ export interface DashboardOverview {
   generatedAt: string;
 }
 
+export type DatabaseBackupLifecycleState =
+  | "CHECKING"
+  | "READY_PROTECTED"
+  | "READY_DEGRADED"
+  | "MAINTENANCE_LOGIN_REQUIRED"
+  | "IMPORTING"
+  | "BLOCKED";
+
+export interface DatabaseBackupStatus {
+  state: DatabaseBackupLifecycleState;
+  phase: string;
+  protectedData: boolean;
+  targetVolume: string | null;
+  lastSuccessfulBackupAt: string | null;
+  sourceRevision: number;
+  backupRevision: number | null;
+  errorCode: string | null;
+  message: string;
+}
+
+export interface DatabaseBackupCandidate {
+  candidateId: string;
+  sourceType: "LATEST" | "HISTORY" | "EXTERNAL";
+  revision: number;
+  lastBusinessModifiedAt: string;
+  generatedAt: string | null;
+  fileSize: number;
+  environment: "PRODUCTION" | "TEST" | "EXTERNAL";
+  factoryAdminUsername: string;
+  memberCount: number;
+  valid: boolean;
+}
+
 export interface GameTimeState {
   mode: "LIMITED" | "UNLIMITED";
   remainingMillis: number | null;
@@ -226,11 +262,9 @@ export function createPlatformApiClient({
       }
 
       const method = String(options.method || "GET").toUpperCase();
-      if (method !== "GET" && method !== "HEAD") {
-        const operatorId = operatorIdProvider?.();
-        if (Number.isInteger(operatorId) && Number(operatorId) > 0) {
-          headers.set("X-Operator-Id", String(operatorId));
-        }
+      const operatorId = operatorIdProvider?.();
+      if (Number.isInteger(operatorId) && Number(operatorId) > 0) {
+        headers.set("X-Operator-Id", String(operatorId));
       }
       const transportResponse = transport
         ? await transport({
@@ -356,6 +390,19 @@ export function createPlatformApiClient({
     },
     async recordSystemSettingsChange(): Promise<void> {
       await client.request("/api/operator-actions/system-settings", { method: "POST" });
+    },
+    async getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
+      return requireResponse(await client.request<DatabaseBackupStatus>("/api/database-backup/status"),
+        "数据库备份状态响应为空");
+    },
+    async listDatabaseBackupCandidates(): Promise<DatabaseBackupCandidate[]> {
+      const result = await client.request<DatabaseBackupCandidate[]>("/api/database-backup/candidates");
+      return Array.isArray(result) ? result : [];
+    },
+    async keepCurrentDatabase(): Promise<DatabaseBackupStatus> {
+      return requireResponse(await client.request<DatabaseBackupStatus>(
+        "/api/database-backup/conflicts/use-current", { method: "POST" }),
+      "保留当前数据库响应为空");
     },
   };
   return client;

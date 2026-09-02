@@ -44,7 +44,8 @@ class RoomConnectionWebSocketIntegrationTest {
                     """));
 
             Map<String, Object> online = awaitRoom(room -> Boolean.TRUE.equals(room.get("online"))
-                    && "127.0.0.1".equals(room.get("ip")));
+                    && "127.0.0.1".equals(room.get("ip"))
+                    && Integer.valueOf(1).equals(room.get("queueLength")));
             assertThat(online).containsEntry("queueLength", 1);
             session.sendMessage(new TextMessage("""
                     {"type":"GAME_TIMING_CHANGED","eventId":"integration-game-2","sequence":2,"state":{"engineState":"RUNNING","gameName":"Color Rush","gameTime":{"mode":"UNLIMITED","remainingMillis":null,"running":true}}}

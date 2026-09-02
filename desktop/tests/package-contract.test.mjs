@@ -32,6 +32,29 @@ describe("Windows desktop package contract", () => {
     expect(member.directories.output).not.toBe(kiosk.directories.output);
   });
 
+  it("packages the isolated startup check window without exposing an import action there", () => {
+    const member = readJson("desktop/electron-builder.member-admin.json");
+    expect(member.files).toContain("desktop/member-admin/**/*");
+    const startup = fs.readFileSync(path.join(root, "desktop/member-admin/startup.html"), "utf8");
+    expect(startup).toContain("正在检查本机数据");
+    expect(startup).not.toContain("导入");
+    expect(startup).not.toContain("candidate");
+  });
+
+  it("restores the member renderer focus after the native backup file picker", () => {
+    const main = fs.readFileSync(path.join(root, "desktop/member-admin/main.cjs"), "utf8");
+    expect(main).toContain("dialog.showOpenDialog(mainWindow");
+    expect(main).toContain("mainWindow.webContents.focus()");
+  });
+
+  it("uses a single instance and closes the hidden startup window before normal operation", () => {
+    const main = fs.readFileSync(path.join(root, "desktop/member-admin/main.cjs"), "utf8");
+    expect(main).toContain("app.requestSingleInstanceLock()");
+    expect(main).toContain('app.on("second-instance"');
+    expect(main).toContain('mainWindow.on("closed"');
+    expect(main).toContain("startupWindow.destroy()");
+  });
+
   it("keeps backend, JRE and SQLite out of the kiosk package", () => {
     const kiosk = readJson("desktop/electron-builder.registration-kiosk.json");
     const serialized = JSON.stringify(kiosk).toLowerCase();

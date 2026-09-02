@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LED Game 数据检查</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Microsoft YaHei UI", sans-serif; background: #07111f; color: #eef6ff; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 25% 15%, #153c68, #07111f 62%); }
+    main { width: min(430px, calc(100vw - 48px)); }
+    h1 { margin: 0 0 14px; font-size: 24px; }
+    #message { min-height: 48px; color: #bed3e9; line-height: 1.6; }
+    #phase { color: #61d6c5; font-size: 13px; letter-spacing: .08em; }
+    .track { height: 5px; overflow: hidden; border-radius: 9px; background: #26384d; margin-top: 22px; }
+    .bar { height: 100%; width: 35%; background: #36cbb7; border-radius: inherit; animation: move 1.2s ease-in-out infinite alternate; }
+    body.done .bar { animation: none; width: 100%; }
+    body.error .bar { animation: none; width: 100%; background: #ff6d7a; }
+    @keyframes move { from { transform: translateX(-70%); } to { transform: translateX(250%); } }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="phase">STARTING</div>
+    <h1>正在检查本机数据</h1>
+    <div id="message">正在启动本机服务，请稍候……</div>
+    <div class="track"><div class="bar"></div></div>
+  </main>
+  <script>
+    window.memberAdminStartup.onStatus((status) => {
+      document.getElementById("phase").textContent = status.phase || status.state || "CHECKING";
+      document.getElementById("message").textContent = status.message || "正在检查数据备份";
+      document.body.className = status.state === "failed" || status.backupState === "BLOCKED"
+        ? "error" : (["READY_PROTECTED", "READY_DEGRADED", "MAINTENANCE_LOGIN_REQUIRED"].includes(status.backupState) ? "done" : "");
+    });
+  </script>
+</body>
+</html>

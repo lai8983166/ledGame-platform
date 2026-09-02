@@ -95,6 +95,19 @@ public class RoomConnectionRegistry {
         return projection == null ? null : new LinkedHashMap<>(projection);
     }
 
+    public boolean hasActiveBusiness() {
+        return roomProjections.values().stream().anyMatch(projection -> {
+            Object queueLength = projection.get("queueLength");
+            if (queueLength instanceof Number number && number.intValue() > 0) return true;
+            Object rawState = projection.get("state");
+            if (!(rawState instanceof Map<?, ?> state)) return false;
+            Object engineStateValue = state.get("engineState");
+            String engineState = engineStateValue == null ? "" : String.valueOf(engineStateValue);
+            return "RUNNING".equalsIgnoreCase(engineState)
+                    || "PREPARING".equalsIgnoreCase(engineState);
+        });
+    }
+
     private static String sourceIp(WebSocketSession session) {
         InetSocketAddress address = session.getRemoteAddress();
         if (address == null) return "unknown";

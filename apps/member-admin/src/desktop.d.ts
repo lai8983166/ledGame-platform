@@ -12,6 +12,8 @@ declare global {
     logPath: string;
     lanUrls: string[];
     recentLogs: string[];
+    backupState?: string;
+    phase?: string;
     error?: string;
   }
 
@@ -21,6 +23,8 @@ declare global {
       diagnostics(): Promise<MemberAdminDiagnostics>;
       restartBackend(port: number): Promise<MemberAdminDiagnostics>;
       retryBackend(): Promise<MemberAdminDiagnostics>;
+      chooseBackupDatabase(operatorId: number): Promise<import("@ledgame/platform-api-client").DatabaseBackupCandidate | null>;
+      importBackupDatabase(candidateId: string, operatorId: number): Promise<{ imported: boolean; revision: number; requiresLogin: boolean }>;
       onStatus(listener: (status: Partial<MemberAdminDiagnostics>) => void): () => void;
     };
   }

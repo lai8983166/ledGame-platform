@@ -3,6 +3,11 @@ spring:
     init:
       mode: always
 
+ledgame:
+  database-backup:
+    enabled: false
+    environment: TEST
+
 logging:
   level:
     org.springframework: warn

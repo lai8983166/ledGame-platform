@@ -10,8 +10,9 @@ import RecordsView from "./views/RecordsView.vue";
 import RoomsView from "./views/RoomsView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import LoginView from "./views/LoginView.vue";
-import type { OperatorProfile } from "@ledgame/platform-api-client";
+import type { DatabaseBackupStatus, OperatorProfile } from "@ledgame/platform-api-client";
 import { operatorSession } from "./operatorSession";
+import { platformApi } from "./platformApi";
 import { canUseOperatorCapability } from "./operatorPolicy";
 import type { PageId } from "./types";
 import {
@@ -35,6 +36,8 @@ const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, MEMBER_
 const toastMessage = ref("");
 const currentOperator = operatorSession.current;
 let toastTimer: number | undefined;
+let backupPollTimer: number | undefined;
+const backupStatus = ref<DatabaseBackupStatus | null>(null);
 
 const copy = computed(() => memberAdminCatalogs[locale.value]);
 const text = (key: MemberAdminMessageKey) => copy.value[key];
@@ -56,7 +59,9 @@ const descriptionKeys: Record<PageId, MemberAdminMessageKey> = {
   ranking: "descRanking",
   settings: "descSettings",
 };
+const maintenanceMode = computed(() => backupStatus.value?.state === "MAINTENANCE_LOGIN_REQUIRED");
 const navItems = computed(() => navDefinitions
+  .filter((item) => !maintenanceMode.value || item.id === "settings")
   .filter((item) => item.id !== "settings" || canUseOperatorCapability(currentOperator.value, "settings"))
   .map((item) => ({ ...item, label: text(item.labelKey) })));
 const currentMeta = computed(() => ({
@@ -82,9 +87,16 @@ const showToast = (message: string) => {
   toastTimer = window.setTimeout(() => (toastMessage.value = ""), 2600);
 };
 
-const completeLogin = (profile: OperatorProfile) => {
+const refreshBackupStatus = async () => {
+  if (!currentOperator.value) return;
+  try { backupStatus.value = await platformApi.getDatabaseBackupStatus(); }
+  catch { /* The runtime card and backend errors provide the retry path. */ }
+};
+
+const completeLogin = async (profile: OperatorProfile) => {
   operatorSession.login(profile);
-  activePage.value = "wristbands";
+  await refreshBackupStatus();
+  activePage.value = maintenanceMode.value ? "settings" : "wristbands";
   mobileNavOpen.value = false;
   languageOpen.value = false;
 };
@@ -95,6 +107,7 @@ const logout = () => {
   languageOpen.value = false;
   toastMessage.value = "";
   operatorSession.logout();
+  backupStatus.value = null;
 };
 
 const onKeydown = (event: KeyboardEvent) => {
@@ -107,10 +120,12 @@ const onKeydown = (event: KeyboardEvent) => {
 onMounted(() => {
   applyDocumentLocale(document.documentElement, locale.value);
   window.addEventListener("keydown", onKeydown);
+  backupPollTimer = window.setInterval(() => void refreshBackupStatus(), 5000);
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeydown);
   if (toastTimer) window.clearTimeout(toastTimer);
+  if (backupPollTimer) window.clearInterval(backupPollTimer);
 });
 </script>
 
@@ -205,14 +220,23 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
+      <div v-if="backupStatus && !backupStatus.protectedData" class="backup-warning" data-testid="database-backup-warning">
+        <AppIcon name="alert" :size="18" />
+        <div><strong>{{ maintenanceMode ? "数据库需要出厂账号处理" : "数据库异盘备份当前不可用" }}</strong><p>{{ backupStatus.message }}</p></div>
+        <button v-if="currentOperator.accountType === 'FACTORY_ADMIN'" type="button" @click="navigate('settings')">{{ text('backupWarningDetail') }}</button>
+      </div>
+
       <div class="page-stage" :data-testid="`admin-page-${activePage}`">
-        <WristbandsView v-if="activePage === 'wristbands'" :locale="locale" @toast="showToast" />
+        <section v-if="maintenanceMode && currentOperator.accountType !== 'FACTORY_ADMIN'" class="settings-card glass-panel">
+          <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>{{ text('maintenanceOnlyTitle') }}</strong><p>{{ text('maintenanceOnlyBody') }}</p></div></div>
+        </section>
+        <WristbandsView v-else-if="activePage === 'wristbands'" :locale="locale" @toast="showToast" />
         <DashboardView v-else-if="activePage === 'overview'" :locale="locale" @navigate="navigate" />
         <RoomsView v-else-if="activePage === 'rooms'" :locale="locale" @toast="showToast" />
         <MembersView v-else-if="activePage === 'members'" :locale="locale" @toast="showToast" />
         <RecordsView v-else-if="activePage === 'records'" :locale="locale" />
         <LeaderboardView v-else-if="activePage === 'ranking'" :locale="locale" />
-        <SettingsView v-else :locale="locale" @toast="showToast" />
+        <SettingsView v-else :locale="locale" :backup-status="backupStatus" @backup-changed="refreshBackupStatus" @logout-required="logout" @toast="showToast" />
       </div>
     </main>
   </div>

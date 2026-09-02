@@ -13,6 +13,10 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
+    public static final int CURRENT_SCHEMA_VERSION = 1;
+    static final List<String> REVISION_TRACKED_TABLES = List.of(
+            "members", "wristbands", "wristband_charge_records", "wristband_bindings",
+            "game_play_records", "room_settings", "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
 
     public PlatformSchemaMigration(JdbcTemplate jdbc) {
@@ -53,5 +57,41 @@ public class PlatformSchemaMigration implements ApplicationRunner {
                     ON game_play_records(device_id, external_session_id, participant_index)
                 """);
         }
+        ensureDatabaseStateAndRevisionTriggers();
+        jdbc.execute("PRAGMA user_version=" + CURRENT_SCHEMA_VERSION);
+    }
+
+    private void ensureDatabaseStateAndRevisionTriggers() {
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS database_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                instance_id TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 0,
+                last_business_modified_at TEXT NOT NULL,
+                imported_from_revision INTEGER,
+                imported_at TEXT)
+            """);
+        jdbc.update("""
+            INSERT OR IGNORE INTO database_state(
+                id, instance_id, revision, last_business_modified_at,
+                imported_from_revision, imported_at)
+            VALUES (1, lower(hex(randomblob(16))), 0,
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL, NULL)
+            """);
+        for (String table : REVISION_TRACKED_TABLES) {
+            Integer exists = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", Integer.class, table);
+            if (exists == null || exists == 0) continue;
+            createRevisionTrigger(table, "insert", "INSERT");
+            createRevisionTrigger(table, "update", "UPDATE");
+            createRevisionTrigger(table, "delete", "DELETE");
+        }
+    }
+
+    private void createRevisionTrigger(String table, String suffix, String operation) {
+        jdbc.execute("CREATE TRIGGER IF NOT EXISTS backup_revision_" + table + "_" + suffix
+                + " AFTER " + operation + " ON " + table + " BEGIN "
+                + "UPDATE database_state SET revision=revision+1, "
+                + "last_business_modified_at=strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id=1; END");
     }
 }

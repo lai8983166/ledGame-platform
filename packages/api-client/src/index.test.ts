@@ -21,7 +21,7 @@ describe("platform api client transport", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("adds only the current in-memory operator id to mutating requests", async () => {
+  it("adds the current in-memory operator id to authenticated reads and mutations", async () => {
     const transport = vi.fn().mockResolvedValue({ status: 200, body: JSON.stringify({ ok: true }) });
     const client = createPlatformApiClient({ transport, operatorIdProvider: () => 42 });
 
@@ -31,7 +31,7 @@ describe("platform api client transport", () => {
     }));
 
     await client.request("/api/rooms");
-    expect(transport.mock.calls[1][0].headers).not.toHaveProperty("x-operator-id");
+    expect(transport.mock.calls[1][0].headers).toHaveProperty("x-operator-id", "42");
   });
 
   it("does not add an operator header while logged out", async () => {
@@ -77,6 +77,44 @@ describe("platform operator account api", () => {
       path: "/api/operator-actions/system-settings",
       method: "POST",
       headers: expect.objectContaining({ "x-operator-id": "7" }),
+    }));
+  });
+});
+
+describe("database backup api", () => {
+  it("loads typed backup status and factory candidate metadata without exposing paths", async () => {
+    const status = {
+      state: "READY_DEGRADED", phase: "COMPLETE", protectedData: false,
+      targetVolume: null, lastSuccessfulBackupAt: null, sourceRevision: 8,
+      backupRevision: 7, errorCode: "NO_CROSS_DISK_TARGET", message: "未找到另一块物理硬盘",
+    };
+    const candidate = {
+      candidateId: "opaque-id", sourceType: "LATEST", revision: 7,
+      lastBusinessModifiedAt: "2026-09-02T00:00:00Z", generatedAt: "2026-09-02T00:00:01Z",
+      fileSize: 1024, environment: "PRODUCTION", factoryAdminUsername: "admin", memberCount: 3, valid: true,
+    };
+    const transport = vi.fn()
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(status) })
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify([candidate]) });
+    const client = createPlatformApiClient({ transport, operatorIdProvider: () => 1 });
+
+    await expect(client.getDatabaseBackupStatus()).resolves.toEqual(status);
+    await expect(client.listDatabaseBackupCandidates()).resolves.toEqual([candidate]);
+    expect(transport.mock.calls.every(([request]) => request.headers["x-operator-id"] === "1")).toBe(true);
+    expect(JSON.stringify(candidate)).not.toContain("Path");
+    expect(JSON.stringify(candidate)).not.toContain("serial");
+  });
+
+  it("confirms keeping the current database through the authenticated maintenance endpoint", async () => {
+    const status = { state: "READY_PROTECTED", phase: "COMPLETE", protectedData: true };
+    const transport = vi.fn().mockResolvedValue({ status: 200, body: JSON.stringify(status) });
+    const client = createPlatformApiClient({ transport, operatorIdProvider: () => 1 });
+
+    await expect(client.keepCurrentDatabase()).resolves.toEqual(status);
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/api/database-backup/conflicts/use-current",
+      method: "POST",
+      headers: expect.objectContaining({ "x-operator-id": "1" }),
     }));
   });
 });
