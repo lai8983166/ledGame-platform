@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { buildPlan } from "./plan.js";
+import { runScheduled } from "./schedule.js";
+import { renderPreview } from "./timed-plan.js";
 import { PlatformClient, stepSucceeded } from "./platform-client.js";
 import { FORMAT_VERSION, type AgentConfig, type AgentSummary, type FlowResult, type PlanFile, type PlanItem, type StepResult } from "./types.js";
 
@@ -40,16 +42,29 @@ export interface StepClient {
 }
 
 async function memberSetup(item: PlanItem, client: StepClient, steps: StepResult[]): Promise<number | null> {
-  const charge = await client.step("charge", "POST", "/api/wristbands/charge", {
-    uid: item.uid, durationMinutes: item.durationMinutes,
-  });
-  steps.push(charge);
-  if (!stepSucceeded(charge)) return null;
+  if (item.memberMode !== "replay") {
+    const charge = await client.step("charge", "POST", "/api/wristbands/charge", {
+      uid: item.uid, durationMinutes: item.durationMinutes,
+    });
+    steps.push(charge);
+    if (!stepSucceeded(charge)) return null;
+  }
 
   const lookup = await client.step("memberLookup", "GET", `/api/members?phone=${encodeURIComponent(item.phone)}`);
   steps.push(lookup);
   if (!stepSucceeded(lookup)) return null;
   const existing = Array.isArray(lookup.response) ? lookup.response : [];
+  if (item.memberMode === "existing" || item.memberMode === "replay") {
+    if (existing.length !== 1 || existing[0]?.phone !== item.phone) return null;
+    const memberId = Number(existing[0].id);
+    if (!Number.isInteger(memberId) || memberId <= 0) return null;
+    if (item.memberMode === "existing") {
+      const bind = await client.step("bind", "POST", "/api/wristbands/bind", { uid: item.uid, memberId });
+      steps.push(bind);
+      if (!stepSucceeded(bind)) return null;
+    }
+    return memberId;
+  }
   if (existing.length > 0) return null;
 
   const create = await client.step("memberCreate", "POST", "/api/members", {
@@ -74,6 +89,8 @@ async function memberSetup(item: PlanItem, client: StepClient, steps: StepResult
 export async function executeFlow(item: PlanItem, client: StepClient): Promise<FlowResult> {
   const startedAt = new Date().toISOString();
   const steps: StepResult[] = [];
+  let executionError: string | undefined;
+  try {
   const memberId = await memberSetup(item, client, steps);
   if (memberId && item.flowType === "registration") {
     steps.push(await client.step("wristbandQuery", "GET", `/api/wristbands/${encodeURIComponent(item.uid)}`));
@@ -96,7 +113,7 @@ export async function executeFlow(item: PlanItem, client: StepClient): Promise<F
       if (stepSucceeded(start) && Number.isInteger(playId) && playId > 0) {
         const settle = await client.step("settleGame", "PUT", `/api/game-plays/${playId}/result`, {
           success: true,
-          terminationReason: "NATURAL_COMPLETED",
+          terminationReason: item.scheduledSteps ? "NATURAL_COMPLETION" : "NATURAL_COMPLETED",
           rawScore: item.rawScore,
           resultPayload: { runId: item.operationId, source: "multipoint-concurrency-test" },
         });
@@ -107,9 +124,12 @@ export async function executeFlow(item: PlanItem, client: StepClient): Promise<F
       }
     }
   }
+  } catch (error) {
+    executionError = error instanceof Error ? error.message : String(error);
+  }
   const failed = firstFailure(steps);
   const expectedLastStep = item.flowType === "registration" ? "wristbandQuery" : "playerInfo";
-  const success = !failed && steps.at(-1)?.name === expectedLastStep;
+  const success = !executionError && !failed && steps.at(-1)?.name === expectedLastStep;
   return {
     formatVersion: FORMAT_VERSION,
     operationId: item.operationId,
@@ -120,7 +140,7 @@ export async function executeFlow(item: PlanItem, client: StepClient): Promise<F
     steps,
     ...(!success ? { error: failed
       ? `${failed.name}: ${failed.kind === "http" ? `HTTP ${failed.status}` : failed.kind}`
-      : "流程未完成或响应缺少必要字段" } : {}),
+      : executionError ?? "流程未完成或响应缺少必要字段" } : {}),
   };
 }
 
@@ -136,6 +156,7 @@ function groupWorkers(plan: PlanFile): PlanItem[][] {
 export interface RunAgentDependencies {
   client?: StepClient;
   now?: () => Date;
+  onProgress?: (message: string) => void;
 }
 
 export async function runAgent(config: AgentConfig, dependencies: RunAgentDependencies = {}): Promise<AgentSummary> {
@@ -147,6 +168,11 @@ export async function runAgent(config: AgentConfig, dependencies: RunAgentDepend
   const now = dependencies.now ?? (() => new Date());
   const plan = buildPlan(config, now());
   await fs.writeFile(paths.plan, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+  if (plan.schedule) {
+    const preview = renderPreview([plan]);
+    await fs.writeFile(path.join(paths.directory, "执行预览.md"), preview, "utf8");
+    dependencies.onProgress?.(preview);
+  }
   await fs.writeFile(paths.results, "", "utf8");
   const writer = new ResultWriter(paths.results);
   const client = dependencies.client ?? new PlatformClient(config.platformBaseUrl, config.requestTimeoutMs);
@@ -154,7 +180,12 @@ export async function runAgent(config: AgentConfig, dependencies: RunAgentDepend
   const deadline = startedAt.getTime() + config.maxDurationSeconds * 1000;
   const results: FlowResult[] = [];
 
-  await Promise.all(groupWorkers(plan).map(async (items) => {
+  let scheduled;
+  if (plan.schedule) {
+    scheduled = await runScheduled(plan, client, executeFlow, async result => {
+      results.push(result); await writer.append(result);
+    }, dependencies.onProgress);
+  } else await Promise.all(groupWorkers(plan).map(async (items) => {
     for (const item of items) {
       if (Date.now() >= deadline) break;
       const result = await executeFlow(item, client);
@@ -164,8 +195,9 @@ export async function runAgent(config: AgentConfig, dependencies: RunAgentDepend
   }));
   await writer.done();
   const endedAt = now();
-  const steps = results.flatMap((result) => result.steps);
+  const steps = [...results.flatMap((result) => result.steps), ...(scheduled?.queryResults ?? [])];
   const summary: AgentSummary = {
+    ...(scheduled ? { schedule: scheduled.metrics, queryResults: scheduled.queryResults } : {}),
     formatVersion: FORMAT_VERSION,
     runId: config.runId,
     agentId: config.agentId,

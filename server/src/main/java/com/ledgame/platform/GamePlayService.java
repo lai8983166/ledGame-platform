@@ -50,7 +50,12 @@ public class GamePlayService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> list() {
-        return jdbc.queryForList("""
+        return list(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> list(Long memberId) {
+        String sql = """
             SELECT g.id, g.member_id AS memberId, m.name AS memberName,
                    g.binding_id AS bindingId, g.wristband_uid AS uid,
                    g.device_id AS deviceId, g.room_id AS roomId,
@@ -64,9 +69,11 @@ public class GamePlayService {
                    g.result_json AS resultJson
               FROM game_play_records g
               JOIN members m ON m.id=g.member_id
-             ORDER BY g.started_at DESC, g.id DESC
-             LIMIT 200
-            """).stream().map(this::playView).toList();
+            """;
+        if (memberId != null) sql += " WHERE g.member_id=?";
+        sql += " ORDER BY g.started_at DESC, g.id DESC LIMIT 200";
+        return (memberId == null ? jdbc.queryForList(sql) : jdbc.queryForList(sql, memberId))
+                .stream().map(this::playView).toList();
     }
 
     @Transactional

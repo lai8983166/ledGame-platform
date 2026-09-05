@@ -129,8 +129,8 @@ public class CoreFlowController {
     }
 
     @GetMapping("/records/wristband-bindings")
-    public List<Map<String, Object>> listWristbandBindingRecords() {
-        return jdbc.queryForList("""
+    public List<Map<String, Object>> listWristbandBindingRecords(@RequestParam(required = false) String uid) {
+        String sql = """
             SELECT b.id, w.card_uid AS uid, b.member_id AS memberId,
                    m.phone, m.name AS memberName, b.status,
                    b.duration_minutes AS durationMinutes, b.bound_at AS boundAt,
@@ -138,19 +138,23 @@ public class CoreFlowController {
               FROM wristband_bindings b
               JOIN wristbands w ON w.id=b.wristband_id
               JOIN members m ON m.id=b.member_id
-             ORDER BY b.bound_at DESC, b.id DESC
-            """);
+            """;
+        if (uid != null) sql += " WHERE w.card_uid=?";
+        sql += " ORDER BY b.bound_at DESC, b.id DESC";
+        return uid == null ? jdbc.queryForList(sql) : jdbc.queryForList(sql, normalizeUid(uid));
     }
 
     @GetMapping("/records/wristband-charges")
-    public List<Map<String, Object>> listWristbandChargeRecords() {
-        return jdbc.queryForList("""
+    public List<Map<String, Object>> listWristbandChargeRecords(@RequestParam(required = false) String uid) {
+        String sql = """
             SELECT id, wristband_uid AS uid, duration_minutes AS durationMinutes,
                    unit_price_cents AS unitPriceCents, amount_cents AS amountCents,
                    charged_at AS chargedAt
               FROM wristband_charge_records
-             ORDER BY charged_at DESC, id DESC
-            """);
+            """;
+        if (uid != null) sql += " WHERE wristband_uid=?";
+        sql += " ORDER BY charged_at DESC, id DESC";
+        return uid == null ? jdbc.queryForList(sql) : jdbc.queryForList(sql, normalizeUid(uid));
     }
 
     @GetMapping("/wristbands/{uid}")

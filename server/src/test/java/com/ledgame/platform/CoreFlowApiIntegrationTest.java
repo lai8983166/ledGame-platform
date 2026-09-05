@@ -523,6 +523,38 @@ class CoreFlowApiIntegrationTest {
     }
 
     @Test
+    void filteredRecordsRemainCompleteBeyondTheGlobalTwoHundredGameLimit() {
+        long first = createActiveWristband("880001", "13999990001", "并发核账会员一");
+        var firstPlay = startPlay("880001", "filtered-first", "simple", "核账游戏");
+        put("/api/game-plays/" + number(firstPlay.getBody().get("id")) + "/result",
+                Map.of("success", true, "terminationReason", "NATURAL_COMPLETION", "rawScore", 88));
+        long other = createActiveWristband("880002", "13999990002", "并发核账会员二");
+        long binding = jdbc.queryForObject("SELECT id FROM wristband_bindings WHERE member_id=?", Long.class, other);
+        for (int i = 0; i < 205; i++) {
+            jdbc.update("""
+                INSERT INTO game_play_records(member_id,binding_id,wristband_uid,device_id,
+                    external_session_id,game_id,game_name,status,started_at,ended_at,points_awarded)
+                VALUES (?,?,'880002','filter-device',?,'simple','其他游戏','COMPLETED',?,?,1)
+                """, other, binding, "filter-" + i, clock.instant().toString(), clock.instant().toString());
+        }
+        ResponseEntity<List<Map<String, Object>>> all = http.exchange("/api/game-plays",
+                HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        assertThat(all.getBody()).hasSize(200);
+        ResponseEntity<List<Map<String, Object>>> filtered = http.exchange("/api/game-plays?memberId=" + first,
+                HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        assertThat(filtered.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(filtered.getBody()).hasSize(1);
+        assertThat(filtered.getBody().get(0)).containsEntry("externalSessionId", "filtered-first");
+        for (String endpoint : List.of("wristband-charges", "wristband-bindings")) {
+            ResponseEntity<List<Map<String, Object>>> records = http.exchange(
+                    "/api/records/" + endpoint + "?uid=880001", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+            assertThat(records.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(records.getBody()).hasSize(1);
+            assertThat(records.getBody().get(0)).containsEntry("uid", "880001");
+        }
+    }
+
+    @Test
     void platformScoringHandlesMissingAndNegativeScoresAndSharedRanks() {
         long firstMember = number(post("/api/members", Map.of(
                 "phone", "13000130010", "name", "积分并列甲")).getBody().get("id"));

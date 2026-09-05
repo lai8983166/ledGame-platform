@@ -1,11 +1,12 @@
 export const FORMAT_VERSION = 1;
 export const SAFETY_CONFIRMATION = "I_UNDERSTAND_THIS_USES_ISOLATED_TEST_DATA";
 
-export type ProfileName = "smoke" | "load";
+export type ProfileName = "smoke" | "load" | "quick" | "standard" | "soak" | "overnight";
 export type FlowType = "registration" | "game";
 export type RequestOutcomeKind = "http" | "timeout" | "network";
 
 export interface LoadProfile {
+  scheduledDurationSeconds?: number;
   registrationWorkers: number;
   gameWorkers: number;
   iterationsPerWorker: number;
@@ -62,6 +63,10 @@ export interface AgentConfig extends LoadProfile {
 }
 
 export interface BasePlanItem {
+  memberMode?: "new" | "existing" | "replay";
+  dependsOn?: string;
+  scheduledSteps?: Array<{ name: string; atMs: number }>;
+  playDurationMs?: number;
   operationId: string;
   flowType: FlowType;
   worker: number;
@@ -87,6 +92,16 @@ export interface GamePlanItem extends BasePlanItem {
 export type PlanItem = RegistrationPlanItem | GamePlanItem;
 
 export interface PlanFile {
+  schedule?: {
+    durationMs: number;
+    graceMs: number;
+    lagThresholdMs: number;
+    seed: string;
+    registrationWorkers: number;
+    gameWorkers: number;
+    queries: Array<{ name: string; atMs: number; path: string }>;
+  };
+  expected?: ExpectedTotals;
   formatVersion: number;
   runId: string;
   agentId: string;
@@ -97,6 +112,9 @@ export interface PlanFile {
 }
 
 export interface StepResult {
+  plannedOffsetMs?: number;
+  actualOffsetMs?: number;
+  startDelayMs?: number;
   name: string;
   method: string;
   path: string;
@@ -121,6 +139,8 @@ export interface FlowResult {
 }
 
 export interface AgentSummary {
+  schedule?: ScheduleMetrics;
+  queryResults?: StepResult[];
   formatVersion: number;
   runId: string;
   agentId: string;
@@ -151,6 +171,9 @@ export interface Difference {
 export type VerificationConclusion = "PASSED" | "FAILED" | "INVALID";
 
 export interface VerificationReport {
+  expected?: ExpectedTotals;
+  actual?: ExpectedTotals;
+  executionPassed?: boolean;
   formatVersion: number;
   runId: string;
   generatedAt: string;
@@ -179,4 +202,29 @@ export interface VerificationReport {
   coverageBoundary: string[];
   dataDirectories: string[];
   flowCounts: Record<FlowType, { planned: number; attempted: number; succeeded: number; failed: number }>;
+}
+
+export interface ExpectedTotals {
+  members: number;
+  wristbands: number;
+  charges: number;
+  bindings: number;
+  games: number;
+  points: number;
+}
+
+export interface ScheduleMetrics {
+  durationMs: number;
+  actualDurationMs: number;
+  graceMs: number;
+  lagThresholdMs: number;
+  p95StartDelayMs: number;
+  maxStartDelayMs: number;
+  maxPending: number;
+  pendingAtDeadline: number;
+  skippedSteps: number;
+  completedSteps: number;
+  plannedSteps: number;
+  executionPassed: boolean;
+  samples: Array<{ elapsedMs: number; pending: number; inFlight: number; completed: number }>;
 }

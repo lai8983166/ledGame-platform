@@ -5,6 +5,10 @@ import type { AgentConfig, CenterConfig, ConnectionInfo, LoadProfile, ProfileNam
 import { SAFETY_CONFIRMATION } from "./types.js";
 
 export const PROFILES: Record<ProfileName, LoadProfile> = {
+  quick: timedProfile(300),
+  standard: timedProfile(1800),
+  soak: timedProfile(7200),
+  overnight: timedProfile(43200),
   smoke: {
     registrationWorkers: 1,
     gameWorkers: 1,
@@ -22,6 +26,12 @@ export const PROFILES: Record<ProfileName, LoadProfile> = {
     durationMinutes: 1440,
   },
 };
+
+function timedProfile(seconds: number): LoadProfile {
+  return { registrationWorkers: 3, gameWorkers: 6, iterationsPerWorker: 1,
+    maxDurationSeconds: seconds + 30, scheduledDurationSeconds: seconds,
+    requestTimeoutMs: 5000, durationMinutes: 1440 };
+}
 
 const RUN_ID_PATTERN = /^[A-Z0-9][A-Z0-9-]{2,39}$/;
 const AGENT_ID_PATTERN = /^[A-Z0-9][A-Z0-9-]{0,15}$/;
@@ -97,10 +107,16 @@ export function resolveAgentConfig(
   raw: Record<string, unknown>,
   cwd = process.cwd(),
 ): AgentConfig {
-  const profile = String(raw.profile ?? "smoke") as ProfileName;
-  if (!(profile in PROFILES)) throw new Error("profile 必须是 smoke 或 load");
+  const profile = String(raw.profile ?? "quick") as ProfileName;
+  if (!Object.hasOwn(PROFILES, profile)) throw new Error("profile 必须是 quick、standard、soak、overnight（兼容 smoke/load）");
   const defaults = PROFILES[profile];
+  if (defaults.scheduledDurationSeconds) {
+    for (const key of ["registrationWorkers", "gameWorkers", "iterationsPerWorker", "maxDurationSeconds", "scheduledDurationSeconds", "durationMinutes", "requestTimeoutMs"] as const) {
+      if (raw[key] !== undefined && Number(raw[key]) !== defaults[key]) throw new Error(`定时档位固定 ${key}，请通过 profile 选择时长`);
+    }
+  }
   const config: AgentConfig = {
+    ...(defaults.scheduledDurationSeconds ? { scheduledDurationSeconds: defaults.scheduledDurationSeconds } : {}),
     runId: normalizeRunId(connection.runId),
     agentId: normalizeAgentId(raw.agentId),
     profile,

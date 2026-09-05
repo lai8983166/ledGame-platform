@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -23,8 +24,8 @@ public class GamePlayController {
     }
 
     @GetMapping
-    public java.util.List<Map<String, Object>> list() {
-        return gamePlayService.list();
+    public java.util.List<Map<String, Object>> list(@RequestParam(required = false) Long memberId) {
+        return gamePlayService.list(memberId);
     }
 
     @PostMapping("/start")

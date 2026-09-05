@@ -39,6 +39,7 @@
     "typecheck:multipoint-concurrency": "tsc --noEmit -p multipoint-concurrency/tsconfig.json",
     "portable:multipoint-concurrency": "node scripts/build-multipoint-concurrency-portable.mjs",
     "test:multipoint-concurrency:local": "tsx multipoint-concurrency/tests/run-local-integration.ts",
+    "test:multipoint-concurrency:packaged": "tsx multipoint-concurrency/tests/run-timed-packaged.ts",
     "portable:prepare": "node scripts/prepare-platform-portable.cjs",
     "portable:member-admin:dir": "pnpm portable:prepare && pnpm build:member-admin && electron-builder --config desktop/electron-builder.member-admin.json --win dir",
     "portable:member-admin:zip": "pnpm portable:prepare && pnpm build:member-admin && electron-builder --config desktop/electron-builder.member-admin.json --win zip",

@@ -1,8 +1,10 @@
 import type { AgentConfig, GamePlanItem, PlanFile, PlanItem, RegistrationPlanItem } from "./types.js";
 import { FORMAT_VERSION } from "./types.js";
 import { identityFor } from "./identity.js";
+import { buildTimedPlan } from "./timed-plan.js";
 
 export function buildPlan(config: AgentConfig, now = new Date()): PlanFile {
+  if (config.scheduledDurationSeconds) return buildTimedPlan(config, now);
   const items: PlanItem[] = [];
   for (let worker = 1; worker <= config.registrationWorkers; worker += 1) {
     for (let iteration = 1; iteration <= config.iterationsPerWorker; iteration += 1) {

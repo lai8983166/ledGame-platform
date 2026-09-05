@@ -3,6 +3,10 @@ import path from "node:path";
 import { readResults } from "./agent.js";
 import { PlatformClient, stepSucceeded } from "./platform-client.js";
 import { FORMAT_VERSION } from "./types.js";
+import { reconcileTimed } from "./timed-verifier.js";
+import { buildPlan } from "./plan.js";
+import { resolveAgentConfig } from "./config.js";
+import { SAFETY_CONFIRMATION, type ConnectionInfo } from "./types.js";
 import type { AgentSummary, Difference, FlowResult, PlanFile, PlanItem, VerificationReport, VerifyConfig } from "./types.js";
 
 export interface AgentArtifacts {
@@ -44,8 +48,22 @@ export function validateArtifacts(runId: string, artifacts: AgentArtifacts[]): D
     agentIds.add(agentId);
     const planIds = new Set(artifact.plan.items.map((item) => item.operationId));
     const resultIds = new Set(artifact.results.map((result) => result.operationId));
+    if (planIds.size !== artifact.plan.items.length || resultIds.size !== artifact.results.length) addDifference(differences, "IDENTITY_COLLISION", "计划或结果操作编号重复", { agentId });
+    if (artifact.plan.schedule) {
+      try {
+        const regenerated = buildPlan(resolveAgentConfig({ runId, platformBaseUrl: artifact.plan.platformBaseUrl } as ConnectionInfo,
+          { profile: artifact.plan.profile, agentId, safetyConfirmation: SAFETY_CONFIRMATION }), new Date(artifact.plan.generatedAt));
+        if (JSON.stringify(regenerated.items) !== JSON.stringify(artifact.plan.items)
+          || JSON.stringify(regenerated.schedule) !== JSON.stringify(artifact.plan.schedule)
+          || JSON.stringify(regenerated.expected) !== JSON.stringify(artifact.plan.expected)) throw new Error("计划与确定性输入不符");
+        if (!artifact.summary.schedule || artifact.summary.planned !== artifact.plan.items.length
+          || artifact.summary.attempted !== artifact.results.length) throw new Error("执行摘要缺失或数量不符");
+      } catch (error) { addDifference(differences, "PLAN_INVALID", String(error), { agentId }); }
+    }
     for (const item of artifact.plan.items) {
-      const itemIdentities = [item.operationId, item.phone, item.uid, ...(item.flowType === "game" ? [item.externalSessionId] : [])];
+      const itemIdentities = [item.operationId,
+        ...(item.memberMode === "existing" || item.memberMode === "replay" ? [] : [item.phone]),
+        ...(item.memberMode === "replay" ? [] : [item.uid]), ...(item.flowType === "game" ? [item.externalSessionId] : [])];
       for (const identity of itemIdentities) {
         const prior = identities.get(identity);
         if (prior) addDifference(differences, "IDENTITY_COLLISION", "跨代理计划身份发生碰撞", { agentId, operationId: item.operationId, expected: "唯一", actual: prior });
@@ -148,7 +166,32 @@ export function responseWasUncertain(result: FlowResult): boolean {
 
 export async function scanCenterLog(file: string): Promise<string[]> {
   const content = await fs.readFile(file, "utf8").catch(() => "");
-  return content.split(/\r?\n/).filter((line) => /SQLITE_BUSY|database is locked|\bHTTP\s+5\d\d\b|status[=: ]+5\d\d|exited|exit code/i.test(line)).slice(0, 500);
+  return content.split(/\r?\n/).filter((line) => /SQLITE_BUSY|SQLITE_LOCKED|DATABASE_BUSY|database is locked|\bHTTP\s+5\d\d\b|status[=: ]+5\d\d|exited|exit code/i.test(line)).slice(0, 500);
+}
+
+export function timedExecutionPassed(artifact: AgentArtifacts): boolean {
+  const schedule = artifact.plan.schedule;
+  const metrics = artifact.summary.schedule;
+  if (!schedule || !metrics) return false;
+  const expected = new Map<string, number>();
+  for (const item of artifact.plan.items) for (const step of item.scheduledSteps ?? []) expected.set(`${item.operationId}/${step.name}`, step.atMs);
+  for (const query of schedule.queries) expected.set(query.name, query.atMs);
+  const observed = [
+    ...artifact.results.flatMap(result => result.steps.map(step => ({ key: `${result.operationId}/${step.name}`, step }))),
+    ...(artifact.summary.queryResults ?? []).map(step => ({ key: step.name, step })),
+  ];
+  if (observed.length !== expected.size || new Set(observed.map(v => v.key)).size !== expected.size) return false;
+  for (const { key, step } of observed) {
+    const planned = expected.get(key);
+    if (planned === undefined || step.plannedOffsetMs !== planned || !Number.isFinite(step.actualOffsetMs)
+      || !Number.isFinite(step.startDelayMs) || step.actualOffsetMs! < planned
+      || Math.abs(step.startDelayMs! - (step.actualOffsetMs! - planned)) > 1
+      || step.actualOffsetMs! >= schedule.durationMs + schedule.graceMs) return false;
+  }
+  return percentile(observed.map(v => v.step.startDelayMs!), .95) <= schedule.lagThresholdMs
+    && metrics.actualDurationMs >= schedule.durationMs
+    && metrics.actualDurationMs <= schedule.durationMs + schedule.graceMs + 5000
+    && metrics.pendingAtDeadline === 0 && metrics.skippedSteps === 0;
 }
 
 export async function verifyRun(config: VerifyConfig): Promise<VerificationReport> {
@@ -161,6 +204,14 @@ export async function verifyRun(config: VerifyConfig): Promise<VerificationRepor
   }
   const differences = [...inputDifferences, ...validateArtifacts(connection.runId, artifacts)];
   const client = new PlatformClient(connection.platformBaseUrl, config.requestTimeoutMs);
+  const timed = artifacts.some(a => a.plan.schedule);
+  let timedResult;
+  let uncertainButCommitted = 0;
+  if (timed) {
+    if (artifacts.some(a => !a.plan.schedule || a.plan.profile !== artifacts[0]?.plan.profile)) addDifference(differences, "PLAN_INVALID", "两节点必须使用相同定时档位");
+    timedResult = await reconcileTimed(artifacts, client, differences);
+    uncertainButCommitted = timedResult.uncertainButCommitted;
+  } else {
   const gamePlanCount = artifacts.reduce((count, artifact) => {
     const results = new Map(artifact.results.map((result) => [result.operationId, result]));
     return count + artifact.plan.items.filter((item) => {
@@ -176,7 +227,6 @@ export async function verifyRun(config: VerifyConfig): Promise<VerificationRepor
     if (stepSucceeded(gameList)) allGamePlays = gameList.response;
     else addDifference(differences, "VERIFY_QUERY_FAILED", "核账查询失败：/api/game-plays", { expected: "2xx", actual: gameList.kind === "http" ? gameList.status : gameList.kind });
   }
-  let uncertainButCommitted = 0;
   for (const artifact of artifacts) {
     const results = new Map(artifact.results.map((result) => [result.operationId, result]));
     for (const item of artifact.plan.items) {
@@ -198,16 +248,19 @@ export async function verifyRun(config: VerifyConfig): Promise<VerificationRepor
       else addDifference(differences, "REQUEST_FAILED", result.error ?? "代理流程失败且最终状态不完整", { agentId: artifact.plan.agentId, operationId: item.operationId });
     }
   }
+  }
   const logErrors = await scanCenterLog(connection.centerLogPath);
   for (const line of logErrors) addDifference(differences, "CENTER_LOG_ERROR", "中心日志发现异常证据", { actual: line });
   const agents = artifacts.map((item) => item.summary);
   const overlapStart = agents.length ? Math.max(...agents.map((item) => Date.parse(item.startedAt))) : 0;
   const overlapEnd = agents.length ? Math.min(...agents.map((item) => Date.parse(item.endedAt))) : 0;
   const samples = agents.flatMap((item) => item.durationSamplesMs).filter(Number.isFinite);
-  const invalidCodes = new Set(["AGENT_MISSING", "AGENT_ARTIFACT_MISSING", "RUN_ID_MISMATCH", "AGENT_ID_DUPLICATE", "IDENTITY_COLLISION", "NO_RUNTIME_OVERLAP"]);
+  const invalidCodes = new Set(["PLAN_INVALID", "AGENT_MISSING", "AGENT_ARTIFACT_MISSING", "RUN_ID_MISMATCH", "AGENT_ID_DUPLICATE", "IDENTITY_COLLISION", "NO_RUNTIME_OVERLAP"]);
   const invalid = differences.some((item) => invalidCodes.has(item.code));
   const dataIntegrityPassed = !differences.some((item) => /^(MEMBER_|WRISTBAND_|GAME_|POINTS_|VERIFY_)/.test(item.code));
-  const transportFailed = agents.some((item) => item.failed > 0 || item.incomplete > 0 || item.http5xx > 0 || item.timeouts > 0 || item.networkErrors > 0);
+  const transportFailed = agents.some((item) => item.failed > 0 || item.incomplete > 0 || item.http5xx > 0 || item.timeouts > 0 || item.networkErrors > 0)
+    || (timed && artifacts.some(a => [...a.results.flatMap(r => r.steps), ...(a.summary.queryResults ?? [])].some(s => !stepSucceeded(s))));
+  const executionPassed = !timed || artifacts.every(timedExecutionPassed);
   const p95Ms = percentile(samples, 0.95);
   const elapsedSeconds = agents.length ? Math.max(0.001, (Math.max(...agents.map((item) => Date.parse(item.endedAt))) - Math.min(...agents.map((item) => Date.parse(item.startedAt)))) / 1000) : 1;
   const flowCounts = { registration: { planned: 0, attempted: 0, succeeded: 0, failed: 0 }, game: { planned: 0, attempted: 0, succeeded: 0, failed: 0 } };
@@ -222,7 +275,8 @@ export async function verifyRun(config: VerifyConfig): Promise<VerificationRepor
     }
   }
   return {
-    formatVersion: FORMAT_VERSION, runId: connection.runId, generatedAt: new Date().toISOString(), conclusion: invalid ? "INVALID" : dataIntegrityPassed && !transportFailed && logErrors.length === 0 ? "PASSED" : "FAILED", dataIntegrityPassed, agents,
+    ...(timedResult ? { expected: timedResult.expected, actual: timedResult.actual, executionPassed } : {}),
+    formatVersion: FORMAT_VERSION, runId: connection.runId, generatedAt: new Date().toISOString(), conclusion: invalid ? "INVALID" : dataIntegrityPassed && !transportFailed && executionPassed && logErrors.length === 0 && !differences.some(d => d.code === "REQUEST_FAILED" || d.code === "PLAN_INCOMPLETE") ? "PASSED" : "FAILED", dataIntegrityPassed, agents,
     overlapSeconds: Math.max(0, (overlapEnd - overlapStart) / 1000),
     counts: { planned: agents.reduce((n, item) => n + item.planned, 0), attempted: agents.reduce((n, item) => n + item.attempted, 0), succeeded: agents.reduce((n, item) => n + item.succeeded, 0), failed: agents.reduce((n, item) => n + item.failed, 0), incomplete: agents.reduce((n, item) => n + item.incomplete, 0), uncertainButCommitted },
     performance: { requests: samples.length, requestsPerSecond: Number((samples.length / elapsedSeconds).toFixed(2)), p50Ms: percentile(samples, .5), p95Ms, p99Ms: percentile(samples, .99), warning: p95Ms > config.performanceWarningP95Ms },
@@ -233,7 +287,7 @@ export async function verifyRun(config: VerifyConfig): Promise<VerificationRepor
   };
 }
 
-export function renderChineseMarkdown(report: VerificationReport): string {
+function renderBaseMarkdown(report: VerificationReport): string {
   const verdict = report.conclusion === "PASSED" ? "通过" : report.conclusion === "FAILED" ? "失败" : "无效";
   return ["# 多点并发验收报告", "", `- 运行编号：${report.runId}`, `- 结论：**${verdict}**`, `- 两机重叠运行：${report.overlapSeconds.toFixed(1)} 秒`, `- 计划/尝试/成功/失败/未完成：${report.counts.planned}/${report.counts.attempted}/${report.counts.succeeded}/${report.counts.failed}/${report.counts.incomplete}`, `- 注册流（计划/尝试/成功/失败）：${report.flowCounts.registration.planned}/${report.flowCounts.registration.attempted}/${report.flowCounts.registration.succeeded}/${report.flowCounts.registration.failed}`, `- 游戏流（计划/尝试/成功/失败）：${report.flowCounts.game.planned}/${report.flowCounts.game.attempted}/${report.flowCounts.game.succeeded}/${report.flowCounts.game.failed}`, `- 请求无响应但最终已提交：${report.counts.uncertainButCommitted}`, "", "## 代理结果", "", ...report.agents.map((item) => `- ${item.agentId}：${item.profile}，${item.startedAt} 至 ${item.endedAt}，平台 ${item.platformBaseUrl}；5xx ${item.http5xx}，超时 ${item.timeouts}，连接失败 ${item.networkErrors}`), "", "## 数据正确性", "", report.dataIntegrityPassed ? "会员、手环、游戏记录和积分逐项核对通过。" : `发现 ${report.differences.length} 项差异。`, "", "## 性能观察（不参与数据正确性结论）", "", `请求数 ${report.performance.requests}，吞吐量 ${report.performance.requestsPerSecond} 请求/秒，p50 ${report.performance.p50Ms}ms，p95 ${report.performance.p95Ms}ms，p99 ${report.performance.p99Ms}ms。${report.performance.warning ? "存在性能告警。" : "未触发性能告警。"}`, "", "## 差异", "", ...(report.differences.length ? report.differences.map((item) => `- [${item.code}] ${item.agentId ?? "-"}/${item.operationId ?? "-"}：${item.message}`) : ["- 无"]), "", "## 数据目录", "", ...report.dataDirectories.map((item) => `- ${item}`), "", "## 覆盖边界", "", ...report.coverageBoundary.map((item) => `- ${item}`), ""].join("\n");
 }
@@ -245,4 +299,22 @@ export async function writeVerificationReport(report: VerificationReport, output
   await fs.writeFile(json, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   await fs.writeFile(markdown, renderChineseMarkdown(report), "utf8");
   return { json, markdown };
+}
+
+export function renderChineseMarkdown(report: VerificationReport): string {
+  const base = renderBaseMarkdown(report);
+  if (!report.expected || !report.actual) return base;
+  const labels = { members: "新增会员", wristbands: "新增手环", charges: "充值记录", bindings: "绑定记录", games: "游戏记录", points: "会员累计积分" };
+  const details = ["## 原计划与最终数据", "", "| 项目 | 预期 | 实际 | 差异 |", "|---|---:|---:|---:|",
+    ...Object.entries(labels).map(([key, label]) => {
+      const k = key as keyof typeof labels;
+      return `| ${label} | ${report.expected![k]} | ${report.actual![k]} | ${report.actual![k] - report.expected![k]} |`;
+    }), "", "## 执行节奏与积压", "",
+    `执行节奏：${report.executionPassed ? "通过" : "未通过（即使数据正确，也不能判定整体通过）"}。启动延迟由本机单调时钟计算，不依赖跨机时钟同步。`,
+    "到点待执行统计按秒采样，并在请求开始时更新峰值；不包括尚未到计划时间的操作和正在请求的操作。请求耗时包含网络与服务处理，不能单凭它认定数据库排队。", "",
+    ...report.agents.map(a => {
+      const s = a.schedule;
+      return s ? `- ${a.agentId}：计划 ${(s.durationMs / 60000).toFixed(0)} 分钟，实际 ${(s.actualDurationMs / 1000).toFixed(1)} 秒；启动延迟 p95 ${s.p95StartDelayMs.toFixed(0)}ms，最大 ${s.maxStartDelayMs.toFixed(0)}ms（p95 标准 ≤${s.lagThresholdMs}ms）；最大待执行 ${s.maxPending}，截止待执行 ${s.pendingAtDeadline}，跳过 ${s.skippedSteps}。` : `- ${a.agentId}：缺少调度证据。`;
+    }), "", "逐秒积压曲线数据保存在各节点 summary.json 的 schedule.samples；逐请求计划时间、实际时间和启动延迟保存在 results.jsonl。管理查询详情保存在 summary.json 的 queryResults。", ""].join("\n");
+  return base.replace("## 数据正确性", details + "\n## 数据正确性");
 }

@@ -9,6 +9,7 @@ export class PlatformClient {
 
   async step(name: string, method: string, path: string, body?: unknown): Promise<StepResult> {
     const started = new Date();
+    const monotonicStarted = performance.now();
     const startedAt = started.toISOString();
     try {
       const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -23,7 +24,7 @@ export class PlatformClient {
       const ended = new Date();
       return {
         name, method, path, kind: "http", startedAt, endedAt: ended.toISOString(),
-        durationMs: ended.getTime() - started.getTime(), status: response.status, response: parsed,
+        durationMs: performance.now() - monotonicStarted, status: response.status, response: parsed,
       };
     } catch (error) {
       const ended = new Date();
@@ -31,7 +32,7 @@ export class PlatformClient {
       const timeout = nameValue === "TimeoutError" || nameValue === "AbortError";
       return {
         name, method, path, kind: timeout ? "timeout" : "network",
-        startedAt, endedAt: ended.toISOString(), durationMs: ended.getTime() - started.getTime(),
+        startedAt, endedAt: ended.toISOString(), durationMs: performance.now() - monotonicStarted,
         error: error instanceof Error ? error.message : String(error),
       };
     }
