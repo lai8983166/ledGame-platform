@@ -33,7 +33,8 @@ class PlatformSchemaMigrationTest {
 
             List<String> protectedTables = List.of(
                     "members", "wristbands", "wristband_charge_records", "wristband_bindings",
-                    "game_play_records", "room_settings", "operator_accounts", "operator_action_logs");
+                    "game_play_records", "room_settings", "store_feature_settings",
+                    "operator_accounts", "operator_action_logs");
             for (String table : protectedTables) {
                 assertThat(jdbc.queryForObject("""
                     SELECT COUNT(*) FROM sqlite_master

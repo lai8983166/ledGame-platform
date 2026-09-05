@@ -65,11 +65,3 @@ export interface Wristband {
   activatedAt: string | null;
   startedAt: string | null;
 }
-
-export interface FeatureSetting {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  critical?: boolean;
-}

@@ -1,0 +1,10 @@
+{
+  "runId": "CONC-20260904-001",
+  "memberAdminExecutable": "../member-admin/win-unpacked/LED Game 会员管理端.exe",
+  "testRoot": "runs",
+  "lanHost": "192.168.124.10",
+  "testPort": 18090,
+  "normalPlatformUrl": "http://127.0.0.1:8090",
+  "startupTimeoutMs": 60000,
+  "safetyConfirmation": "I_UNDERSTAND_THIS_USES_ISOLATED_TEST_DATA"
+}

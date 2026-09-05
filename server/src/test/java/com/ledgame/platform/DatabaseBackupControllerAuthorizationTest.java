@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.file.Path;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +33,15 @@ class DatabaseBackupControllerAuthorizationTest {
                         error -> assertThat(error.getCode()).isEqualTo("IMPORT_FORBIDDEN"));
         verify(imports, never()).discoverFixedCandidates();
         verify(imports, never()).prepare("candidate");
+        assertThatThrownBy(() -> controller.registerExternal(
+                request, 7L, new DatabaseBackupController.ExternalCandidateRequest("C:/backup.db")))
+                .isInstanceOfSatisfying(PlatformApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo("IMPORT_FORBIDDEN"));
+        verify(imports, never()).registerExternal(Path.of("C:/backup.db"));
+        assertThatThrownBy(() -> controller.cancelImport(request, 7L))
+                .isInstanceOfSatisfying(PlatformApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo("IMPORT_FORBIDDEN"));
+        verify(imports, never()).cancelImport();
         assertThatThrownBy(() -> controller.keepCurrentDatabase(request, 7L))
                 .isInstanceOfSatisfying(PlatformApiException.class,
                         error -> assertThat(error.getCode()).isEqualTo("IMPORT_FORBIDDEN"));

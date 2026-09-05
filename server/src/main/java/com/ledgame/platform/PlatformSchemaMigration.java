@@ -13,10 +13,11 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 1;
+    public static final int CURRENT_SCHEMA_VERSION = 2;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
             "members", "wristbands", "wristband_charge_records", "wristband_bindings",
-            "game_play_records", "room_settings", "operator_accounts", "operator_action_logs");
+            "game_play_records", "room_settings", "store_feature_settings",
+            "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
 
     public PlatformSchemaMigration(JdbcTemplate jdbc) {

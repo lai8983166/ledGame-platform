@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -67,6 +69,35 @@ class RoomConnectionWebSocketIntegrationTest {
             assertThat(offline).containsEntry("roomName", "测试房间");
         } finally {
             if (session.isOpen()) session.close();
+        }
+    }
+
+    @Test
+    void sendsCurrentChildModeOnWelcomeAndBroadcastsUpdates() throws Exception {
+        LinkedBlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        WebSocketHandler handler = new TextWebSocketHandler() {
+            @Override
+            protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+                messages.add(message.getPayload());
+            }
+        };
+        WebSocketSession session = new StandardWebSocketClient().execute(
+                handler, "ws://127.0.0.1:" + port + "/ws/rooms").get();
+        try {
+            session.sendMessage(new TextMessage("{\"type\":\"HELLO\"}"));
+            assertThat(messages.poll(3, TimeUnit.SECONDS))
+                    .contains("\"type\":\"WELCOME\"", "\"childMode\":false");
+
+            ResponseEntity<Map> updated = http.exchange(
+                    "/api/feature-settings/child-mode", HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("enabled", true)), Map.class);
+            assertThat(updated.getBody()).containsEntry("childMode", true);
+            assertThat(messages.poll(3, TimeUnit.SECONDS))
+                    .contains("CHILD_MODE_CHANGED", "\"childMode\":true");
+        } finally {
+            session.close();
+            http.exchange("/api/feature-settings/child-mode", HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("enabled", false)), Map.class);
         }
     }
 

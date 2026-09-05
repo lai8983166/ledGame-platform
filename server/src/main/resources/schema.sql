@@ -89,6 +89,16 @@ CREATE TABLE IF NOT EXISTS room_settings (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS store_feature_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    child_mode INTEGER NOT NULL DEFAULT 0 CHECK (child_mode IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO store_feature_settings(id, child_mode, created_at, updated_at)
+VALUES (1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
 CREATE TABLE IF NOT EXISTS operator_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,

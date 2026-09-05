@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
@@ -107,6 +108,76 @@ class DatabaseBackupCoordinatorStartupTest {
         fixture.close();
     }
 
+    @Test
+    void lowSpaceTargetReportsActionableReasonWithoutBlockingBusiness() throws Exception {
+        Path sourceDirectory = Files.createDirectories(root.resolve("low-space-source"));
+        Path targetDirectory = Files.createDirectories(root.resolve("low-space-target"));
+        Path source = Files.writeString(sourceDirectory.resolve("platform.db"), "main");
+        DatabaseStateSnapshot sourceState = state("store-low-space", 4);
+        DatabaseBackupProperties properties = new DatabaseBackupProperties();
+        properties.setMinimumFreeBytes(10_000);
+        DatabaseBackupEngine engine = mock(DatabaseBackupEngine.class);
+        when(engine.sourceDatabase()).thenReturn(source);
+        when(engine.inMemoryDatabase()).thenReturn(false);
+        DatabaseFileInspector inspector = mock(DatabaseFileInspector.class);
+        when(inspector.inspect(source)).thenReturn(inspection(source, sourceState, true));
+        DatabaseStateService stateService = mock(DatabaseStateService.class);
+        when(stateService.current()).thenReturn(sourceState);
+        StartupGate gate = new StartupGate();
+        DatabaseBackupCoordinator coordinator = new DatabaseBackupCoordinator(properties,
+                () -> java.util.List.of(
+                        volume(sourceDirectory, "source-disk", 0, false, 1_000_000),
+                        volume(targetDirectory, "target-disk", 1, false, 1)),
+                engine, inspector, stateService, gate, new ObjectMapper().findAndRegisterModules(),
+                Clock.systemUTC(), "Asia/Shanghai");
+
+        coordinator.run(new DefaultApplicationArguments(new String[0]));
+
+        assertThat(coordinator.status().state()).isEqualTo(BackupLifecycleState.READY_DEGRADED);
+        assertThat(coordinator.status().errorCode()).isEqualTo("TARGET_SPACE_LOW");
+        assertThat(coordinator.status().message()).contains("空间不足");
+        assertThat(gate.businessReady()).isTrue();
+        verify(engine, never()).backup(any(), anyString());
+        properties.setEnabled(false);
+        coordinator.close();
+    }
+
+    @Test
+    void unwritableTargetReportsActionableReasonWithoutReplacingAnyLatest() throws Exception {
+        Path sourceDirectory = Files.createDirectories(root.resolve("unwritable-source"));
+        Path targetDirectory = Files.createDirectories(root.resolve("unwritable-target"));
+        Files.writeString(targetDirectory.resolve("LEDGameBackup"), "blocks backup directory creation");
+        Path source = Files.writeString(sourceDirectory.resolve("platform.db"), "main");
+        DatabaseStateSnapshot sourceState = state("store-unwritable", 5);
+        DatabaseBackupProperties properties = new DatabaseBackupProperties();
+        properties.setMinimumFreeBytes(1);
+        DatabaseBackupEngine engine = mock(DatabaseBackupEngine.class);
+        when(engine.sourceDatabase()).thenReturn(source);
+        when(engine.inMemoryDatabase()).thenReturn(false);
+        DatabaseFileInspector inspector = mock(DatabaseFileInspector.class);
+        when(inspector.inspect(source)).thenReturn(inspection(source, sourceState, true));
+        DatabaseStateService stateService = mock(DatabaseStateService.class);
+        when(stateService.current()).thenReturn(sourceState);
+        StartupGate gate = new StartupGate();
+        DatabaseBackupCoordinator coordinator = new DatabaseBackupCoordinator(properties,
+                () -> java.util.List.of(
+                        volume(sourceDirectory, "source-disk", 0, false, 1_000_000),
+                        volume(targetDirectory, "target-disk", 1, false, 1_000_000)),
+                engine, inspector, stateService, gate, new ObjectMapper().findAndRegisterModules(),
+                Clock.systemUTC(), "Asia/Shanghai");
+
+        coordinator.run(new DefaultApplicationArguments(new String[0]));
+
+        assertThat(coordinator.status().state()).isEqualTo(BackupLifecycleState.READY_DEGRADED);
+        assertThat(coordinator.status().errorCode()).isEqualTo("TARGET_NOT_WRITABLE");
+        assertThat(coordinator.status().message()).contains("不可写").contains("目录权限");
+        assertThat(gate.businessReady()).isTrue();
+        assertThat(targetDirectory.resolve("LEDGameBackup")).hasContent("blocks backup directory creation");
+        verify(engine, never()).backup(any(), anyString());
+        properties.setEnabled(false);
+        coordinator.close();
+    }
+
     private Fixture fixture(DatabaseStateSnapshot mainState, DatabaseStateSnapshot backupState, boolean mainValid)
             throws Exception {
         return fixture(mainState, backupState, mainValid, "ledgame-platform-backup-v2", "PRODUCTION");
@@ -158,6 +229,11 @@ class DatabaseBackupCoordinatorStartupTest {
 
     private static DatabaseStateSnapshot state(String instance, long revision) {
         return new DatabaseStateSnapshot(instance, revision, Instant.parse("2026-09-02T00:00:00Z"), null, null);
+    }
+
+    private static DiskVolume volume(
+            Path mount, String id, int number, boolean readOnly, long freeBytes) {
+        return new DiskVolume(mount, id, "", number, "NVMe", "Fixed", "NTFS", readOnly, freeBytes);
     }
 
     private record Fixture(DatabaseBackupCoordinator coordinator, DatabaseBackupProperties properties,

@@ -38,6 +38,7 @@ const currentOperator = operatorSession.current;
 let toastTimer: number | undefined;
 let backupPollTimer: number | undefined;
 const backupStatus = ref<DatabaseBackupStatus | null>(null);
+const concurrencyTestRunId = ref<string | null>(null);
 
 const copy = computed(() => memberAdminCatalogs[locale.value]);
 const text = (key: MemberAdminMessageKey) => copy.value[key];
@@ -121,6 +122,9 @@ onMounted(() => {
   applyDocumentLocale(document.documentElement, locale.value);
   window.addEventListener("keydown", onKeydown);
   backupPollTimer = window.setInterval(() => void refreshBackupStatus(), 5000);
+  void window.memberAdminDesktop?.diagnostics().then((value) => {
+    concurrencyTestRunId.value = value.concurrencyTestMode ? value.concurrencyTestRunId ?? null : null;
+  });
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeydown);
@@ -130,6 +134,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <div v-if="concurrencyTestRunId" class="concurrency-test-banner" data-testid="concurrency-test-banner">
+    并发测试模式 · {{ concurrencyTestRunId }}
+  </div>
   <div class="app-surface" aria-hidden="true">
     <span class="ambient ambient--one"></span>
     <span class="ambient ambient--two"></span>

@@ -15,6 +15,8 @@ declare global {
     backupState?: string;
     phase?: string;
     error?: string;
+    concurrencyTestRunId?: string | null;
+    concurrencyTestMode?: boolean;
   }
 
   interface Window {

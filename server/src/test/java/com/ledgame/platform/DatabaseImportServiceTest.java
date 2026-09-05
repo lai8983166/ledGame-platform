@@ -28,6 +28,7 @@ class DatabaseImportServiceTest {
     private Path mainDatabase;
     private Path candidateDatabase;
     private JdbcTemplate mainJdbc;
+    private JdbcTemplate candidateJdbc;
     private DatabaseImportService service;
     private DatabaseBackupCoordinator coordinator;
     private RoomConnectionRegistry rooms;
@@ -41,7 +42,7 @@ class DatabaseImportServiceTest {
         DriverManagerDataSource mainDataSource = initialized(mainDatabase);
         DriverManagerDataSource candidateDataSource = initialized(candidateDatabase);
         mainJdbc = new JdbcTemplate(mainDataSource);
-        JdbcTemplate candidateJdbc = new JdbcTemplate(candidateDataSource);
+        candidateJdbc = new JdbcTemplate(candidateDataSource);
         candidateJdbc.update("""
             INSERT INTO operator_accounts(username, display_name, password_hash, account_type, enabled,
                                           created_by_operator_id, created_at, updated_at)
@@ -115,6 +116,28 @@ class DatabaseImportServiceTest {
     void rejectsCandidateWithoutAUniqueEnabledFactoryAdministrator() {
         mainJdbc.execute("DELETE FROM operator_accounts");
         assertThatThrownBy(() -> service.registerExternal(mainDatabase))
+                .isInstanceOfSatisfying(PlatformApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("IMPORT_FACTORY_ACCOUNT_INVALID"));
+    }
+
+    @Test
+    void rejectsCandidateWhoseOnlyFactoryAdministratorIsDisabled() {
+        candidateJdbc.update("UPDATE operator_accounts SET enabled=0 WHERE account_type='FACTORY_ADMIN'");
+
+        assertThatThrownBy(() -> service.registerExternal(candidateDatabase))
+                .isInstanceOfSatisfying(PlatformApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("IMPORT_FACTORY_ACCOUNT_INVALID"));
+    }
+
+    @Test
+    void rejectsCandidateWithMultipleEnabledFactoryAdministrators() {
+        candidateJdbc.update("""
+            INSERT INTO operator_accounts(username, display_name, password_hash, account_type, enabled,
+                                          created_by_operator_id, created_at, updated_at)
+            VALUES ('backup-admin-2', '第二出厂管理员', 'hash', 'FACTORY_ADMIN', 1, NULL, 'now', 'now')
+            """);
+
+        assertThatThrownBy(() -> service.registerExternal(candidateDatabase))
                 .isInstanceOfSatisfying(PlatformApiException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo("IMPORT_FACTORY_ACCOUNT_INVALID"));
     }

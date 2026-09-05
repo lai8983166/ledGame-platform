@@ -37,6 +37,8 @@ export interface PlatformApiClient {
   updateOperatorAccount(id: number, input: UpdateOperatorAccountInput): Promise<OperatorAccount>;
   resetOperatorPassword(id: number, password: string): Promise<OperatorAccount>;
   setOperatorEnabled(id: number, enabled: boolean): Promise<OperatorAccount>;
+  getFeatureSettings(): Promise<ChildModeSetting>;
+  setChildMode(enabled: boolean): Promise<ChildModeSetting>;
   recordSystemSettingsChange(): Promise<void>;
   getDatabaseBackupStatus(): Promise<DatabaseBackupStatus>;
   listDatabaseBackupCandidates(): Promise<DatabaseBackupCandidate[]>;
@@ -153,6 +155,10 @@ export interface DashboardOverview {
   periodStart: string;
   periodEnd: string;
   generatedAt: string;
+}
+
+export interface ChildModeSetting {
+  childMode: boolean;
 }
 
 export type DatabaseBackupLifecycleState =
@@ -387,6 +393,16 @@ export function createPlatformApiClient({
         method: "PUT",
         body: JSON.stringify({ enabled }),
       }), "修改账号状态响应为空");
+    },
+    async getFeatureSettings(): Promise<ChildModeSetting> {
+      return requireResponse(await client.request<ChildModeSetting>("/api/feature-settings"),
+        "功能设置响应为空");
+    },
+    async setChildMode(enabled: boolean): Promise<ChildModeSetting> {
+      return requireResponse(await client.request<ChildModeSetting>("/api/feature-settings/child-mode", {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }), "儿童模式设置响应为空");
     },
     async recordSystemSettingsChange(): Promise<void> {
       await client.request("/api/operator-actions/system-settings", { method: "POST" });

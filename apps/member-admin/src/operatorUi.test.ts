@@ -63,4 +63,13 @@ describe("operator UI capability boundaries", () => {
     expect(settings).toContain("pendingImport.factoryAdminUsername");
     expect(settings).toContain("pendingImport.memberCount");
   });
+
+  it("replaces feature demos with one persistent child-mode switch", () => {
+    expect(settings).toContain('data-testid="child-mode-setting"');
+    expect(settings).toContain("platformApi.getFeatureSettings()");
+    expect(settings).toContain("platformApi.setChildMode(enabled)");
+    expect(settings).not.toContain("childMode.value = previous");
+    expect(settings).not.toContain("createFeatureSettings");
+    expect(settings).not.toContain("开关只改变当前页面状态");
+  });
 });

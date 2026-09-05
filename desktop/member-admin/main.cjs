@@ -15,6 +15,7 @@ const {
 
 const projectRoot = path.resolve(__dirname, "../..");
 const devUrl = process.env.VITE_MEMBER_ADMIN_DEV_URL;
+const concurrencyTestRunId = String(process.env.LEDGAME_CONCURRENCY_TEST_RUN_ID || "").trim() || null;
 app.setName("LED Game Member Admin");
 if (process.env.LEDGAME_USER_DATA) app.setPath("userData", path.resolve(process.env.LEDGAME_USER_DATA));
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -22,7 +23,7 @@ let mainWindow;
 let startupWindow;
 let store;
 let settings = { port: 8090 };
-let status = { state: "starting", phase: "STARTING", message: "正在启动本机服务" };
+let status = { state: "starting", phase: "STARTING", message: "正在启动本机服务", concurrencyTestRunId, concurrencyTestMode: Boolean(concurrencyTestRunId) };
 let backendReady = Promise.resolve();
 let transport;
 let quitting = false;
@@ -56,6 +57,8 @@ function diagnostics() {
     logPath: store.logPath("server.log"),
     lanUrls: listLanIpv4().map((ip) => `http://${ip}:${port}`),
     recentLogs: backend.tail(),
+    concurrencyTestRunId,
+    concurrencyTestMode: Boolean(concurrencyTestRunId),
   };
 }
 

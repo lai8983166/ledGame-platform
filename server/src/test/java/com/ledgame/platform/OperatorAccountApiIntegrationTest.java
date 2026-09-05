@@ -72,6 +72,7 @@ class OperatorAccountApiIntegrationTest {
         jdbc.update("DELETE FROM wristbands");
         jdbc.update("DELETE FROM members");
         jdbc.update("DELETE FROM room_settings");
+        jdbc.update("UPDATE store_feature_settings SET child_mode=0");
         jdbc.update("DELETE FROM operator_accounts");
         String now = clock.instant().toString();
         jdbc.update("""
@@ -248,7 +249,7 @@ class OperatorAccountApiIntegrationTest {
             """, now, now, now);
         postAsOperator("/api/wristbands/reclaim", Map.of("uid", "10003"), factoryId);
         putAsOperator("/api/rooms/192.168.1.25", Map.of("roomName", "A区游戏桌"), factoryId);
-        postAsOperator("/api/operator-actions/system-settings", Map.of(), factoryId);
+        putAsOperator("/api/feature-settings/child-mode", Map.of("enabled", true), factoryId);
         deleteAsOperator("/api/members/" + memberId, factoryId);
 
         assertThat(jdbc.queryForList("SELECT action FROM operator_action_logs").stream()
@@ -258,6 +259,8 @@ class OperatorAccountApiIntegrationTest {
                         "ACCOUNT_ENABLED_CHANGED", "MEMBER_CREATED", "MEMBER_DELETED",
                         "WRISTBAND_CHARGED", "WRISTBAND_BALANCE_CLEARED", "WRISTBAND_UNBOUND",
                         "WRISTBAND_RECLAIMED", "ROOM_RENAMED", "SYSTEM_SETTINGS_UPDATED");
+        assertThat(jdbc.queryForMap("SELECT action, target_id FROM operator_action_logs WHERE action='SYSTEM_SETTINGS_UPDATED'"))
+                .containsEntry("target_id", "child-mode");
         assertThat(jdbc.queryForList("SELECT summary_json FROM operator_action_logs").stream()
                 .map(row -> String.valueOf(row.get("summary_json"))))
                 .allSatisfy(summary -> assertThat(summary).doesNotContain("654321", "123456"));

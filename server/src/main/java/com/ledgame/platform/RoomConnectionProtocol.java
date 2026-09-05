@@ -5,6 +5,7 @@ import java.util.Set;
 final class RoomConnectionProtocol {
     static final String HELLO = "HELLO";
     static final String WELCOME = "WELCOME";
+    static final String CHILD_MODE_CHANGED = "CHILD_MODE_CHANGED";
     static final String ROOM_SNAPSHOT = "ROOM_SNAPSHOT";
     static final String GAME_STARTED = "GAME_STARTED";
     static final String GAME_TIMING_CHANGED = "GAME_TIMING_CHANGED";

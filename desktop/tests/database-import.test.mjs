@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -83,4 +84,24 @@ describe("member admin atomic database import", () => {
     expect(recoverInterruptedImport(files.databasePath)).toMatchObject({ recovered: true, phase: "PREPARED" });
     expect(fs.readFileSync(files.databasePath, "utf8")).toBe("old-database");
   });
+
+  for (const phase of ["ROLLBACK_SAVED", "DATABASE_PUBLISHED", "WAITING_FOR_VERIFICATION"]) {
+    it(`recovers a complete old database after a real child process is killed at ${phase}`, () => {
+      const files = fixture();
+      const child = spawnSync(process.execPath, [
+        path.join(import.meta.dirname, "fixtures/import-crash-child.cjs"),
+        phase,
+        files.databasePath,
+        files.preparedDatabasePath,
+      ], { stdio: "ignore", windowsHide: true, timeout: 10_000 });
+
+      expect(child.status).not.toBe(0);
+      expect(readState(files.databasePath)?.phase).toMatch(/PREPARED|BACKED_UP|REPLACED/);
+      expect(recoverInterruptedImport(files.databasePath)).toMatchObject({ recovered: true });
+      expect(fs.readFileSync(files.databasePath, "utf8")).toBe("old-database");
+      expect(readState(files.databasePath)).toBeNull();
+      expect(fs.readdirSync(path.dirname(files.databasePath)))
+        .not.toContain(expect.stringMatching(/^platform\.db\.importing-/));
+    });
+  }
 });

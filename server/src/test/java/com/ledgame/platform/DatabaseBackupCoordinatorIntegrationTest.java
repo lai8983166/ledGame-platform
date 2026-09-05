@@ -140,22 +140,31 @@ class DatabaseBackupCoordinatorIntegrationTest {
         coordinator.run(new DefaultApplicationArguments(new String[0]));
         assertThat(coordinator.status().protectedData()).isTrue();
 
-        try (var paths = Files.walk(initialTargetMount)) {
-            for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
-        }
+        Path detachedTargetStorage = root.resolve("detached-target-storage");
+        Path initialLatest = initialTargetMount.resolve("LEDGameBackup/member-admin/latest/platform.db");
+        String originalLatestHash = inspector.sha256(initialLatest);
+
+        Files.move(initialTargetMount, detachedTargetStorage);
         Files.writeString(initialTargetMount, "simulated disconnected volume");
         jdbc.update("""
             INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
             VALUES ('13800138004', '掉盘恢复会员', 'ACTIVE', 'now', 'now', 'test')
             """);
         await(Duration.ofSeconds(5), () -> coordinator.status().state() == BackupLifecycleState.READY_DEGRADED);
+        assertThat(inspector.sha256(detachedTargetStorage.resolve(
+                "LEDGameBackup/member-admin/latest/platform.db"))).isEqualTo(originalLatestHash);
 
         Files.delete(initialTargetMount);
-        Files.createDirectories(reconnectedMount);
+        Files.move(detachedTargetStorage, reconnectedMount);
         topology.set(List.of(volume(sourceMount, "source-disk", 0), volume(reconnectedMount, "backup-disk", 1)));
         await(Duration.ofSeconds(7), () -> coordinator.status().state() == BackupLifecycleState.READY_PROTECTED
                 && Files.isRegularFile(reconnectedMount.resolve("LEDGameBackup/member-admin/latest/platform.db")));
         assertThat(coordinator.status().protectedData()).isTrue();
+        JdbcTemplate recoveredBackupJdbc = new JdbcTemplate(new DriverManagerDataSource(
+                "jdbc:sqlite:" + reconnectedMount.resolve(
+                        "LEDGameBackup/member-admin/latest/platform.db").toAbsolutePath()));
+        assertThat(recoveredBackupJdbc.queryForObject(
+                "SELECT COUNT(*) FROM members WHERE phone='13800138004'", Integer.class)).isEqualTo(1);
     }
 
     @Test

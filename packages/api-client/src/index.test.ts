@@ -232,4 +232,19 @@ describe("platform api client player info", () => {
       expect.objectContaining({ headers: expect.any(Headers) }),
     );
   });
+
+  it("reads and updates persistent child mode", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ childMode: false }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ childMode: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createPlatformApiClient();
+
+    await expect(client.getFeatureSettings()).resolves.toMatchObject({ childMode: false });
+    await expect(client.setChildMode(true)).resolves.toMatchObject({ childMode: true });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://127.0.0.1:8090/api/feature-settings/child-mode",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled: true }) }),
+    );
+  });
 });

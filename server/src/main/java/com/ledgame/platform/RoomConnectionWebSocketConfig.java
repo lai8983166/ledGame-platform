@@ -11,15 +11,18 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class RoomConnectionWebSocketConfig implements WebSocketConfigurer {
     private final ObjectMapper objectMapper;
     private final RoomConnectionRegistry registry;
+    private final ChildModeService childMode;
 
-    public RoomConnectionWebSocketConfig(ObjectMapper objectMapper, RoomConnectionRegistry registry) {
+    public RoomConnectionWebSocketConfig(ObjectMapper objectMapper, RoomConnectionRegistry registry,
+            ChildModeService childMode) {
         this.objectMapper = objectMapper;
         this.registry = registry;
+        this.childMode = childMode;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(new RoomConnectionWebSocketHandler(objectMapper, this.registry), "/ws/rooms")
+        registry.addHandler(new RoomConnectionWebSocketHandler(objectMapper, this.registry, childMode), "/ws/rooms")
                 .setAllowedOriginPatterns("*");
     }
 }

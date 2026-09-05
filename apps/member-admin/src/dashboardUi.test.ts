@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./views/DashboardView.vue", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("./App.vue", import.meta.url), "utf8");
-const dataSource = readFileSync(new URL("./data.ts", import.meta.url), "utf8");
 
 describe("real member admin dashboard", () => {
   it("loads real overview metrics and rooms with refresh, error and empty states", () => {
@@ -29,11 +28,7 @@ describe("real member admin dashboard", () => {
     expect(source).toContain("dashboard-refresh-button");
   });
 
-  it("does not retain unused room/member samples or fixed shell indicators", () => {
-    expect(dataSource).not.toContain("createRooms");
-    expect(dataSource).not.toContain("createMembers");
-    expect(dataSource).not.toContain("星际穿梭");
-    expect(dataSource).not.toContain("陈小宇");
+  it("does not retain fixed shell indicators", () => {
     expect(appSource).not.toContain("nav-item__count");
     expect(appSource).not.toContain("roomsConnected");
     expect(appSource).not.toContain("demoData");

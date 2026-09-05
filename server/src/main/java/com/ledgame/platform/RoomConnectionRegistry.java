@@ -108,6 +108,23 @@ public class RoomConnectionRegistry {
         });
     }
 
+    public void broadcastChildMode(boolean childMode) {
+        Map<String, Object> payload = Map.of(
+                "type", RoomConnectionProtocol.CHILD_MODE_CHANGED,
+                "childMode", childMode);
+        for (Connection connection : List.copyOf(bySession.values())) {
+            try {
+                synchronized (connection.session()) {
+                    if (connection.session().isOpen()) {
+                        connection.session().sendMessage(new TextMessage(objectMapper.writeValueAsString(payload)));
+                    }
+                }
+            } catch (Exception error) {
+                unregister(connection.session());
+            }
+        }
+    }
+
     private static String sourceIp(WebSocketSession session) {
         InetSocketAddress address = session.getRemoteAddress();
         if (address == null) return "unknown";

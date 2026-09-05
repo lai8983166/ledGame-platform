@@ -66,6 +66,7 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         if (method.equals("POST") && path.equals("/api/wristbands/unbind")) return action("WRISTBAND_UNBOUND", "WRISTBAND", null);
         if (method.equals("POST") && path.equals("/api/wristbands/reclaim")) return action("WRISTBAND_RECLAIMED", "WRISTBAND", null);
         if (method.equals("PUT") && path.startsWith("/api/rooms/")) return action("ROOM_RENAMED", "ROOM", path.substring("/api/rooms/".length()));
+        if (method.equals("PUT") && path.equals("/api/feature-settings/child-mode")) return action("SYSTEM_SETTINGS_UPDATED", "SYSTEM_SETTINGS", "child-mode");
         if (method.equals("POST") && path.equals("/api/operator-actions/system-settings")) return action("SYSTEM_SETTINGS_UPDATED", "SYSTEM_SETTINGS", null);
         return null;
     }

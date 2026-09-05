@@ -4,6 +4,14 @@ spring:
   datasource:
     url: jdbc:sqlite:${PLATFORM_DB_PATH:./platform.db}
     driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 1
+      minimum-idle: 1
+      connection-timeout: ${LEDGAME_SQLITE_CONNECTION_TIMEOUT_MILLIS:10000}
+      data-source-properties:
+        journal_mode: WAL
+        busy_timeout: ${ledgame.sqlite.busy-timeout-millis:${LEDGAME_SQLITE_BUSY_TIMEOUT_MILLIS:5000}}
+        transaction_mode: IMMEDIATE
   sql:
     init:
       mode: always
@@ -14,6 +22,8 @@ server:
 
 ledgame:
   time-zone: ${PLATFORM_TIME_ZONE:Asia/Shanghai}
+  sqlite:
+    busy-timeout-millis: ${LEDGAME_SQLITE_BUSY_TIMEOUT_MILLIS:5000}
   operator-accounts:
     factory:
       username: ${PLATFORM_FACTORY_ADMIN_USERNAME:admin}

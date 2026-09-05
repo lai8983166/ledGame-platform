@@ -11,6 +11,7 @@
     h1 { margin: 0 0 14px; font-size: 24px; }
     #message { min-height: 48px; color: #bed3e9; line-height: 1.6; }
     #phase { color: #61d6c5; font-size: 13px; letter-spacing: .08em; }
+    #test-mode { display: none; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; background: #8a3b00; color: #fff2d8; font-weight: 700; }
     .track { height: 5px; overflow: hidden; border-radius: 9px; background: #26384d; margin-top: 22px; }
     .bar { height: 100%; width: 35%; background: #36cbb7; border-radius: inherit; animation: move 1.2s ease-in-out infinite alternate; }
     body.done .bar { animation: none; width: 100%; }
@@ -20,6 +21,7 @@
 </head>
 <body>
   <main>
+    <div id="test-mode"></div>
     <div id="phase">STARTING</div>
     <h1>正在检查本机数据</h1>
     <div id="message">正在启动本机服务，请稍候……</div>
@@ -27,6 +29,11 @@
   </main>
   <script>
     window.memberAdminStartup.onStatus((status) => {
+      const testMode = document.getElementById("test-mode");
+      if (status.concurrencyTestMode) {
+        testMode.style.display = "block";
+        testMode.textContent = `并发测试模式 · ${status.concurrencyTestRunId}`;
+      }
       document.getElementById("phase").textContent = status.phase || status.state || "CHECKING";
       document.getElementById("message").textContent = status.message || "正在检查数据备份";
       document.body.className = status.state === "failed" || status.backupState === "BLOCKED"

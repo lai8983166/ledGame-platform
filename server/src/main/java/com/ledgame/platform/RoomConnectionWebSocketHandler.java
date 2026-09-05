@@ -12,10 +12,13 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class RoomConnectionWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final RoomConnectionRegistry registry;
+    private final ChildModeService childMode;
 
-    public RoomConnectionWebSocketHandler(ObjectMapper objectMapper, RoomConnectionRegistry registry) {
+    public RoomConnectionWebSocketHandler(ObjectMapper objectMapper, RoomConnectionRegistry registry,
+            ChildModeService childMode) {
         this.objectMapper = objectMapper;
         this.registry = registry;
+        this.childMode = childMode;
     }
 
     @Override
@@ -25,11 +28,13 @@ public class RoomConnectionWebSocketHandler extends TextWebSocketHandler {
             String type = payload.path("type").asText("");
             if (RoomConnectionProtocol.HELLO.equals(type)) {
                 RoomConnectionRegistry.Connection connection = registry.register(session, payload);
-                send(session, Map.of(
-                        "type", RoomConnectionProtocol.WELCOME,
-                        "connectionId", connection.connectionId(),
-                        "ip", connection.ip(),
-                        "epoch", connection.connectionId()));
+                Map<String, Object> welcome = new LinkedHashMap<>();
+                welcome.put("type", RoomConnectionProtocol.WELCOME);
+                welcome.put("connectionId", connection.connectionId());
+                welcome.put("ip", connection.ip());
+                welcome.put("epoch", connection.connectionId());
+                welcome.put("childMode", childMode.enabled());
+                send(session, welcome);
                 return;
             }
             RoomConnectionRegistry.EventResult result = registry.accept(session, payload);

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.InetSocketAddress;
@@ -11,6 +12,8 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.TextMessage;
+import org.mockito.ArgumentCaptor;
 
 class RoomConnectionRegistryTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -71,6 +74,22 @@ class RoomConnectionRegistryTest {
             assertThat(room).containsEntry("online", false);
         });
         assertThat(registry.find("192.168.1.27")).containsEntry("online", false);
+    }
+
+    @Test
+    void broadcastsChildModeToConnectedRooms() throws Exception {
+        WebSocketSession first = session("feature-a", "192.168.1.31");
+        WebSocketSession second = session("feature-b", "192.168.1.32");
+        registry.register(first, objectMapper.readTree("{\"type\":\"HELLO\"}"));
+        registry.register(second, objectMapper.readTree("{\"type\":\"HELLO\"}"));
+
+        registry.broadcastChildMode(true);
+
+        ArgumentCaptor<TextMessage> firstMessage = ArgumentCaptor.forClass(TextMessage.class);
+        verify(first).sendMessage(firstMessage.capture());
+        assertThat(firstMessage.getValue().getPayload()).contains(
+                "CHILD_MODE_CHANGED", "\"childMode\":true");
+        verify(second).sendMessage(org.mockito.ArgumentMatchers.any(TextMessage.class));
     }
 
     @Test

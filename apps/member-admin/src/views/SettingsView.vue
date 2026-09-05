@@ -5,8 +5,6 @@ import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import DesktopRuntimeCard from "../components/DesktopRuntimeCard.vue";
-import { createFeatureSettings } from "../data";
-import type { FeatureSetting } from "../types";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 import { platformApi } from "../platformApi";
 import { createOperatorAccountManager } from "../operatorAccountState";
@@ -21,8 +19,10 @@ const activeTab = ref<SettingsTab>(props.backupStatus?.state === "MAINTENANCE_LO
 const braceletMinutes = ref<number | null>(60);
 const savedMinutes = ref(60);
 const durationError = ref("");
-const features = ref(createFeatureSettings());
-const pendingFeature = ref<FeatureSetting | null>(null);
+const childMode = ref(false);
+const featureLoading = ref(false);
+const featureSaving = ref(false);
+const featureError = ref("");
 const online = ref(true);
 const targetType = ref<"email" | "server">("email");
 const targetAddress = ref("ops@ledgame.example");
@@ -155,7 +155,15 @@ const toggleAccount = async (account: OperatorAccount) => {
   }
 };
 
-onMounted(() => void accountManager.load());
+const loadFeatureSettings = async () => {
+  featureLoading.value = true;
+  featureError.value = "";
+  try { childMode.value = (await platformApi.getFeatureSettings()).childMode; }
+  catch (error) { featureError.value = error instanceof Error ? error.message : "功能设置加载失败"; }
+  finally { featureLoading.value = false; }
+};
+
+onMounted(() => { void accountManager.load(); void loadFeatureSettings(); });
 watch(activeTab, (tab) => { if (tab === "backup") void loadBackupCandidates(); });
 
 const addressPlaceholder = computed(() => targetType.value === "email" ? "name@example.com" : "https://server.example.com/upload");
@@ -167,16 +175,17 @@ const saveDuration = () => {
   emit("toast", `常用充时快捷值已设为 ${value} 分钟（演示状态）`);
 };
 
-const requestFeatureToggle = (feature: FeatureSetting) => {
-  if (feature.critical) pendingFeature.value = feature;
-  else { feature.enabled = !feature.enabled; emit("toast", `${feature.name}已${feature.enabled ? '启用' : '关闭'}（演示状态）`); }
-};
-
-const confirmFeatureToggle = () => {
-  if (!pendingFeature.value) return;
-  pendingFeature.value.enabled = !pendingFeature.value.enabled;
-  emit("toast", `${pendingFeature.value.name}已${pendingFeature.value.enabled ? '启用' : '关闭'}（演示状态）`);
-  pendingFeature.value = null;
+const toggleChildMode = async () => {
+  if (featureLoading.value || featureSaving.value) return;
+  const enabled = !childMode.value;
+  featureSaving.value = true;
+  featureError.value = "";
+  try {
+    childMode.value = (await platformApi.setChildMode(enabled)).childMode;
+    emit("toast", `儿童模式已${childMode.value ? "开启" : "关闭"}`);
+  } catch (error) {
+    featureError.value = error instanceof Error ? error.message : "儿童模式保存失败";
+  } finally { featureSaving.value = false; }
 };
 
 const switchTarget = (type: "email" | "server") => {
@@ -256,9 +265,10 @@ const testUpload = () => {
       <section v-else-if="activeTab === 'features'" class="settings-card glass-panel">
         <header class="settings-card__header"><span class="settings-icon"><AppIcon name="settings" /></span><div><p class="section-eyebrow">FEATURE SWITCHES</p><h2>功能开关</h2><p>按门店运营需要启用或关闭对应功能。</p></div></header>
         <div class="feature-list">
-          <div v-for="feature in features" :key="feature.id" class="feature-item"><span class="feature-item__icon"><AppIcon :name="feature.id === 'ranking-screen' ? 'monitor' : feature.id === 'auto-upload' ? 'upload' : feature.id === 'room-alert' ? 'bell' : 'card'" /></span><div><strong>{{ feature.name }}</strong><p>{{ feature.description }}</p><small v-if="feature.critical"><AppIcon name="alert" :size="13" /> 更改此项会影响主要流程</small></div><button class="switch-control" :class="{ active: feature.enabled }" type="button" role="switch" :aria-checked="feature.enabled" :aria-label="`${feature.enabled ? '关闭' : '启用'}${feature.name}`" @click="requestFeatureToggle(feature)"><span></span></button></div>
+          <div class="feature-item" data-testid="child-mode-setting"><span class="feature-item__icon"><AppIcon name="card" /></span><div><strong>儿童模式</strong><p>开启后，所有已连接游戏端将隐藏不适合儿童或仅供测试的游戏。当前隐藏测试专用游戏。</p><small><AppIcon name="alert" :size="13" /> 设置会同步到在线游戏端，离线游戏端重连后自动生效</small></div><button data-testid="child-mode-toggle" class="switch-control" :class="{ active: childMode }" type="button" role="switch" :aria-checked="childMode" :aria-label="`${childMode ? '关闭' : '开启'}儿童模式`" :disabled="featureLoading || featureSaving" @click="toggleChildMode"><span></span></button></div>
         </div>
-        <div class="notice-bar"><AppIcon name="sparkles" :size="18" /><div><strong>演示设置</strong><p>开关只改变当前页面状态，刷新后恢复默认配置。</p></div></div>
+        <p v-if="featureLoading" class="empty-copy">正在读取功能设置…</p>
+        <p v-if="featureError" class="form-error" role="alert"><AppIcon name="alert" :size="16" />{{ featureError }} <button class="secondary-button compact-button" type="button" @click="loadFeatureSettings">重试</button></p>
       </section>
 
       <section v-else-if="activeTab === 'upload'" class="settings-card glass-panel">
@@ -300,5 +310,4 @@ const testUpload = () => {
     <template #footer><button class="ghost-button" type="button" :disabled="accountManager.submitting" @click="accountDialog = null">取消</button><button class="primary-button" data-testid="operator-account-submit" type="button" :disabled="accountManager.submitting" @click="submitAccountDialog">{{ accountManager.submitting ? "提交中…" : "确认保存" }}</button></template>
   </BaseModal>
 
-  <BaseModal v-if="pendingFeature" :title="`${pendingFeature.enabled ? '关闭' : '启用'}${pendingFeature.name}？`" description="这是会影响主要流程的功能开关。" size="small" @close="pendingFeature = null"><div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>确认功能影响</strong><p>{{ pendingFeature.description }}</p></div></div><p class="modal-copy">本次操作只更新当前演示界面，不会修改真实系统配置。</p><template #footer><button class="ghost-button" type="button" @click="pendingFeature = null">取消</button><button class="primary-button" type="button" @click="confirmFeatureToggle">确认{{ pendingFeature.enabled ? '关闭' : '启用' }}</button></template></BaseModal>
 </template>

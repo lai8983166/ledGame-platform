@@ -53,8 +53,10 @@ class AcceptanceProfileIntegrationTest {
 
     @Test
     void usesRunOwnedSqliteAndExposesReadiness() throws Exception {
-        assertThat(dataSource.getConnection().getMetaData().getURL().replace('\\', '/'))
-                .contains(temporaryDirectory.resolve("platform.db").toString().replace('\\', '/'));
+        try (var connection = dataSource.getConnection()) {
+            assertThat(connection.getMetaData().getURL().replace('\\', '/'))
+                    .contains(temporaryDirectory.resolve("platform.db").toString().replace('\\', '/'));
+        }
         @SuppressWarnings("unchecked")
         Map<String, Object> health = rest.getForObject("/api/health", Map.class);
         assertThat(health).containsEntry("ok", true).containsEntry("database", "sqlite");

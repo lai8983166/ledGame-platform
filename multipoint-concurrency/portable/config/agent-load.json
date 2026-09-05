@@ -1,0 +1,10 @@
+{
+  "profile": "load",
+  "registrationWorkers": 3,
+  "gameWorkers": 6,
+  "iterationsPerWorker": 10,
+  "maxDurationSeconds": 900,
+  "requestTimeoutMs": 5000,
+  "durationMinutes": 1440,
+  "safetyConfirmation": "I_UNDERSTAND_THIS_USES_ISOLATED_TEST_DATA"
+}

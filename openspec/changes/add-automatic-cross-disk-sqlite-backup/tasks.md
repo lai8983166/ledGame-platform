@@ -87,3 +87,19 @@
   - 会员管理端独立验证目录打包与 `pnpm portable:smoke`：通过（会员管理端打包包真实生成隔离的 TEST v2 备份；两个 Windows 目录包均启动成功）
   - `scripts/verify-database-backup-hardware.ps1`：Windows PowerShell 语法检查通过；真实双物理盘验收按中文清单现场执行
   - `openspec validate add-automatic-cross-disk-sqlite-backup --strict`：通过
+
+## 10. 自动化验收缺口补齐
+
+- [x] 10.1 增加最终打包产物首次启动测试，验证独立检查窗口不泄露候选或导入入口、检查完成后进入登录页并生成带 TEST 标记的首次备份
+- [x] 10.2 增加最终打包产物异常终止与重启追赶测试，验证 Electron/Java 被强制结束后主库已提交数据仍存在且 latest 最终追平主库
+- [x] 10.3 增加空间不足、只读/不可写目标的服务级故障注入测试，验证稳定错误码、中文建议、营业门禁保持可用、重试恢复和旧 latest 不被替换
+- [x] 10.4 增加临时 userData 下的完整重装导入自动化流程，覆盖空库不覆盖旧备份、维护登录、候选展示、取消、确认导入和导入后重新登录
+- [x] 10.5 增加导入过程的真实子进程中断矩阵，分别在回滚副本已保存、主库已替换和等待启动复验时终止，并验证下次启动只使用完整旧库或完整新库
+- [x] 10.6 补齐候选账号异常矩阵与权限链路测试，覆盖无出厂账号、出厂账号停用、多个启用账号，以及 API、IPC 和界面不可执行导入
+- [x] 10.7 增加最终打包产物的正常退出、端口释放、立即重开和单实例测试
+- [x] 10.8 将新增测试接入明确的仓库命令，执行专项、完整与 OpenSpec 严格校验，并更新中文验收清单中的自动化覆盖说明
+  - `pnpm test:desktop:member:packaged`：通过；重新构建会员管理端 `win-unpacked` 后，3 个最终打包产物用例全部通过
+  - `pnpm test:desktop`：通过（5 个测试文件 / 24 个用例，其中导入真实子进程中断矩阵 3 个节点）
+  - `pnpm test:core`：通过（服务端完整测试、24 个前端测试文件 / 94 个用例）
+  - `pnpm typecheck`：通过
+  - `openspec validate add-automatic-cross-disk-sqlite-backup --strict`：通过
