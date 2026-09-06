@@ -1,0 +1,10 @@
+{
+  "appId": "com.ledgame.manufacturer.activationsigner",
+  "productName": "LED Game 激活码签发工具",
+  "directories": { "output": "release/activation-signer" },
+  "asar": true,
+  "files": ["desktop/activation-signer/**/*", "scripts/activation-tool.mjs", "package.json", "!**/*.pem", "!**/*.key", "!**/*.txt", "!**/license.json"],
+  "extraMetadata": { "main": "desktop/activation-signer/main.cjs" },
+  "win": { "target": ["dir", "zip", "portable"], "signAndEditExecutable": false },
+  "artifactName": "LEDGame-Activation-Signer-${version}-${arch}.${ext}"
+}

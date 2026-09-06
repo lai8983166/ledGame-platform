@@ -1,6 +1,7 @@
 {
   "runId": "CONC-20260904-001",
   "memberAdminExecutable": "../member-admin/win-unpacked/LED Game 会员管理端.exe",
+  "activationLicensePath": "本机授权/license.json",
   "testRoot": "runs",
   "lanHost": "192.168.124.10",
   "testPort": 18090,

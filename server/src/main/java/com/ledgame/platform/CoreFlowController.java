@@ -26,16 +26,21 @@ public class CoreFlowController {
     private final JdbcTemplate jdbc;
     private final GameAccessService gameAccessService;
     private final Clock clock;
+    private final ActivationService activation;
+    private final StartupGate startupGate;
 
-    public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService, Clock clock) {
+    public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService, Clock clock, ActivationService activation, StartupGate startupGate) {
         this.jdbc = jdbc;
         this.gameAccessService = gameAccessService;
         this.clock = clock;
+        this.activation = activation;
+        this.startupGate = startupGate;
     }
 
     @GetMapping("/health")
     public Map<String, Object> health() {
-        return Map.of("ok", true, "database", "sqlite");
+        return Map.of("ok", true, "database", "sqlite", "activated", activation.activated(),
+                "businessReady", activation.activated() && startupGate.businessReady());
     }
 
     @GetMapping("/members")

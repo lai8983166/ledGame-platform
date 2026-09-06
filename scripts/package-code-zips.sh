@@ -16,6 +16,7 @@ MEMBER_ADMIN_ZIP="$member_admin_zip" \
 REGISTRATION_KIOSK_ZIP="$registration_kiosk_zip" \
 python - <<'PY'
 import os
+import re
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -49,7 +50,13 @@ SKIP_DIR_NAMES = {
 
 
 def should_skip_file(path):
-    return path.suffix.lower() in SKIP_SUFFIXES
+    if path.name.lower() == "license.json" or (path.suffix.lower() in {".pem", ".key"} and path.name != "activation-public.pem"):
+        return True
+    if path.suffix.lower() in SKIP_SUFFIXES:
+        return True
+    if re.search(rb"(?:^|\n)-----BEGIN (?:ENCRYPTED |RSA |EC )?PRIVATE KEY-----", path.read_bytes()):
+        raise RuntimeError(f"拒绝打包含私钥的源文件：{path}")
+    return False
 
 
 def is_under_skipped_directory(path, repo_dir):
@@ -99,7 +106,7 @@ member_admin_includes = common_includes + [
     "desktop/member-admin",
     "desktop/electron-builder.member-admin.json",
     "server/pom.xml",
-    "server/src",
+    "server/src/main",
 ]
 registration_kiosk_includes = common_includes + [
     "apps/registration-kiosk",

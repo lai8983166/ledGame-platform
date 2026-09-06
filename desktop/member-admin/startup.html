@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LED Game 数据检查</title>
+  <title>LED Game 启动检查</title>
   <style>
     :root { color-scheme: dark; font-family: "Microsoft YaHei UI", sans-serif; background: #07111f; color: #eef6ff; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 25% 15%, #153c68, #07111f 62%); }
@@ -16,6 +16,12 @@
     .bar { height: 100%; width: 35%; background: #36cbb7; border-radius: inherit; animation: move 1.2s ease-in-out infinite alternate; }
     body.done .bar { animation: none; width: 100%; }
     body.error .bar { animation: none; width: 100%; background: #ff6d7a; }
+    [hidden] { display: none !important; }
+    input, textarea { box-sizing: border-box; width: 100%; background: #10263e; color: #eef6ff; border: 1px solid #496581; border-radius: 6px; padding: 9px; margin: 6px 0; }
+    textarea { height: 86px; resize: none; }
+    button { padding: 8px 12px; margin: 5px 5px 5px 0; cursor: pointer; border: 0; border-radius: 6px; background: #36cbb7; color: #07111f; }
+    button:disabled { opacity: .5; cursor: wait; }
+    #activation-error { min-height: 24px; color: #ff9ea7; font-size: 13px; }
     @keyframes move { from { transform: translateX(-70%); } to { transform: translateX(250%); } }
   </style>
 </head>
@@ -23,12 +29,26 @@
   <main>
     <div id="test-mode"></div>
     <div id="phase">STARTING</div>
-    <h1>正在检查本机数据</h1>
+    <h1>正在启动会员管理端</h1>
     <div id="message">正在启动本机服务，请稍候……</div>
+    <section id="activation" hidden>
+      <label for="machine">本机机器码（发给厂家申请激活码）</label>
+      <input id="machine" readonly />
+      <button id="copy-machine">复制机器码</button>
+      <label for="activation-code" style="display:block">厂家激活码</label>
+      <textarea id="activation-code" maxlength="16384" placeholder="请粘贴厂家提供的完整激活码，也可使用 Ctrl+V" spellcheck="false"></textarea>
+      <div id="activation-error" role="status"></div>
+      <button id="paste-code">粘贴</button><button id="activate">激活</button><button id="retry">重试</button><button id="exit">退出</button>
+    </section>
     <div class="track"><div class="bar"></div></div>
   </main>
   <script>
     window.memberAdminStartup.onStatus((status) => {
+      const waiting = status.state === "activation-required";
+      document.getElementById("activation").hidden = !waiting;
+      document.querySelector("h1").textContent = waiting ? "请先激活会员管理端" : (status.activation?.activated ? "正在检查本机数据" : "正在启动会员管理端");
+      document.querySelector(".track").hidden = waiting;
+      if (status.activation) document.getElementById("machine").value = status.activation.machineCode || "";
       const testMode = document.getElementById("test-mode");
       if (status.concurrencyTestMode) {
         testMode.style.display = "block";
@@ -39,6 +59,36 @@
       document.body.className = status.state === "failed" || status.backupState === "BLOCKED"
         ? "error" : (["READY_PROTECTED", "READY_DEGRADED", "MAINTENANCE_LOGIN_REQUIRED"].includes(status.backupState) ? "done" : "");
     });
+    const api = window.memberAdminStartup;
+    const code = document.getElementById("activation-code");
+    const error = document.getElementById("activation-error");
+    let busy = false;
+    async function action(work) {
+      if (busy) return;
+      busy = true;
+      document.querySelectorAll("#activation button").forEach(b => { if (b.id !== "exit") b.disabled = true; });
+      error.textContent = "";
+      try { await work(); } catch (e) { error.textContent = e.message || "操作失败，请重试"; }
+      finally {
+        busy = false;
+        document.querySelectorAll("#activation button").forEach(b => b.disabled = false);
+        code.focus();
+      }
+    }
+    document.getElementById("copy-machine").onclick = () => action(async () => { await api.copyMachine(); error.textContent = "机器码已复制"; });
+    document.getElementById("paste-code").onclick = () => action(async () => {
+      const text = await api.paste();
+      if (!text || !text.replace(/[ \t\r\n]/g, "")) throw new Error("剪贴板没有激活码，请复制后重试或手动输入");
+      code.value = text.replace(/[ \t\r\n]/g, "");
+    });
+    document.getElementById("activate").onclick = () => action(async () => {
+      const value = code.value.replace(/[ \t\r\n]/g, "");
+      if (!value) throw new Error("请输入厂家提供的激活码");
+      code.value = value;
+      await api.activate(value);
+    });
+    document.getElementById("retry").onclick = () => action(() => api.retry());
+    document.getElementById("exit").onclick = () => api.exit();
   </script>
 </body>
 </html>

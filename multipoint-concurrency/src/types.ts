@@ -16,6 +16,7 @@ export interface LoadProfile {
 }
 
 export interface CenterConfig {
+  activationLicensePath?: string;
   runId: string;
   memberAdminExecutable: string;
   testRoot: string;

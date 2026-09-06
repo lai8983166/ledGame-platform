@@ -12,11 +12,14 @@ async function fixture(): Promise<{ root: string; executable: string; config: Ce
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ledgame-concurrency-center-"));
   roots.push(root);
   const executable = path.join(root, "LED Game Member Admin.exe");
+  const activationLicensePath = path.join(root, "license.json");
+  await fs.writeFile(activationLicensePath, JSON.stringify({ code: "fixture-only" }));
   await fs.writeFile(executable, "fixture");
   return {
     root,
     executable,
     config: {
+      activationLicensePath,
       runId: "CONC-20260904-001",
       memberAdminExecutable: executable,
       testRoot: path.join(root, "runs"),
@@ -34,6 +37,10 @@ afterEach(async () => {
 });
 
 describe("isolated packaged center launch", () => {
+  it("rejects missing authorization before starting the packaged application", async () => {
+    const { config } = await fixture();
+    await expect(startCenter({ ...config, activationLicensePath: undefined })).rejects.toThrow("本机有效授权");
+  });
   it("derives every mutable center path from the run id", async () => {
     const { config } = await fixture();
     const paths = createCenterRunPaths(config);
@@ -82,6 +89,8 @@ describe("isolated packaged center launch", () => {
       LEDGAME_CONCURRENCY_TEST_RUN_ID: config.runId,
     });
     expect(capturedEnv?.LEDGAME_USER_DATA).toContain(config.runId);
+    expect(await fs.readFile(path.join(capturedEnv!.LEDGAME_USER_DATA!, "activation", "license.json"), "utf8"))
+      .toBe(await fs.readFile(config.activationLicensePath!, "utf8"));
     expect(capturedEnv?.LEDGAME_DATABASE_BACKUP_ROOT).toContain(config.runId);
     expect(connection.platformBaseUrl).toBe("http://192.168.124.10:18090");
     expect(JSON.parse(await fs.readFile(path.join(connection.runRoot, "connection.json"), "utf8"))).toEqual(connection);

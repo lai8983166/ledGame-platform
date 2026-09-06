@@ -9,14 +9,19 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class StartupGateInterceptor implements HandlerInterceptor {
     private final StartupGate gate;
+    private final ActivationService activation;
 
-    public StartupGateInterceptor(StartupGate gate) {
+    public StartupGateInterceptor(StartupGate gate, ActivationService activation) {
         this.gate = gate;
+        this.activation = activation;
     }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String path = request.getRequestURI();
+        if (path.equals("/api/system/activation")) return true;
+        if (!path.equals("/api/health") && !path.equals("/api/system/startup-status")
+                && !path.equals("/api/system/database-backup/flush")) activation.requireActivated();
         if (alwaysAllowed(path)) return true;
         BackupLifecycleState state = gate.status().state();
         if (state == BackupLifecycleState.READY_PROTECTED || state == BackupLifecycleState.READY_DEGRADED) {

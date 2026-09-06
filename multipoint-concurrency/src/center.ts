@@ -29,6 +29,11 @@ async function platformHealthy(baseUrl: string, fetchImpl: typeof fetch): Promis
 async function platformReady(baseUrl: string, fetchImpl: typeof fetch): Promise<boolean> {
   if (!await platformHealthy(baseUrl, fetchImpl)) return false;
   try {
+    const activationResponse = await fetchImpl(`${baseUrl}/api/system/activation`, { signal: AbortSignal.timeout(6000) });
+    if (activationResponse.ok) {
+      const activation = await activationResponse.json() as { activated?: boolean; message?: string };
+      if (activation.activated === false) throw new Error(`会员管理端尚未激活：${activation.message ?? "请提供本机有效授权"}`);
+    }
     const response = await fetchImpl(`${baseUrl}/api/system/startup-status`, { signal: AbortSignal.timeout(1000) });
     if (!response.ok) return false;
     const value = await response.json() as { state?: string; message?: string };
@@ -36,6 +41,7 @@ async function platformReady(baseUrl: string, fetchImpl: typeof fetch): Promise<
     return Boolean(value.state && value.state !== "CHECKING");
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("测试数据库启动检查被阻止")) throw error;
+    if (error instanceof Error && error.message.startsWith("会员管理端尚未激活")) throw error;
     return false;
   }
 }
@@ -91,7 +97,13 @@ async function waitForCenter(baseUrl: string, timeoutMs: number, child: ChildPro
 }
 
 export async function startCenter(config: CenterConfig, dependencies: CenterDependencies = {}): Promise<ConnectionInfo> {
+  if (!config.activationLicensePath) throw new Error("并发测试需要本机有效授权，请在 center 配置中设置 activationLicensePath（不影响离线计划预览）");
+  const licenseInfo = await fs.stat(config.activationLicensePath).catch(() => null);
+  if (!licenseInfo?.isFile() || licenseInfo.size > 16640) throw new Error("测试授权文件不存在或大小不正确");
   const paths = await preflightCenter(config, dependencies);
+  const licenseDirectory = path.join(paths.userData, "activation");
+  await fs.mkdir(licenseDirectory, { recursive: true });
+  await fs.copyFile(config.activationLicensePath, path.join(licenseDirectory, "license.json"), fs.constants.COPYFILE_EXCL);
   const localBaseUrl = `http://127.0.0.1:${config.testPort}`;
   const env: NodeJS.ProcessEnv = {
     ...process.env,

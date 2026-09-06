@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { prepareActivationLicense } from "./activation-fixture.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const factoryUsername = "desktop-admin";
@@ -76,6 +77,7 @@ test("member admin owns an isolated backend, SQLite and restartable dynamic port
   });
   let desktop;
   try {
+    await prepareActivationLicense(userData);
     await waitForUrl(`http://127.0.0.1:${rendererPort}`);
     desktop = await electron.launch({
       args: [path.join(root, "desktop/member-admin/main.cjs")],

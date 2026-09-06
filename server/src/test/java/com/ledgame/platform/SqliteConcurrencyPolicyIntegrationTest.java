@@ -24,6 +24,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(ActivatedTestConfiguration.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SqliteConcurrencyPolicyIntegrationTest {

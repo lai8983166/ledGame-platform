@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { prepareActivationLicense } from "./activation-fixture.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const executablePath = process.env.LEDGAME_MEMBER_ADMIN_PACKAGED_EXE
@@ -41,6 +42,7 @@ function environment(userData, backupRoot, port) {
 }
 
 async function launchPackaged(env) {
+  await prepareActivationLicense(env.LEDGAME_USER_DATA);
   await expect.poll(async () => fs.stat(executablePath).then(() => true).catch(() => false), {
     message: `member admin package is missing: ${executablePath}`,
   }).toBe(true);

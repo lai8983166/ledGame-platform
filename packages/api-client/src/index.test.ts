@@ -4,6 +4,14 @@ import { PlatformApiError, createPlatformApiClient } from "./index";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("platform api client transport", () => {
+  it("preserves activation failure instead of reporting a network error", async () => {
+    const client = createPlatformApiClient({ transport: async () => ({ status: 503,
+      body: JSON.stringify({ code: "PLATFORM_NOT_ACTIVATED", message: "会员管理端尚未激活，请在会员管理端完成厂家激活" }),
+    }) });
+    await expect(client.request("/api/members")).rejects.toMatchObject({
+      code: "PLATFORM_NOT_ACTIVATED", message: "会员管理端尚未激活，请在会员管理端完成厂家激活",
+    });
+  });
   it("uses the injected desktop transport without calling browser fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

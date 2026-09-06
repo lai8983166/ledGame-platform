@@ -1,0 +1,8 @@
+{
+  "gameExecutable": "F:/project/ledGame/.build/game-soak-package/win-unpacked/LED Game.exe",
+  "outputRoot": "F:/project/ledGame-platform/.build/game-soak-runs",
+  "hardwareMode": "simulated",
+  "floor": { "width": 16, "height": 36 },
+  "games": [{ "gameId": 387, "playerCount": 1, "startLevelIndex": 0 }],
+  "durationHours": 0.03
+}

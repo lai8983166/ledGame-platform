@@ -11,6 +11,11 @@ target/
 server/*.db
 acceptance/artifacts/
 acceptance/.runtime/
+.build/game-soak-runs/
 build-resources/platform/
 release/
 test-results/
+activation/
+*private*.pem
+*private*.key
+.claude/settings.local.json

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 class StartupGateInterceptorTest {
     private final StartupGate gate = new StartupGate();
-    private final StartupGateInterceptor interceptor = new StartupGateInterceptor(gate);
+    private final StartupGateInterceptor interceptor = new StartupGateInterceptor(gate, mock(ActivationService.class));
     private final HttpServletResponse response = mock(HttpServletResponse.class);
 
     @Test

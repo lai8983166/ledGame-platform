@@ -39,7 +39,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@Import(LeaderboardApiIntegrationTest.TestClockConfiguration.class)
+@Import({LeaderboardApiIntegrationTest.TestClockConfiguration.class, ActivatedTestConfiguration.class})
 class LeaderboardApiIntegrationTest {
     private static final Path DATABASE_PATH = createDatabasePath();
 

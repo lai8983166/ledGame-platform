@@ -19,6 +19,7 @@ async function freePort(): Promise<number> {
 
 async function main() {
   const config: CenterConfig = { runId: generateRunId(),
+    activationLicensePath: process.env.LEDGAME_TEST_LICENSE_PATH,
     memberAdminExecutable: path.resolve("release/member-admin/win-unpacked/LED Game 会员管理端.exe"),
     testRoot: path.resolve("test-results/multipoint-timed-packaged"), lanHost: "127.0.0.1", testPort: await freePort(),
     normalPlatformUrl: "http://127.0.0.1:8090", startupTimeoutMs: 60000, safetyConfirmation: SAFETY_CONFIRMATION };

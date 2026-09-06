@@ -17,7 +17,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +26,7 @@ import org.slf4j.LoggerFactory;
 
 @Service
 @Order(Ordered.LOWEST_PRECEDENCE)
-public class DatabaseBackupCoordinator implements ApplicationRunner {
+public class DatabaseBackupCoordinator {
     private static final Logger LOG = LoggerFactory.getLogger(DatabaseBackupCoordinator.class);
     private final DatabaseBackupProperties properties;
     private final DiskTopologyProvider topologyProvider;
@@ -44,6 +43,7 @@ public class DatabaseBackupCoordinator implements ApplicationRunner {
         return thread;
     });
     private final AtomicBoolean backupRunning = new AtomicBoolean();
+    private final AtomicBoolean started = new AtomicBoolean();
     private volatile BackupTarget target;
     private volatile long lastBackedRevision = -1;
     private volatile Instant lastSuccessfulBackupAt;
@@ -76,8 +76,8 @@ public class DatabaseBackupCoordinator implements ApplicationRunner {
         this.zoneId = ZoneId.of(timeZone);
     }
 
-    @Override
     public void run(ApplicationArguments args) {
+        if (!started.compareAndSet(false, true)) return;
         targetStateStore = new BackupTargetStateStore(engine.sourceDatabase(), objectMapper);
         lastObservedFingerprint = DatabaseSourceFingerprint.capture(engine.sourceDatabase());
         initialize();
@@ -86,6 +86,7 @@ public class DatabaseBackupCoordinator implements ApplicationRunner {
     }
 
     public BackupStatusSnapshot status() { return gate.status(); }
+    public void startAfterActivation() { scheduler.execute(() -> run(null)); }
     public Path backupRoot() { return target == null ? null : target.root(); }
 
     public synchronized void beginImport() {
@@ -109,6 +110,7 @@ public class DatabaseBackupCoordinator implements ApplicationRunner {
     }
 
     public boolean flush() {
+        if (!started.get()) return true;
         if (!properties.isEnabled()) return true;
         try {
             DatabaseStateSnapshot source = databaseState.current();

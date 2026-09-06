@@ -3,6 +3,11 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
+const { assertActivationPublicKey, assertNoPrivateKeys } = require("./activation-release-check.cjs");
+assertActivationPublicKey(root);
+for (const directory of ["server/src/main", "desktop/shared", "desktop/member-admin", "apps/member-admin/src"]) {
+  assertNoPrivateKeys(path.join(root, directory));
+}
 const outputRoot = path.join(root, "build-resources", "platform");
 if (!outputRoot.startsWith(path.join(root, "build-resources"))) throw new Error("invalid portable output path");
 const backendOutput = path.join(outputRoot, "backend");

@@ -1,6 +1,6 @@
 const path = require("node:path");
 const fs = require("node:fs");
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, clipboard } = require("electron");
 const { createProductConfigStore } = require("../shared/config-store.cjs");
 const { createApiTransport } = require("../shared/api-transport.cjs");
 const { assertPortAvailable, checkHealth, listLanIpv4, validatePort } = require("../shared/network.cjs");
@@ -65,6 +65,13 @@ function diagnostics() {
 async function waitForStartupCheck(port, deadline) {
   const localTransport = createApiTransport(async () => `http://127.0.0.1:${port}`, { timeoutMs: 2000 });
   while (Date.now() < deadline) {
+    const activationResponse = await localTransport({ path: "/api/system/activation", method: "GET" });
+    const activation = parseApiResponse(activationResponse);
+    if (!activation.activated) {
+      setStatus({ state: "activation-required", phase: "ACTIVATION_REQUIRED", activation,
+        message: activation.message, lastError: activation.errorCode, backupState: null });
+      return { state: "ACTIVATION_REQUIRED" };
+    }
     const response = await localTransport({ path: "/api/system/startup-status", method: "GET" });
     if (response.status === 200) {
       const backup = JSON.parse(response.body);
@@ -105,6 +112,7 @@ async function startBackend(port) {
     `--server.port=${validatedPort}`,
     `--spring.datasource.url=jdbc:sqlite:${store.dataPath("platform.db")}`,
     `--logging.file.name=${store.logPath("server.log")}`,
+    `--ledgame.activation.directory=${path.join(app.getPath("userData"), "activation")}`,
   ];
   if (process.env.LEDGAME_DATABASE_BACKUP_ENABLED !== undefined) {
     backendArguments.push(`--ledgame.database-backup.enabled=${process.env.LEDGAME_DATABASE_BACKUP_ENABLED}`);
@@ -220,7 +228,36 @@ async function importBackupDatabase(candidateId, operatorId) {
 
 function registerIpc() {
   const fromMainWindow = (event) => event.sender.id === mainWindow?.webContents.id;
+  const fromStartup = (event) => event.sender.id === startupWindow?.webContents.id;
   transport = createApiTransport(async () => `http://127.0.0.1:${settings.port}`);
+  ipcMain.handle("member-admin:activation", async (event, code) => {
+    if (!fromStartup(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    await backendReady;
+    if (code !== undefined) parseApiResponse(await transport({ path: "/api/system/activation", method: "POST", body: JSON.stringify({ code }) }));
+    const backup = await waitForStartupCheck(settings.port, Date.now() + 45000);
+    if (!["ACTIVATION_REQUIRED", "BLOCKED"].includes(backup.state)) {
+      await createWindow();
+      destroyStartupWindow();
+    }
+    return status;
+  });
+  ipcMain.handle("member-admin:activation-clipboard", (event, action) => {
+    if (!fromStartup(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    if (action === "copy-machine") {
+      if (!status.activation?.machineCode) throw new Error("机器码尚不可用，请重试");
+      clipboard.writeText(status.activation.machineCode); return "";
+    }
+    if (action !== "paste") throw new Error("INVALID_ACTION");
+    let text;
+    try { text = clipboard.readText(); }
+    catch { throw new Error("无法读取剪贴板，请使用 Ctrl+V 或手动输入激活码"); }
+    if (text.length > 16384) throw new Error("剪贴板内容过长，请重新复制激活码");
+    return text;
+  });
+  ipcMain.handle("member-admin:activation-exit", (event) => {
+    if (!fromStartup(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    app.quit();
+  });
   ipcMain.handle("member-admin:api-request", async (event, request) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
     await backendReady;
@@ -293,7 +330,7 @@ async function ensureStartupWindow() {
   if (startupWindow && !startupWindow.isDestroyed()) return startupWindow;
   startupWindow = new BrowserWindow({
     width: 520,
-    height: 320,
+    height: 540,
     resizable: false,
     show: false,
     webPreferences: {
@@ -323,7 +360,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   backendReady = startBackend(settings.port);
   try {
     const backup = await backendReady;
-    if (backup.state !== "BLOCKED") {
+    if (backup.state !== "BLOCKED" && backup.state !== "ACTIVATION_REQUIRED") {
       await createWindow();
       destroyStartupWindow();
     }

@@ -92,6 +92,7 @@ export function resolveCenterConfig(raw: Record<string, unknown>, cwd = process.
   }
   return {
     runId: normalizeRunId(raw.runId ?? generateRunId()),
+    ...(raw.activationLicensePath ? { activationLicensePath: path.resolve(cwd, String(raw.activationLicensePath)) } : {}),
     memberAdminExecutable,
     testRoot,
     lanHost,

@@ -13,17 +13,20 @@ public class RoomConnectionWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final RoomConnectionRegistry registry;
     private final ChildModeService childMode;
+    private final ActivationService activation;
 
     public RoomConnectionWebSocketHandler(ObjectMapper objectMapper, RoomConnectionRegistry registry,
-            ChildModeService childMode) {
+            ChildModeService childMode, ActivationService activation) {
         this.objectMapper = objectMapper;
         this.registry = registry;
         this.childMode = childMode;
+        this.activation = activation;
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         try {
+            activation.requireActivated();
             JsonNode payload = objectMapper.readTree(message.getPayload());
             String type = payload.path("type").asText("");
             if (RoomConnectionProtocol.HELLO.equals(type)) {

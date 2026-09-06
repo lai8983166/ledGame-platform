@@ -11,6 +11,7 @@ import {
   type ManagedChildProcess,
 } from "./runtime";
 import { BidirectionalFloorDevice } from "./bidirectionalFloorDevice";
+import { prepareActivationLicense } from "../../desktop/tests/activation-fixture.mjs";
 
 type MemberFixture = { phone: string; name: string; uid: string };
 type PlayerInfoSnapshot = {
@@ -213,6 +214,7 @@ export class StoreAcceptanceHarness {
   }
 
   async #startPlatformDesktopClients(electronUserData: string): Promise<void> {
+    await prepareActivationLicense(path.join(electronUserData, "member-admin"));
     const electronExecutable = path.join(platformRoot, "node_modules", "electron", "dist", "electron.exe");
     const { ELECTRON_RUN_AS_NODE: _electronRunAsNode, ...electronEnvironment } = process.env;
     this.#memberAdminElectron = await electron.launch({
@@ -229,7 +231,10 @@ export class StoreAcceptanceHarness {
         PLATFORM_FACTORY_ADMIN_DISPLAY_NAME: "验收出厂管理员",
       },
     });
-    this.#adminPage = await this.#memberAdminElectron.firstWindow();
+    await expect.poll(() => this.#memberAdminElectron!.windows().some(page =>
+      page.url().startsWith(`http://127.0.0.1:${this.#ports.admin}`)), { timeout: 45_000 }).toBe(true);
+    this.#adminPage = this.#memberAdminElectron.windows().find(page =>
+      page.url().startsWith(`http://127.0.0.1:${this.#ports.admin}`)) ?? null;
     await expect.poll(async () => {
       try { return await httpOk(`${this.platformBaseUrl}/api/health`); } catch { return false; }
     }, { timeout: 45_000 }).toBe(true);
@@ -326,10 +331,12 @@ export class StoreAcceptanceHarness {
   }
 
   async #startPlatform(clockOffsetSeconds = 0): Promise<void> {
+    await prepareActivationLicense(this.#runDirectory);
     const label = this.#platformStartCount === 0 ? "platform" : `platform-restart-${this.#platformStartCount}`;
     this.#platformStartCount += 1;
     this.#platformProcess = this.#startChild(label, "mvn", ["-q", "-f", path.join(platformRoot, "server", "pom.xml"), "spring-boot:run"], platformRoot, {
       SPRING_PROFILES_ACTIVE: "acceptance",
+      LEDGAME_ACTIVATION_DIRECTORY: path.join(this.#runDirectory, "activation"),
       ACCEPTANCE_PLATFORM_DB_PATH: path.join(this.#runDirectory, "platform.db"),
       ACCEPTANCE_PLATFORM_PORT: String(this.#ports.platform),
       ACCEPTANCE_CLOCK_OFFSET_SECONDS: String(clockOffsetSeconds),

@@ -21,6 +21,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+@org.springframework.context.annotation.Import(ActivatedTestConfiguration.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("acceptance")
 class AcceptanceProfileIntegrationTest {

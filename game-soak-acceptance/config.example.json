@@ -1,0 +1,12 @@
+{
+  "runId": "",
+  "outputRoot": "",
+  "gameExecutable": "",
+  "games": [],
+  "durationHours": 18,
+  "hardwareMode": "real",
+  "floor": { "width": 8, "height": 8, "configDirectory": "" },
+  "simulatedInputEnabled": false,
+  "limits": { "actionSeconds": 10, "startupSeconds": 60, "settleSeconds": 30,
+    "memoryLimitMB": null, "memoryGrowthMBPerHour": null }
+}

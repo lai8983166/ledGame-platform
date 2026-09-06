@@ -37,6 +37,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(ActivatedTestConfiguration.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SqliteLockHandlingIntegrationTest {

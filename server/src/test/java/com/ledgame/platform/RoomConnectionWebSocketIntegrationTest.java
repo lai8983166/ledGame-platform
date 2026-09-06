@@ -22,6 +22,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+@org.springframework.context.annotation.Import(ActivatedTestConfiguration.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = { "spring.datasource.url=jdbc:sqlite:file:room-connection-test?mode=memory&cache=shared" })
 class RoomConnectionWebSocketIntegrationTest {

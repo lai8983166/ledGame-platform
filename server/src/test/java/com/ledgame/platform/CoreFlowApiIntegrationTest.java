@@ -41,7 +41,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@Import(CoreFlowApiIntegrationTest.TestClockConfiguration.class)
+@Import({CoreFlowApiIntegrationTest.TestClockConfiguration.class, ActivatedTestConfiguration.class})
 class CoreFlowApiIntegrationTest {
     private static final Path DATABASE_PATH = createDatabasePath();
 
