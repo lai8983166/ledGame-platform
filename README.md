@@ -73,3 +73,11 @@ pnpm test:acceptance
 ## Windows 桌面端
 
 会员管理端和自助注册端的 Electron 开发、测试与便携打包说明见 [Windows 桌面端开发与打包说明](docs/Windows桌面端开发与打包说明.md)。门店 IP、端口、防火墙和跨机冒烟步骤见 [门店局域网配置与冒烟说明](docs/门店局域网配置与冒烟说明.md)。
+
+在本仓库根目录执行以下命令，可一次重建会员管理端、自助注册端、离线激活签发工具、多点并发测试工具和游戏端烤机工具：
+
+```bash
+pnpm portable:all
+```
+
+全部产物位于 `release`，完成后查看 `release/打包清单.md` 或 `release/打包清单.json` 核对构建时间、Git 提交和 SHA-256。

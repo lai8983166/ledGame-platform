@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ChildProcess } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
-import { createCenterRunPaths, preflightCenter, startCenter } from "../src/center.js";
+import { createCenterRunPaths, createUniqueRunId, preflightCenter, startCenter } from "../src/center.js";
 import { SAFETY_CONFIRMATION, type CenterConfig } from "../src/types.js";
 
 const roots: string[] = [];
@@ -37,6 +37,12 @@ afterEach(async () => {
 });
 
 describe("isolated packaged center launch", () => {
+  it("generates a run id that never overwrites an existing batch", async () => {
+    const { root } = await fixture();
+    const testRoot = path.join(root, "runs");
+    await fs.mkdir(path.join(testRoot, "CONC-20260904123456"), { recursive: true });
+    expect(await createUniqueRunId(testRoot, new Date("2026-09-04T12:34:56.000Z"))).toBe("CONC-20260904123456-01");
+  });
   it("rejects missing authorization before starting the packaged application", async () => {
     const { config } = await fixture();
     await expect(startCenter({ ...config, activationLicensePath: undefined })).rejects.toThrow("本机有效授权");

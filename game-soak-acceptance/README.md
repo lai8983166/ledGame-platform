@@ -15,7 +15,7 @@ pnpm test:game-soak
 pnpm portable:game-soak
 ```
 
-地址应填写待检查游戏端的实际后端地址。list/preflight 不启动游戏、不调用初始化 seed、不保存游戏配置。inspect 在隔离目录启动打包游戏端，仅查看列表；run 才进入 UI 循环。便携产物在 release/game-soak-tool-时间戳。
+地址应填写待检查游戏端的实际后端地址。list/preflight 不启动游戏、不调用初始化 seed、不保存游戏配置。inspect 在隔离目录启动打包游戏端，仅查看列表；run 才进入 UI 循环。单独执行 `pnpm portable:game-soak` 时便携产物在 `release/game-soak-tool-时间戳`；统一执行 `pnpm portable:all` 时固定更新到 `release/game-soak`。
 
 复制 `config.example.json` 并填写列表中的实际 `gameId`、`playerCount`、从 0 开始的 `startLevelIndex`。模板故意留空游戏列表，不提供虚构 ID。无限整局时间的游戏不能参加本次烤机；Rank 按其玩法配置时长判断。
 

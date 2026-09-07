@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { generateRunId, resolveAgentConfig, resolveCenterConfig } from "../src/config.js";
+import { generateRunId, resolveAgentConfig, resolveCenterConfig, resolveControllerConfig, resolveRemoteAgentConfig } from "../src/config.js";
 import { FORMAT_VERSION, SAFETY_CONFIRMATION, type ConnectionInfo } from "../src/types.js";
 
 const connection: ConnectionInfo = {
@@ -71,5 +71,47 @@ describe("multipoint concurrency configuration", () => {
 
   it("generates a stable timestamp run id", () => {
     expect(generateRunId(new Date("2026-09-04T12:34:56.000Z"))).toBe("CONC-20260904123456");
+  });
+
+  it("resolves the controller and one-time remote agent configuration", () => {
+    const controller = resolveControllerConfig({
+      runId: "CONC-20260904-001",
+      memberAdminExecutable: "member.exe",
+      lanHost: "192.168.50.10",
+      testPort: 18090,
+      safetyConfirmation: SAFETY_CONFIRMATION,
+    }, "standard", "C:/center");
+    expect(controller).toMatchObject({ profile: "standard", controlPort: 18091, startDelayMs: 5000 });
+
+    const agent = resolveRemoteAgentConfig({
+      controllerUrl: "http://192.168.50.10:18091",
+      agentId: "b",
+      outputRoot: "local-runs",
+    }, "C:/agent");
+    expect(agent).toMatchObject({ controllerUrl: "http://192.168.50.10:18091", agentId: "B" });
+    expect(agent.outputRoot).toBe(path.resolve("C:/agent", "local-runs"));
+  });
+
+  it.each([
+    [{ profile: "smoke" }, "档位"],
+    [{ controlPort: 80 }, "controlPort"],
+    [{ testPort: 65535 }, "controlPort"],
+  ])("rejects invalid controller configuration %#", (override, message) => {
+    expect(() => resolveControllerConfig({
+      runId: "CONC-20260904-001",
+      memberAdminExecutable: "member.exe",
+      lanHost: "192.168.50.10",
+      safetyConfirmation: SAFETY_CONFIRMATION,
+      ...override,
+    }, "profile" in override ? override.profile : "quick")).toThrow(message);
+  });
+
+  it.each([
+    [{ controllerUrl: "https://192.168.50.10:18091", agentId: "B" }, "http://host:port"],
+    [{ controllerUrl: "http://192.168.50.10", agentId: "B" }, "包含端口"],
+    [{ controllerUrl: "http://192.168.50.10:18091", agentId: "A" }, "只能是 B 或 C"],
+    [{ controllerUrl: "http://192.168.50.10:18091", agentId: "B", waitTimeoutMs: 100 }, "waitTimeoutMs"],
+  ])("rejects invalid one-click agent configuration %#", (raw, message) => {
+    expect(() => resolveRemoteAgentConfig(raw)).toThrow(message);
   });
 });

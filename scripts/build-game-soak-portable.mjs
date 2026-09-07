@@ -6,8 +6,22 @@ import { spawnSync } from 'node:child_process';
 if (process.platform !== 'win32') throw new Error('此脚本生成 Windows 便携工具，请在 Windows 构建');
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
-// A unique output avoids deleting an existing customer's configuration/results.
-const output = path.join(root, 'release', `game-soak-tool-${Date.now()}`);
+const releaseRoot = path.join(root, 'release');
+const outputIndex = process.argv.indexOf('--output');
+const requestedOutput = outputIndex >= 0 ? process.argv[outputIndex + 1] : '';
+if (outputIndex >= 0 && !requestedOutput) throw new Error('--output 后必须提供目录');
+const finalOutput = requestedOutput
+  ? path.resolve(root, requestedOutput)
+  // 单独构建仍使用唯一目录，避免覆盖操作者放在旧工具旁的配置或结果。
+  : path.join(releaseRoot, `game-soak-tool-${Date.now()}`);
+const relativeOutput = path.relative(releaseRoot, finalOutput);
+if (!relativeOutput || relativeOutput.startsWith('..') || path.isAbsolute(relativeOutput)) {
+  throw new Error(`烤机工具输出目录必须位于 release 的子目录：${finalOutput}`);
+}
+const replaceFixedOutput = Boolean(requestedOutput);
+const output = replaceFixedOutput
+  ? path.join(releaseRoot, `.game-soak-build-${process.pid}-${Date.now()}`)
+  : finalOutput;
 await fs.mkdir(path.join(output, 'runtime'), { recursive: true });
 await fs.copyFile(process.execPath, path.join(output, 'runtime', 'node.exe'));
 await fs.cp(path.join(root, 'game-soak-acceptance', 'src'), path.join(output, 'app'), { recursive: true });
@@ -34,5 +48,16 @@ const template = JSON.parse(await fs.readFile(path.join(output, 'config.example.
 if (template.games.length || template.gameExecutable || template.gameDatabaseSource) throw new Error('交付模板不得包含实际业务库或本机游戏目标');
 const check = spawnSync(path.join(output, 'runtime', 'node.exe'), ['--input-type=module', '-e', "await import('./app/run.mjs'); console.log('便携依赖检查通过')"], { cwd: output, encoding: 'utf8', windowsHide: true });
 if (check.status !== 0) throw new Error(check.stderr || '便携工具依赖检查失败');
+await fs.writeFile(path.join(output, '.ledgame-build-output'), 'game-soak-portable\n', 'utf8');
+if (replaceFixedOutput) {
+  const marker = path.join(finalOutput, '.ledgame-build-output');
+  const targetExists = await fs.stat(finalOutput).then(() => true).catch(() => false);
+  if (targetExists && !await fs.stat(marker).then(() => true).catch(() => false)) {
+    await fs.rm(output, { recursive: true, force: true });
+    throw new Error(`拒绝覆盖不是由本脚本生成的目录：${finalOutput}`);
+  }
+  if (targetExists) await fs.rm(finalOutput, { recursive: true, force: true });
+  await fs.rename(output, finalOutput);
+}
 console.log(check.stdout.trim());
-console.log(`已生成：${output}`);
+console.log(`已生成：${finalOutput}`);

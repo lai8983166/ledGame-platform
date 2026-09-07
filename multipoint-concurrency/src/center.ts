@@ -4,6 +4,16 @@ import net from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { CenterConfig, CenterRunPaths, ConnectionInfo } from "./types.js";
 import { FORMAT_VERSION } from "./types.js";
+import { generateRunId } from "./config.js";
+
+export async function createUniqueRunId(testRoot: string, date = new Date()): Promise<string> {
+  const base = generateRunId(date);
+  for (let suffix = 0; suffix < 100; suffix += 1) {
+    const candidate = suffix === 0 ? base : `${base}-${String(suffix).padStart(2, "0")}`;
+    if (!await fs.stat(path.join(testRoot, candidate)).then(() => true).catch(() => false)) return candidate;
+  }
+  throw new Error("同一时间批次过多，无法生成唯一 runId");
+}
 
 export function createCenterRunPaths(config: CenterConfig): CenterRunPaths {
   const runRoot = path.resolve(config.testRoot, config.runId);

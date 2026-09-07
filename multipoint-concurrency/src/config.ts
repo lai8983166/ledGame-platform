@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import net from "node:net";
-import type { AgentConfig, CenterConfig, ConnectionInfo, LoadProfile, ProfileName } from "./types.js";
+import type { AgentConfig, CenterConfig, ConnectionInfo, ControllerConfig, LoadProfile, ProfileName, RemoteAgentConfig, RemoteAgentId, TimedProfileName } from "./types.js";
 import { SAFETY_CONFIRMATION } from "./types.js";
 
 export const PROFILES: Record<ProfileName, LoadProfile> = {
@@ -35,6 +35,7 @@ function timedProfile(seconds: number): LoadProfile {
 
 const RUN_ID_PATTERN = /^[A-Z0-9][A-Z0-9-]{2,39}$/;
 const AGENT_ID_PATTERN = /^[A-Z0-9][A-Z0-9-]{0,15}$/;
+const TIMED_PROFILES = new Set<TimedProfileName>(["quick", "standard", "soak", "overnight"]);
 
 export async function readJsonFile<T = unknown>(file: string): Promise<T> {
   return JSON.parse(await fs.readFile(file, "utf8")) as T;
@@ -55,6 +56,18 @@ export function normalizeAgentId(value: unknown): string {
   const agentId = String(value ?? "").trim().toUpperCase();
   if (!AGENT_ID_PATTERN.test(agentId)) throw new Error("agentId 必须为 1 至 16 位大写字母、数字或短横线");
   return agentId;
+}
+
+export function normalizeRemoteAgentId(value: unknown): RemoteAgentId {
+  const agentId = normalizeAgentId(value);
+  if (agentId !== "B" && agentId !== "C") throw new Error("一键加入的 agentId 只能是 B 或 C");
+  return agentId;
+}
+
+export function normalizeTimedProfile(value: unknown): TimedProfileName {
+  const profile = String(value ?? "").trim().toLowerCase() as TimedProfileName;
+  if (!TIMED_PROFILES.has(profile)) throw new Error("档位必须是 quick、standard、soak 或 overnight");
+  return profile;
 }
 
 function requireSafety(value: unknown): string {
@@ -100,6 +113,34 @@ export function resolveCenterConfig(raw: Record<string, unknown>, cwd = process.
     normalPlatformUrl: normalizeBaseUrl(raw.normalPlatformUrl ?? "http://127.0.0.1:8090", "正常平台地址"),
     startupTimeoutMs: numberInRange(raw.startupTimeoutMs ?? 60_000, "startupTimeoutMs", 1_000, 300_000),
     safetyConfirmation: requireSafety(raw.safetyConfirmation),
+  };
+}
+
+export function resolveControllerConfig(
+  raw: Record<string, unknown>,
+  profileValue: unknown,
+  cwd = process.cwd(),
+): ControllerConfig {
+  const center = resolveCenterConfig(raw, cwd);
+  const defaultControlPort = center.testPort + 1;
+  const controlPort = numberInRange(raw.controlPort ?? defaultControlPort, "controlPort", 1024, 65535);
+  if (controlPort === center.testPort) throw new Error("controlPort 不能与 testPort 相同");
+  return {
+    center,
+    profile: normalizeTimedProfile(profileValue ?? raw.profile ?? "quick"),
+    controlPort,
+    startDelayMs: numberInRange(raw.startDelayMs ?? 5_000, "startDelayMs", 1_000, 60_000),
+    offlineAfterMs: numberInRange(raw.offlineAfterMs ?? 90_000, "offlineAfterMs", 10_000, 600_000),
+    maxArtifactBytes: numberInRange(raw.maxArtifactBytes ?? 64 * 1024 * 1024, "maxArtifactBytes", 1024, 512 * 1024 * 1024),
+  };
+}
+
+export function resolveRemoteAgentConfig(raw: Record<string, unknown>, cwd = process.cwd()): RemoteAgentConfig {
+  return {
+    controllerUrl: normalizeBaseUrl(raw.controllerUrl, "A 机控制器地址"),
+    agentId: normalizeRemoteAgentId(raw.agentId),
+    outputRoot: path.resolve(cwd, String(raw.outputRoot ?? "runs")),
+    waitTimeoutMs: numberInRange(raw.waitTimeoutMs ?? 300_000, "waitTimeoutMs", 10_000, 86_400_000),
   };
 }
 

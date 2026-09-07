@@ -8,7 +8,11 @@ const outputRoot = path.join(projectRoot, "release", "multipoint-concurrency");
 for (const target of [buildRoot, outputRoot]) {
   const relative = path.relative(projectRoot, target);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`拒绝清理工作区外目录：${target}`);
-  await fs.rm(target, { recursive: true, force: true });
+}
+await fs.rm(buildRoot, { recursive: true, force: true });
+await fs.mkdir(outputRoot, { recursive: true });
+for (const entry of await fs.readdir(outputRoot)) {
+  await fs.rm(path.join(outputRoot, entry), { recursive: true, force: true });
 }
 const tsc = path.join(projectRoot, "node_modules", "typescript", "bin", "tsc");
 const compile = spawnSync(process.execPath, [tsc, "-p", path.join(projectRoot, "multipoint-concurrency", "tsconfig.build.json")], { cwd: projectRoot, stdio: "inherit" });
@@ -21,6 +25,8 @@ await fs.copyFile(path.join(projectRoot, "docs", "打包版多点并发验收使
 await fs.writeFile(path.join(outputRoot, "center.cmd"), '@echo off\r\npushd "%~dp0"\r\n"runtime\\node.exe" "app\\commands\\center.js" --config "config\\center.json" %*\r\npopd\r\n', "utf8");
 await fs.writeFile(path.join(outputRoot, "agent.cmd"), '@echo off\r\npushd "%~dp0"\r\n"runtime\\node.exe" "app\\commands\\agent.js" %*\r\npopd\r\n', "utf8");
 await fs.writeFile(path.join(outputRoot, "verify.cmd"), '@echo off\r\npushd "%~dp0"\r\n"runtime\\node.exe" "app\\commands\\verify.js" %*\r\npopd\r\n', "utf8");
+await fs.writeFile(path.join(outputRoot, "start-test.cmd"), '@echo off\r\nchcp 65001 >nul\r\npushd "%~dp0"\r\n"runtime\\node.exe" "app\\commands\\controller.js" --config "config\\center.json" %*\r\nset EXIT_CODE=%ERRORLEVEL%\r\necho.\r\nif not "%EXIT_CODE%"=="0" echo 启动失败，请根据上方提示处理。\r\npause\r\npopd\r\nexit /b %EXIT_CODE%\r\n', "utf8");
+await fs.writeFile(path.join(outputRoot, "join.cmd"), '@echo off\r\nchcp 65001 >nul\r\npushd "%~dp0"\r\n"runtime\\node.exe" "app\\commands\\join.js" %*\r\nset EXIT_CODE=%ERRORLEVEL%\r\necho.\r\nif not "%EXIT_CODE%"=="0" echo 加入或执行失败，本机 runs 目录中的证据不会被删除。\r\npause\r\npopd\r\nexit /b %EXIT_CODE%\r\n', "utf8");
 await fs.writeFile(path.join(outputRoot, "NODE-RUNTIME-LICENSE.txt"), "Node.js is distributed under the MIT license and includes third-party software.\r\nCopyright Node.js contributors. All rights reserved.\r\nFull license and third-party notices for this runtime version: https://github.com/nodejs/node/blob/main/LICENSE\r\n", "utf8");
 for (const forbidden of ["node_modules", "pnpm-lock.yaml", "pom.xml"]) {
   const found = await fs.stat(path.join(outputRoot, forbidden)).then(() => true).catch(() => false);

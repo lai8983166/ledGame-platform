@@ -2,6 +2,10 @@ export const FORMAT_VERSION = 1;
 export const SAFETY_CONFIRMATION = "I_UNDERSTAND_THIS_USES_ISOLATED_TEST_DATA";
 
 export type ProfileName = "smoke" | "load" | "quick" | "standard" | "soak" | "overnight";
+export type TimedProfileName = "quick" | "standard" | "soak" | "overnight";
+export type RemoteAgentId = "B" | "C";
+export type RemoteAgentPhase = "READY" | "RUNNING" | "UPLOADING" | "COMPLETE" | "FAILED";
+export type ControllerPhase = "WAITING" | "RUNNING" | "VERIFYING" | "COMPLETE" | "FAILED";
 export type FlowType = "registration" | "game";
 export type RequestOutcomeKind = "http" | "timeout" | "network";
 
@@ -33,6 +37,42 @@ export interface CenterRunPaths {
   backupRoot: string;
   centerLog: string;
   connectionFile: string;
+}
+
+export interface ControllerConfig {
+  center: CenterConfig;
+  profile: TimedProfileName;
+  controlPort: number;
+  startDelayMs: number;
+  offlineAfterMs: number;
+  maxArtifactBytes: number;
+}
+
+export interface RemoteAgentConfig {
+  controllerUrl: string;
+  agentId: RemoteAgentId;
+  outputRoot: string;
+  waitTimeoutMs: number;
+}
+
+export interface ControllerRunInfo {
+  formatVersion: number;
+  runId: string;
+  profile: TimedProfileName;
+  platformBaseUrl: string;
+  phase: ControllerPhase;
+  startedAt: string;
+  startAt?: string;
+}
+
+export interface RemoteAgentStatus {
+  runId: string;
+  agentId: RemoteAgentId;
+  phase: RemoteAgentPhase;
+  message: string;
+  lastSeenAt: string;
+  uploadedArtifacts: string[];
+  possiblyOffline: boolean;
 }
 
 export interface ConnectionInfo {

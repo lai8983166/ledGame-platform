@@ -48,12 +48,36 @@ pnpm test:acceptance:desktop
 
 ## 打包命令与产物
 
+推荐在仓库根目录执行一次统一打包：
+
 ```shell
+pnpm portable:all
+```
+
+该命令顺序重建会员管理端、自助注册端、离线激活签发工具、多点并发测试工具和游戏端烤机工具，并在全部步骤成功后生成 `release/打包清单.md` 与 `release/打包清单.json`。JSON 清单记录构建时间、Git 提交、文件大小和 SHA-256，可用于确认各模块来自同一轮最新构建。
+
+统一产物目录：
+
+```text
+release/member-admin
+release/registration-kiosk
+release/activation-signer
+release/multipoint-concurrency
+release/game-soak
+```
+
+只需要单独构建某个产品时仍可使用：
+
+```shell
+pnpm portable:member-admin
 pnpm portable:member-admin:dir
 pnpm portable:member-admin:zip
+pnpm portable:registration
 pnpm portable:registration:dir
 pnpm portable:registration:zip
-pnpm portable:all
+pnpm portable:activation-signer
+pnpm portable:multipoint-concurrency
+pnpm portable:game-soak
 ```
 
 目录包与 ZIP 分别生成在：
@@ -63,7 +87,7 @@ release/member-admin
 release/registration-kiosk
 ```
 
-打包后执行：
+仅单独打包两个客户端后，可执行：
 
 ```shell
 pnpm portable:verify
