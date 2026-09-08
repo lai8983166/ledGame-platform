@@ -82,6 +82,7 @@ describe("multipoint concurrency configuration", () => {
       safetyConfirmation: SAFETY_CONFIRMATION,
     }, "standard", "C:/center");
     expect(controller).toMatchObject({ profile: "standard", controlPort: 18091, startDelayMs: 5000 });
+    expect(controller.maxArtifactBytes).toBe(512 * 1024 * 1024);
 
     const agent = resolveRemoteAgentConfig({
       controllerUrl: "http://192.168.50.10:18091",

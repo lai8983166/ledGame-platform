@@ -131,7 +131,7 @@ export function resolveControllerConfig(
     controlPort,
     startDelayMs: numberInRange(raw.startDelayMs ?? 5_000, "startDelayMs", 1_000, 60_000),
     offlineAfterMs: numberInRange(raw.offlineAfterMs ?? 90_000, "offlineAfterMs", 10_000, 600_000),
-    maxArtifactBytes: numberInRange(raw.maxArtifactBytes ?? 64 * 1024 * 1024, "maxArtifactBytes", 1024, 512 * 1024 * 1024),
+    maxArtifactBytes: numberInRange(raw.maxArtifactBytes ?? 512 * 1024 * 1024, "maxArtifactBytes", 1024, 512 * 1024 * 1024),
   };
 }
 
