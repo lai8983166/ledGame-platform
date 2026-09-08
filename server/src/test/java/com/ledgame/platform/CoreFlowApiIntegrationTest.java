@@ -765,6 +765,151 @@ class CoreFlowApiIntegrationTest {
                 Integer.class, "idempotent-session-002")).isZero();
     }
 
+    @Test
+    void structuredLevelPointsAreValidatedPersistedAndIdempotentAtTheApiBoundary() {
+        createActiveWristband("2283055801", "13000130801", "structured-scoring-player");
+        ResponseEntity<Map<String, Object>> play = startPlay(
+                "2283055801", "structured-scoring-session", "simple", "structured-scoring-game");
+        long playId = number(play.getBody().get("id"));
+
+        Map<String, Object> invalidScoring = Map.of(
+                "version", "level-clear-points-v1",
+                "awardEligible", true,
+                "totalPoints", 99,
+                "levels", List.of(Map.of(
+                        "levelIndex", 0,
+                        "rewardPoints", 20,
+                        "awardedPoints", 20,
+                        "reason", "CLEARED")));
+        ResponseEntity<Map<String, Object>> invalid = put(
+                "/api/game-plays/" + playId + "/result",
+                Map.of(
+                        "success", true,
+                        "terminationReason", "NATURAL_COMPLETION",
+                        "rawScore", 500,
+                        "scoringInput", invalidScoring));
+        assertError(invalid, HttpStatus.BAD_REQUEST, "INVALID_SCORING_INPUT");
+        assertThat(jdbc.queryForMap(
+                "SELECT status, ended_at, points_awarded FROM game_play_records WHERE id=?", playId))
+                .containsEntry("status", "RUNNING")
+                .containsEntry("points_awarded", 0)
+                .containsEntry("ended_at", null);
+
+        Map<String, Object> scoring = Map.of(
+                "version", "level-clear-points-v1",
+                "awardEligible", true,
+                "totalPoints", 30,
+                "levels", List.of(
+                        Map.of("levelIndex", 0, "rewardPoints", 10,
+                                "awardedPoints", 10, "reason", "CLEARED"),
+                        Map.of("levelIndex", 1, "rewardPoints", 20,
+                                "awardedPoints", 20, "reason", "CLEARED")));
+        Map<String, Object> resultRequest = Map.of(
+                "success", true,
+                "terminationReason", "NATURAL_COMPLETION",
+                "rawScore", 500,
+                "resultPayload", Map.of("source", "integration-test"),
+                "scoringInput", scoring);
+        ResponseEntity<Map<String, Object>> settled = put(
+                "/api/game-plays/" + playId + "/result", resultRequest);
+
+        assertThat(settled.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(settled.getBody())
+                .containsEntry("status", "COMPLETED")
+                .containsEntry("rawScore", 500)
+                .containsEntry("pointsAwarded", 30)
+                .containsEntry("scoringPolicy", "level-clear-points-v1");
+        assertThat(map(settled.getBody().get("scoringInput")))
+                .containsEntry("totalPoints", 30)
+                .containsEntry("awardEligible", true);
+        assertThat(map(settled.getBody().get("resultPayload")))
+                .containsEntry("source", "integration-test");
+
+        ResponseEntity<Map<String, Object>> repeated = put(
+                "/api/game-plays/" + playId + "/result",
+                Map.of("success", false, "terminationReason", "MANUAL_STOP", "rawScore", 0));
+        assertThat(repeated.getBody())
+                .containsEntry("status", "COMPLETED")
+                .containsEntry("pointsAwarded", 30)
+                .containsEntry("scoringPolicy", "level-clear-points-v1");
+    }
+
+    @Test
+    void multiplayerLevelPointsCoverSimpleRankTieNaturalFailureAndManualStop() {
+        long firstMember = createActiveWristband("2283055901", "13000130901", "逐关积分玩家甲");
+        long secondMember = createActiveWristband("2283055902", "13000130902", "逐关积分玩家乙");
+        List<String> uids = List.of("2283055901", "2283055902");
+
+        List<Map<String, Object>> simple = startBatch(uids, "points-simple", "simple");
+        settleStructured(simple.get(0), true, "NATURAL_COMPLETION", 111, 30, true, "CLEARED");
+        settleStructured(simple.get(1), true, "NATURAL_COMPLETION", 222, 30, true, "CLEARED");
+
+        List<Map<String, Object>> rankWinner = startBatch(uids, "points-rank-winner", "rank-type1");
+        settleStructured(rankWinner.get(0), true, "NATURAL_COMPLETION", 500, 40, true, "RANK_WINNER");
+        settleStructured(rankWinner.get(1), true, "NATURAL_COMPLETION", 100, 0, true, "RANK_NOT_WINNER");
+
+        List<Map<String, Object>> rankTie = startBatch(uids, "points-rank-tie", "rank-type1");
+        settleStructured(rankTie.get(0), true, "NATURAL_COMPLETION", 300, 25, true, "RANK_WINNER");
+        settleStructured(rankTie.get(1), true, "NATURAL_COMPLETION", 300, 25, true, "RANK_WINNER");
+
+        List<Map<String, Object>> naturalFailure = startBatch(uids, "points-natural-failure", "normal");
+        settleStructured(naturalFailure.get(0), false, "NATURAL_FAILURE", 12, 15, true, "CLEARED");
+        settleStructured(naturalFailure.get(1), false, "NATURAL_FAILURE", 12, 15, true, "CLEARED");
+
+        List<Map<String, Object>> manual = startBatch(uids, "points-manual", "diffcult");
+        settleStructured(manual.get(0), false, "MANUAL_STOP", 999, 50, false, "CLEARED");
+        settleStructured(manual.get(1), false, "MANUAL_STOP", 999, 50, false, "CLEARED");
+
+        assertThat(jdbc.queryForObject(
+                "SELECT SUM(points_awarded) FROM game_play_records WHERE member_id=?",
+                Long.class, firstMember)).isEqualTo(110L);
+        assertThat(jdbc.queryForObject(
+                "SELECT SUM(points_awarded) FROM game_play_records WHERE member_id=?",
+                Long.class, secondMember)).isEqualTo(70L);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM game_play_records WHERE external_session_id='points-manual' AND points_awarded=0",
+                Integer.class)).isEqualTo(2);
+    }
+
+    private List<Map<String, Object>> startBatch(List<String> uids, String sessionId, String gameId) {
+        ResponseEntity<List<Map<String, Object>>> response = postList("/api/game-plays/start-batch", Map.of(
+                "uids", uids,
+                "deviceId", "points-device",
+                "roomId", "points-room",
+                "externalSessionId", sessionId,
+                "gameId", gameId,
+                "gameName", gameId));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return response.getBody();
+    }
+
+    private void settleStructured(Map<String, Object> play, boolean success, String terminationReason,
+                                  int rawScore, int awardedPoints, boolean awardEligible, String reason) {
+        int rewardPoints = Math.max(awardedPoints, 50);
+        Map<String, Object> scoringInput = Map.of(
+                "version", "level-clear-points-v1",
+                "awardEligible", awardEligible,
+                "totalPoints", awardedPoints,
+                "levels", List.of(Map.of(
+                        "levelIndex", 0,
+                        "rewardPoints", rewardPoints,
+                        "awardedPoints", awardedPoints,
+                        "reason", reason)));
+        ResponseEntity<Map<String, Object>> settled = put(
+                "/api/game-plays/" + number(play.get("id")) + "/result",
+                Map.of("success", success, "terminationReason", terminationReason,
+                        "rawScore", rawScore, "scoringInput", scoringInput));
+        assertThat(settled.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(settled.getBody())
+                .containsEntry("rawScore", rawScore)
+                .containsEntry("pointsAwarded", terminationReason.startsWith("NATURAL_") ? awardedPoints : 0)
+                .containsEntry("scoringPolicy", "level-clear-points-v1");
+        assertThat(put(
+                "/api/game-plays/" + number(play.get("id")) + "/result",
+                Map.of("success", false, "terminationReason", "MANUAL_STOP", "rawScore", 0)).getBody())
+                .containsEntry("pointsAwarded", terminationReason.startsWith("NATURAL_") ? awardedPoints : 0);
+    }
+
     private ResponseEntity<Map<String, Object>> post(String path, Object body) {
         return http.exchange(
                 path,

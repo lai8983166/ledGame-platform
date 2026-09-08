@@ -27,6 +27,7 @@ declare global {
       retryBackend(): Promise<MemberAdminDiagnostics>;
       chooseBackupDatabase(operatorId: number): Promise<import("@ledgame/platform-api-client").DatabaseBackupCandidate | null>;
       importBackupDatabase(candidateId: string, operatorId: number): Promise<{ imported: boolean; revision: number; requiresLogin: boolean }>;
+      exportData(dataset: "members" | "wristband-charges" | "game-plays", operatorId: number): Promise<{ canceled: boolean; filePath?: string }>;
       onStatus(listener: (status: Partial<MemberAdminDiagnostics>) => void): () => void;
     };
   }

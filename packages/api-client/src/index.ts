@@ -119,6 +119,12 @@ export interface PlayerRecentPlay {
   rawScore?: number | null;
   pointsAwarded: number;
   scoringPolicy?: string | null;
+  scoringInput?: {
+    version: "level-clear-points-v1" | string;
+    awardEligible: boolean;
+    totalPoints: number;
+    levels: Array<{ levelIndex: number; rewardPoints: number; awardedPoints: number; reason?: string | null }>;
+  } | null;
 }
 
 export interface PlayerInfo {

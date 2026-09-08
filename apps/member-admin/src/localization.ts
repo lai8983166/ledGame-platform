@@ -130,6 +130,8 @@ export const memberAdminBaseCatalog = {
   keepCurrentAction: "Keep current database",
   keepCurrentTitle: "Keep the current database?",
   keepCurrentBody: "The conflicting backup will be preserved in quarantine, then a new backup will be created from the current database.",
+  memberExportNote: "The export is an operational CSV for spreadsheet software, not a database backup for system recovery.",
+  recordExportNote: "The CSV contains the complete dataset regardless of page search or date filters and cannot replace a database backup.",
 };
 
 export type MemberAdminMessageKey = keyof typeof memberAdminBaseCatalog;
@@ -154,6 +156,8 @@ const navigation = (
 
 export const memberAdminAuthoredCatalogs = {
   "zh-CN": {
+    memberExportNote: "导出的是可用表格软件打开的业务记录 CSV，不是用于恢复系统的数据库备份。",
+    recordExportNote: "CSV 是当前数据集的完整业务记录，不受页面搜索或日期筛选影响，也不能替代数据库备份。",
     roomGameRemaining: "全局游戏剩余",
     roomUnlimited: "无限",
     language: "语言",

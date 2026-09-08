@@ -12,6 +12,7 @@ const {
   replaceDatabase,
   restoreRollback,
 } = require("./database-import.cjs");
+const { exportDataset } = require("./data-export.cjs");
 
 const projectRoot = path.resolve(__dirname, "../..");
 const devUrl = process.env.VITE_MEMBER_ADMIN_DEV_URL;
@@ -262,6 +263,17 @@ function registerIpc() {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
     await backendReady;
     return transport(request);
+  });
+  ipcMain.handle("member-admin:export-data", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    await backendReady;
+    return exportDataset({
+      key: input?.dataset,
+      operatorId: Number(input?.operatorId),
+      window: mainWindow,
+      dialog,
+      transport,
+    });
   });
   ipcMain.handle("member-admin:diagnostics", (event) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");

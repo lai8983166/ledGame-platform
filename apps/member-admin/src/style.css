@@ -289,3 +289,8 @@ html[data-language-direction="rtl"] :is(input, textarea) { direction: rtl; text-
   font-weight: 800;
   box-shadow: 0 6px 22px rgba(0, 0, 0, .3);
 }
+.export-note {
+  margin: -8px 4px 14px;
+  color: var(--text-muted, #6f7d91);
+  font-size: 13px;
+}

@@ -7,6 +7,7 @@ import type { Member } from "../types";
 import { platformApi } from "../platformApi";
 import { memberAdminCatalogs, type MemberAdminMessageKey } from "../localization";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
+import { operatorSession } from "../operatorSession";
 
 const props = defineProps<{ locale: PlatformLocale }>();
 const text = (key: MemberAdminMessageKey) => memberAdminCatalogs[props.locale][key];
@@ -55,6 +56,7 @@ const bindingRecords = ref<BindingRecord[]>([]);
 const chargeRecords = ref<ChargeRecord[]>([]);
 const plays = ref<RealPlay[]>([]);
 const refreshing = ref(false);
+const exporting = ref(false);
 const loadError = ref("");
 
 const tabs: Array<{ id: RecordTab; label: string; icon: string }> = [
@@ -147,6 +149,23 @@ const searchPlaceholder = computed(() => activeTab.value === "members" ? "搜索
 const bindingStatusLabel = (status: string) => ({ READY: "待游戏", ACTIVE: "计时中", EXPIRED: "已到期", RETURNED: "已归还" }[status] ?? status);
 const bindingStatusTone = (status: string) => status === "ACTIVE" ? "success" : status === "READY" ? "warning" : "neutral";
 
+const exportDataset = computed<"members" | "wristband-charges" | "game-plays" | null>(() => ({
+  members: "members", transactions: "wristband-charges", plays: "game-plays", cards: null,
+})[activeTab.value] as "members" | "wristband-charges" | "game-plays" | null);
+const exportLabel = computed(() => ({ members: "导出会员数据", transactions: "导出交易记录", plays: "导出游玩记录", cards: "" })[activeTab.value]);
+const exportRecords = async () => {
+  const operator = operatorSession.current.value;
+  const dataset = exportDataset.value;
+  if (!dataset) return;
+  if (!operator || !window.memberAdminDesktop?.exportData) return void (loadError.value = "桌面版才支持导出文件");
+  exporting.value = true; loadError.value = "";
+  try {
+    const result = await window.memberAdminDesktop.exportData(dataset, operator.id);
+    if (!result.canceled) loadError.value = `已导出：${result.filePath ?? ""}`;
+  } catch (error) { loadError.value = error instanceof Error ? error.message : "记录导出失败"; }
+  finally { exporting.value = false; }
+};
+
 onMounted(() => void loadRecords());
 </script>
 
@@ -158,7 +177,9 @@ onMounted(() => void loadRecords());
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="搜索记录" :placeholder="searchPlaceholder" /></div>
     <select v-if="activeTab !== 'members'" v-model="dateFilter" class="select-control" aria-label="时间范围"><option value="all">全部时间</option><option value="today">今天</option><option value="week">近 7 天</option><option value="month">本月</option></select>
     <button class="secondary-button compact-button" data-testid="admin-records-refresh" type="button" :disabled="refreshing" @click="loadRecords"><AppIcon name="refresh" :size="16" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新" }}</button>
+    <button v-if="exportDataset" class="secondary-button compact-button" data-testid="admin-records-export" type="button" :disabled="exporting" @click="exportRecords"><AppIcon name="download" :size="16" />{{ exporting ? "导出中…" : exportLabel }}</button>
   </section>
+  <p v-if="exportDataset" class="export-note">{{ text("recordExportNote") }}</p>
   <p v-if="loadError" class="form-error"><AppIcon name="alert" :size="16" />{{ loadError }}</p>
 
   <section class="table-card glass-panel">

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("memberAdminDesktop", {
   retryBackend: () => ipcRenderer.invoke("member-admin:retry-backend"),
   chooseBackupDatabase: (operatorId) => ipcRenderer.invoke("member-admin:choose-backup-database", { operatorId }),
   importBackupDatabase: (candidateId, operatorId) => ipcRenderer.invoke("member-admin:import-backup-database", { candidateId, operatorId }),
+  exportData: (dataset, operatorId) => ipcRenderer.invoke("member-admin:export-data", { dataset, operatorId }),
   onStatus: (listener) => {
     const handler = (_event, value) => listener(value);
     ipcRenderer.on("member-admin:status", handler);

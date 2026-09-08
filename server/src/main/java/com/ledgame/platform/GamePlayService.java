@@ -181,7 +181,7 @@ public class GamePlayService {
         String reason = requireText(command.terminationReason(), "terminationReason");
         boolean completed = reason.startsWith("NATURAL_");
         String status = completed ? "COMPLETED" : "ABORTED";
-        GamePointsPolicy.AwardDecision award = pointsPolicy.award(completed, command.rawScore());
+        GamePointsPolicy.AwardDecision award = pointsPolicy.award(completed, command.rawScore(), command.scoringInput());
         Integer success = command.success() == null ? null : (command.success() ? 1 : 0);
         int updated = jdbc.update("""
             UPDATE game_play_records
@@ -189,7 +189,7 @@ public class GamePlayService {
                    points_awarded=?, scoring_policy=?, result_json=?
              WHERE id=? AND status='RUNNING'
             """, status, clock.instant().toString(), success, reason, command.rawScore(), award.points(),
-            award.version(), toJson(command.resultPayload()), playId);
+            award.version(), toStoredResult(command.resultPayload(), award.scoringInput()), playId);
         if (updated == 0) return playView(find(playId));
         return playView(find(playId));
     }
@@ -209,12 +209,21 @@ public class GamePlayService {
         Object json = row.get("resultJson");
         if (json != null) {
             try {
-                result.put("resultPayload", objectMapper.readValue(String.valueOf(json), Object.class));
+                Object parsed = objectMapper.readValue(String.valueOf(json), Object.class);
+                if (parsed instanceof Map<?, ?> envelope
+                        && "result-with-scoring-v1".equals(envelope.get("_format"))) {
+                    result.put("resultPayload", envelope.get("resultPayload"));
+                    result.put("scoringInput", envelope.get("scoringInput"));
+                } else {
+                    result.put("resultPayload", parsed);
+                    result.put("scoringInput", null);
+                }
             } catch (JsonProcessingException exception) {
                 result.put("resultPayload", null);
             }
         } else {
             result.put("resultPayload", null);
+            result.put("scoringInput", null);
         }
         result.remove("resultJson");
         return result;
@@ -227,6 +236,15 @@ public class GamePlayService {
         } catch (JsonProcessingException exception) {
             throw GameAccessService.error(HttpStatus.BAD_REQUEST, "INVALID_RESULT_PAYLOAD", "游戏结果数据无法保存");
         }
+    }
+
+    private String toStoredResult(Object resultPayload, GameScoringInput scoringInput) {
+        if (scoringInput == null) return toJson(resultPayload);
+        LinkedHashMap<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("_format", "result-with-scoring-v1");
+        envelope.put("resultPayload", resultPayload);
+        envelope.put("scoringInput", scoringInput);
+        return toJson(envelope);
     }
 
     private static String requireText(String value, String field) {
@@ -267,6 +285,7 @@ public class GamePlayService {
         String terminationReason,
         Integer rawScore,
         Integer pointsAwarded,
-        Object resultPayload
+        Object resultPayload,
+        GameScoringInput scoringInput
     ) {}
 }

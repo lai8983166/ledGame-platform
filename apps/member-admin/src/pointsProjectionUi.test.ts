@@ -35,6 +35,14 @@ describe("authoritative points projections", () => {
     expect(records).not.toContain("dataSourceLabel");
   });
 
+  it("routes each visible operational export to a fixed complete dataset", () => {
+    expect(members).toContain('exportData("members", operator.id)');
+    expect(members).toContain('data-testid="admin-members-export"');
+    expect(records).toContain('members: "members", transactions: "wristband-charges", plays: "game-plays", cards: null');
+    expect(records).toContain('data-testid="admin-records-export"');
+    expect(records).toContain('text("recordExportNote")');
+  });
+
   it("gives acceptance stable Player Info business selectors", () => {
     expect(kiosk).toContain('data-testid="kiosk-info-points-total"');
     expect(kiosk).toContain('data-testid="kiosk-info-rank"');

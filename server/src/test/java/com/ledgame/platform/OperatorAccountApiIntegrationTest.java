@@ -5,9 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import javax.sql.DataSource;
 
@@ -27,6 +33,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -61,6 +69,12 @@ class OperatorAccountApiIntegrationTest {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private OperationalDataExportService exportService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private long factoryId;
 
@@ -265,6 +279,153 @@ class OperatorAccountApiIntegrationTest {
         assertThat(jdbc.queryForList("SELECT summary_json FROM operator_action_logs").stream()
                 .map(row -> String.valueOf(row.get("summary_json"))))
                 .allSatisfy(summary -> assertThat(summary).doesNotContain("654321", "123456"));
+    }
+
+    @Test
+    void exportsOperationalCsvOnlyForAnAuthorizedOperator() {
+        postAsOperator("/api/members", Map.of(
+                "phone", "13800138888", "name", "CSV,\"member\""), factoryId);
+        postAsOperator("/api/members", Map.of(
+                "phone", "13800138889", "name", "second member"), factoryId);
+        long memberId = jdbc.queryForObject(
+                "SELECT id FROM members WHERE phone='13800138888'", Long.class);
+        postAsOperator("/api/wristbands/charge", Map.of(
+                "uid", "99887766", "durationMinutes", 7), factoryId);
+        postAsOperator("/api/wristbands/bind", Map.of(
+                "uid", "99887766", "memberId", memberId), factoryId);
+        post("/api/game-access/activate", Map.of("uid", "99887766", "deviceId", "export-device"));
+        ResponseEntity<Map<String, Object>> play = post("/api/game-plays/start", Map.of(
+                "uid", "99887766",
+                "deviceId", "export-device",
+                "externalSessionId", "export-session",
+                "gameId", "simple",
+                "gameName", "CSV game"));
+        put("/api/game-plays/" + number(play.getBody().get("id")) + "/result", Map.of(
+                "success", true,
+                "terminationReason", "NATURAL_COMPLETION",
+                "rawScore", 42));
+        long revisionBeforeExport = jdbc.queryForObject(
+                "SELECT revision FROM database_state WHERE id=1", Long.class);
+
+        ResponseEntity<byte[]> response = export("members", factoryId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getContentType().toString()).startsWith("text/csv");
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .contains("attachment").contains("members.csv");
+        assertThat(response.getBody()).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+        String csv = new String(response.getBody(), 3, response.getBody().length - 3,
+                StandardCharsets.UTF_8);
+        assertThat(csv).contains("13800138888").contains("\"CSV,\"\"member\"\"\"");
+        assertThat(csv.indexOf("13800138888")).isLessThan(csv.indexOf("13800138889"));
+        assertThat(csv).contains(",42,1\r\n");
+        assertThat(csv).doesNotContain("password_hash", "test-password");
+
+        String charges = csvText(export("wristband-charges", factoryId));
+        assertThat(charges).contains("99887766,7,100,700");
+        String plays = csvText(export("game-plays", factoryId));
+        assertThat(plays).contains("export-session").contains("CSV game")
+                .contains(",42,42,raw-score-v1");
+        assertThat(jdbc.queryForObject(
+                "SELECT revision FROM database_state WHERE id=1", Long.class))
+                .isEqualTo(revisionBeforeExport);
+
+        HttpHeaders invalidHeaders = new HttpHeaders();
+        invalidHeaders.set("X-Operator-Id", "999999");
+        ResponseEntity<byte[]> rejected = http.exchange(
+                "/api/exports/members.csv", HttpMethod.GET,
+                new HttpEntity<>(invalidHeaders), byte[].class);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void memberExportReadsOneCommittedSnapshotWhileAnotherTransactionWrites() throws Exception {
+        postAsOperator("/api/members", Map.of(
+                "phone", "13800139991", "name", "并发导出会员"), factoryId);
+        long memberId = jdbc.queryForObject(
+                "SELECT id FROM members WHERE phone='13800139991'", Long.class);
+        String now = clock.instant().toString();
+        jdbc.update("""
+            INSERT INTO wristbands(card_uid, status, duration_minutes, charged_at, created_at, updated_at)
+            VALUES ('export-concurrent-band', 'ACTIVE', 60, ?, ?, ?)
+            """, now, now, now);
+        long wristbandId = jdbc.queryForObject(
+                "SELECT id FROM wristbands WHERE card_uid='export-concurrent-band'", Long.class);
+        jdbc.update("""
+            INSERT INTO wristband_bindings(wristband_id, member_id, status, duration_minutes, bound_at, started_at)
+            VALUES (?, ?, 'ACTIVE', 60, ?, ?)
+            """, wristbandId, memberId, now, now);
+        long bindingId = jdbc.queryForObject(
+                "SELECT id FROM wristband_bindings WHERE wristband_id=?", Long.class, wristbandId);
+        long revisionBefore = jdbc.queryForObject(
+                "SELECT revision FROM database_state WHERE id=1", Long.class);
+
+        CountDownLatch firstUncommittedRow = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> writer = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                insertCompletedPlay(memberId, bindingId, "snapshot-a", 10, now);
+                firstUncommittedRow.countDown();
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                insertCompletedPlay(memberId, bindingId, "snapshot-b", 20, now);
+            }));
+            assertThat(firstUncommittedRow.await(5, TimeUnit.SECONDS)).isTrue();
+
+            String duringWrite = csvText(exportService.members());
+            assertThat(memberCsvPoints(duringWrite, "13800139991")).isIn(0, 30);
+
+            writer.get(5, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        long revisionAfterWrites = jdbc.queryForObject(
+                "SELECT revision FROM database_state WHERE id=1", Long.class);
+        assertThat(revisionAfterWrites).isGreaterThan(revisionBefore);
+        String afterCommit = csvText(exportService.members());
+        assertThat(memberCsvPoints(afterCommit, "13800139991")).isEqualTo(30);
+        assertThat(jdbc.queryForObject(
+                "SELECT revision FROM database_state WHERE id=1", Long.class)).isEqualTo(revisionAfterWrites);
+    }
+
+    private void insertCompletedPlay(long memberId, long bindingId, String sessionId, int points, String now) {
+        jdbc.update("""
+            INSERT INTO game_play_records(member_id, binding_id, wristband_uid, device_id,
+                external_session_id, game_id, game_name, status, started_at, ended_at,
+                success, termination_reason, raw_score, points_awarded, scoring_policy)
+            VALUES (?, ?, 'export-concurrent-band', 'export-device', ?, 'simple', '并发快照',
+                'COMPLETED', ?, ?, 1, 'NATURAL_COMPLETION', ?, ?, 'raw-score-v1')
+            """, memberId, bindingId, sessionId, now, now, points, points);
+    }
+
+    private static int memberCsvPoints(String csv, String phone) {
+        String row = csv.lines().filter(line -> line.contains(phone)).findFirst().orElseThrow();
+        String[] values = row.split(",", -1);
+        return Integer.parseInt(values[values.length - 2]);
+    }
+
+    private ResponseEntity<byte[]> export(String dataset, long operatorId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(operatorId));
+        return http.exchange("/api/exports/" + dataset + ".csv", HttpMethod.GET,
+                new HttpEntity<>(headers), byte[].class);
+    }
+
+    private static String csvText(ResponseEntity<byte[]> response) {
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        byte[] body = response.getBody();
+        assertThat(body).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+        return new String(body, 3, body.length - 3, StandardCharsets.UTF_8);
+    }
+
+    private static String csvText(byte[] body) {
+        assertThat(body).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+        return new String(body, 3, body.length - 3, StandardCharsets.UTF_8);
     }
 
     private long createOperator(String username, String displayName, String password, boolean enabled) {

@@ -170,6 +170,8 @@ export class StoreAcceptanceHarness {
     await this.#startGameBackend();
     const seed = await fetch(`${this.gameBaseUrl}/dev/seed/simple-variants`, { method: "POST" });
     if (!seed.ok) throw new Error(`Game seed failed with HTTP ${seed.status}: ${await seed.text()}`);
+    const rankSeed = await fetch(`${this.gameBaseUrl}/dev/seed/rank-type1`, { method: "POST" });
+    if (!rankSeed.ok) throw new Error(`Rank game seed failed with HTTP ${rankSeed.status}: ${await rankSeed.text()}`);
 
     this.#startChild("game-renderer", "pnpm", ["exec", "vite", "--host", "127.0.0.1", "--port", String(this.#ports.renderer), "--strictPort"], gameRoot);
     await this.#ready("Game renderer", `http://127.0.0.1:${this.#ports.renderer}/`, this.#children.at(-1)!);
@@ -579,9 +581,64 @@ export class StoreAcceptanceHarness {
     const body = await response.json() as { data?: Record<string, unknown> };
     const gameplay = body.data?.gameplay as Record<string, unknown> | undefined;
     const playerAccesses = body.data?.playerAccesses;
-    expect(gameplay?.score).toEqual(expect.any(Number));
+    if (variantName === "rank-type1") {
+      const rankPlayers = gameplay?.players;
+      expect(Array.isArray(rankPlayers) ? rankPlayers.length : -1).toBe(uids.length);
+      for (const player of rankPlayers as Array<Record<string, unknown>>) {
+        expect(player.totalScore).toEqual(expect.any(Number));
+      }
+    } else {
+      expect(gameplay?.score).toEqual(expect.any(Number));
+    }
     expect(Array.isArray(playerAccesses) ? playerAccesses.length : -1).toBe(uids.length);
     expect(body.data?.playerScores).toBeUndefined();
+  }
+
+  async setSimpleLevelRewardPoints(variantName: string, rewardPoints: number): Promise<void> {
+    const catalogResponse = await fetch(`${this.gameBaseUrl}/games/playable`);
+    if (!catalogResponse.ok) throw new Error(`Playable catalog failed with HTTP ${catalogResponse.status}`);
+    const catalogBody = await catalogResponse.json() as { data?: Array<{ gameId: number; name: string }> };
+    const game = catalogBody.data?.find((item) => item.name === variantName);
+    if (!game) throw new Error(`Playable game is missing: ${variantName}`);
+    const documentResponse = await fetch(`${this.gameBaseUrl}/game-editor/${game.gameId}`);
+    if (!documentResponse.ok) throw new Error(`Game editor read failed with HTTP ${documentResponse.status}`);
+    const documentBody = await documentResponse.json() as { data?: { levels?: Array<{ option?: Record<string, unknown> }> } };
+    if (!documentBody.data?.levels?.length) throw new Error(`Game has no editable levels: ${variantName}`);
+    const document = {
+      ...documentBody.data,
+      levels: documentBody.data.levels.map((level) => ({
+        ...level,
+        option: { ...(level.option || {}), rewardPoints },
+      })),
+    };
+    const saveResponse = await fetch(`${this.gameBaseUrl}/game-editor/${game.gameId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(document),
+    });
+    if (!saveResponse.ok) throw new Error(`Game reward save failed with HTTP ${saveResponse.status}: ${await saveResponse.text()}`);
+  }
+
+  async setRankLevelRewardPoints(variantName: string, rewardPoints: number): Promise<void> {
+    const catalogResponse = await fetch(`${this.gameBaseUrl}/games/playable`);
+    if (!catalogResponse.ok) throw new Error(`Playable catalog failed with HTTP ${catalogResponse.status}`);
+    const catalogBody = await catalogResponse.json() as { data?: Array<{ gameId: number; name: string }> };
+    const game = catalogBody.data?.find((item) => item.name === variantName);
+    if (!game) throw new Error(`Playable game is missing: ${variantName}`);
+    const documentResponse = await fetch(`${this.gameBaseUrl}/rank-game-editor/${game.gameId}`);
+    if (!documentResponse.ok) throw new Error(`Rank game editor read failed with HTTP ${documentResponse.status}`);
+    const documentBody = await documentResponse.json() as { data?: { levels?: Array<Record<string, unknown>> } };
+    if (!documentBody.data?.levels?.length) throw new Error(`Rank game has no editable levels: ${variantName}`);
+    const document = {
+      ...documentBody.data,
+      levels: documentBody.data.levels.map((level) => ({ ...level, rewardPoints })),
+    };
+    const saveResponse = await fetch(`${this.gameBaseUrl}/rank-game-editor/${game.gameId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(document),
+    });
+    if (!saveResponse.ok) throw new Error(`Rank game reward save failed with HTTP ${saveResponse.status}: ${await saveResponse.text()}`);
   }
 
   async #openGamePreparation(): Promise<void> {
@@ -738,6 +795,11 @@ export class StoreAcceptanceHarness {
     await this.debugPage.getByTestId("game-debug-complete-natural").click();
   }
 
+  async completeCurrentStageSuccessfully(): Promise<void> {
+    await expect(this.debugPage.getByTestId("game-debug-panel")).toHaveAttribute("data-runtime-mode", "SIMULATION");
+    await this.debugPage.getByTestId("game-debug-stage-success").click();
+  }
+
   async completeCurrentGameThroughFloor(): Promise<void> {
     if (this.#options.runtimeMode !== "PRODUCTION" || !this.#floorDevice) {
       throw new Error("Production floor completion is only available in PRODUCTION acceptance mode");
@@ -848,7 +910,7 @@ export class StoreAcceptanceHarness {
         terminationReason: "NATURAL_COMPLETION",
         rawScore: 1,
         pointsAwarded: 1,
-        scoringPolicy: "raw-score-v1",
+        scoringPolicy: "level-clear-points-v1",
       });
       expect(infos[index].recentPlays.map((item) => item.id)).not.toContain(recentIds[(index + 1) % recentIds.length]);
     }
@@ -868,9 +930,62 @@ export class StoreAcceptanceHarness {
         terminationReason: "NATURAL_COMPLETION",
         rawScore: 1,
         pointsAwarded: 1,
-        scoringPolicy: "raw-score-v1",
+        scoringPolicy: "level-clear-points-v1",
       });
     }
+  }
+
+  async assertRankTieNaturalState(
+    phones: string[],
+    uids: string[],
+    variantName: string,
+    expectedPoints: number,
+  ): Promise<void> {
+    if (phones.length !== uids.length) throw new Error("会员与手环数量不一致");
+    const records: GamePlaySnapshot[] = [];
+    for (const [index, phone] of phones.entries()) {
+      let info: PlayerInfoSnapshot | null = null;
+      await expect.poll(async () => {
+        const response = await fetch(`${this.platformBaseUrl}/api/player-info?phone=${encodeURIComponent(phone)}`);
+        if (!response.ok) return null;
+        info = await response.json() as PlayerInfoSnapshot;
+        const play = info.recentPlays[0];
+        return play ? {
+          total: info.points.total,
+          gameName: play.gameName,
+          status: play.status,
+          terminationReason: play.terminationReason,
+          rawScore: play.rawScore,
+          pointsAwarded: play.pointsAwarded,
+          scoringPolicy: play.scoringPolicy,
+        } : null;
+      }, { timeout: 30_000 }).toEqual({
+        total: expectedPoints,
+        gameName: variantName,
+        status: "COMPLETED",
+        terminationReason: "NATURAL_COMPLETION",
+        rawScore: 0,
+        pointsAwarded: expectedPoints,
+        scoringPolicy: "level-clear-points-v1",
+      });
+      if (!info) throw new Error(`Player Info was not loaded: ${phone}`);
+      const playId = info.recentPlays[0].id;
+      const record = (await this.#gamePlayRecords()).find((item) => item.id === playId);
+      if (!record) throw new Error(`Game play record was not loaded: ${playId}`);
+      expect(record).toMatchObject({
+        uid: uids[index],
+        participantIndex: index,
+        gameName: variantName,
+        status: "COMPLETED",
+        terminationReason: "NATURAL_COMPLETION",
+        rawScore: 0,
+        pointsAwarded: expectedPoints,
+        scoringPolicy: "level-clear-points-v1",
+      });
+      records.push(record);
+    }
+    expect(new Set(records.map((record) => record.externalSessionId)).size).toBe(1);
+    expect(new Set(records.map((record) => record.resultJson)).size).toBe(1);
   }
 
   async #gamePlayRecords(): Promise<GamePlaySnapshot[]> {

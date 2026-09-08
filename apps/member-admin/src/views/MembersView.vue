@@ -29,11 +29,24 @@ const selectedMember = ref<Member | null>(null);
 const creating = ref(false);
 const loading = ref(false);
 const refreshing = ref(false);
+const exporting = ref(false);
 const formError = ref("");
 const connectionError = ref("");
 const memberForm = ref({ name: "", phone: "" });
 const deletion = reactive(createMemberDeletionState());
 const canDeleteMembers = computed(() => canUseOperatorCapability(operatorSession.current.value, "deleteMember"));
+
+const exportMembers = async () => {
+  const operator = operatorSession.current.value;
+  if (!operator || !window.memberAdminDesktop?.exportData) return void emit("toast", "桌面版才支持导出文件");
+  exporting.value = true;
+  try {
+    const result = await window.memberAdminDesktop.exportData("members", operator.id);
+    if (!result.canceled) emit("toast", `会员数据已导出：${result.filePath ?? ""}`);
+  } catch (error) {
+    emit("toast", error instanceof Error ? error.message : "会员数据导出失败");
+  } finally { exporting.value = false; }
+};
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
@@ -113,11 +126,13 @@ onMounted(loadMembers);
 <template>
   <section class="toolbar glass-panel">
     <button class="secondary-button" data-testid="admin-members-refresh" type="button" :disabled="refreshing" @click="loadMembers"><AppIcon name="refresh" :size="17" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新数据" }}</button>
+    <button class="secondary-button" data-testid="admin-members-export" type="button" :disabled="exporting" @click="exportMembers"><AppIcon name="download" :size="17" />{{ exporting ? "导出中…" : "导出会员数据" }}</button>
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="查询会员" placeholder="查询姓名、数据库 ID 或手机号" /></div>
     <select v-model="statusFilter" class="select-control" aria-label="会员状态筛选"><option value="all">全部状态</option><option value="active">正常</option><option value="inactive">停用</option></select>
     <span class="result-count">共 {{ filteredMembers.length }} 位会员</span>
     <button class="primary-button toolbar__primary" data-testid="admin-member-create" type="button" @click="openCreate"><AppIcon name="plus" :size="18" /> 新增会员</button>
   </section>
+  <p class="export-note">{{ text("memberExportNote") }}</p>
 
   <section v-if="connectionError" class="notice-bar" data-testid="admin-members-error"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
 
