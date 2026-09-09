@@ -76,21 +76,41 @@ export class ProcessMonitor {
 
 export class CommunicationMonitor {
   #previous; resets = 0; gaps = 0;
-  totals = { sendAttempts: 0, sendFailures: 0, receivedPackets: 0, receiveFailures: 0, parseRejected: 0, receiverStatusPackets: 0 };
+  totals = {
+    sendAttempts: 0, sendFailures: 0, receivedPackets: 0, receiveFailures: 0,
+    parseRejected: 0, receiverStatusPackets: 0,
+    searchAttempts: 0, searchResponseSamples: 0, searchTimeouts: 0, searchLatencyTotalMillis: 0,
+  };
   observe(sample) {
     const keys = Object.keys(this.totals);
-    if (!sample?.epoch || keys.some((k) => !Number.isSafeInteger(sample[k]) || sample[k] < 0)) { this.gaps++; return; }
-    if (this.#previous) {
-      if (sample.epoch !== this.#previous.epoch || keys.some((k) => sample[k] < this.#previous[k])) this.resets++;
-      else for (const key of keys) this.totals[key] += sample[key] - this.#previous[key];
+    const required = ['sendAttempts', 'sendFailures', 'receivedPackets', 'receiveFailures', 'parseRejected', 'receiverStatusPackets'];
+    if (!sample?.epoch || required.some((k) => !Number.isSafeInteger(sample[k]) || sample[k] < 0)) { this.gaps++; return; }
+    const normalized = { ...sample };
+    for (const key of keys.slice(required.length)) {
+      if (normalized[key] === undefined) normalized[key] = 0;
+      if (!Number.isSafeInteger(normalized[key]) || normalized[key] < 0) { this.gaps++; return; }
     }
-    this.#previous = { ...sample };
+    if (this.#previous) {
+      if (normalized.epoch !== this.#previous.epoch || keys.some((k) => normalized[k] < this.#previous[k])) this.resets++;
+      else for (const key of keys) this.totals[key] += normalized[key] - this.#previous[key];
+    }
+    this.#previous = normalized;
   }
   summary(mode) {
     const fault = this.totals.sendFailures + this.totals.receiveFailures + this.totals.parseRejected;
     const unavailable = mode !== 'real' || this.gaps > 0 || this.resets > 0 || !this.#previous;
+    const discovery = {
+      attempts: this.totals.searchAttempts,
+      responseSamples: this.totals.searchResponseSamples,
+      timeouts: this.totals.searchTimeouts,
+      latencyTotalMillis: this.totals.searchLatencyTotalMillis,
+      averageLatencyMillis: this.totals.searchResponseSamples
+        ? this.totals.searchLatencyTotalMillis / this.totals.searchResponseSamples : null,
+      status: mode === 'real' && this.totals.searchResponseSamples > 0 ? '通过' : '未验证',
+    };
     return { ...this.totals, gaps: this.gaps, resets: this.resets,
       socketLifecycle: { opened: this.#previous?.socketOpens ?? null, closed: this.#previous?.socketCloses ?? null },
+      discovery,
       status: mode === 'real' && fault ? '失败' : unavailable || !this.totals.sendAttempts || !this.totals.receiverStatusPackets ? '未验证' : '通过',
       input: unavailable || !this.totals.receiverStatusPackets ? '未验证' : '已观察真实状态报文',
       ackOrPacketLoss: '协议不支持可靠判定', mode };

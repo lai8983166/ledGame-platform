@@ -84,7 +84,7 @@ export function assertUnchanged(plan, catalog) {
   }
 }
 
-export async function readCatalog(baseUrl, fetcher = fetch) {
+export async function readCatalog(baseUrl, fetcher = fetch, { includeUnsupported = false } = {}) {
   const base = new URL(baseUrl);
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) throw new Error('后端地址必须为无凭据的 HTTP 地址');
   async function get(path) {
@@ -97,11 +97,20 @@ export async function readCatalog(baseUrl, fetcher = fetch) {
   const list = await get('/games/playable');
   if (!Array.isArray(list)) throw new Error('可见游戏列表格式错误');
   const catalog = [];
-  for (const rawSummary of list.filter(supported)) {
+  for (const rawSummary of list) {
     const summary = { ...rawSummary, id: rawSummary.gameId ?? rawSummary.id };
     if (!validId(summary.id)) throw new Error('后端返回非法游戏 ID');
+    if (!supported(summary)) {
+      if (includeUnsupported) catalog.push({ summary, document: null });
+      continue;
+    }
     const prefix = summary.type === 'rank' ? '/rank-game-editor/' : '/game-editor/';
-    catalog.push({ summary, document: await get(`${prefix}${summary.id}`) });
+    try {
+      catalog.push({ summary, document: await get(`${prefix}${summary.id}`) });
+    } catch (error) {
+      if (!includeUnsupported) throw error;
+      catalog.push({ summary, document: null, catalogError: error.message });
+    }
   }
   return catalog;
 }

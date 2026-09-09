@@ -477,6 +477,33 @@ class CoreFlowApiIntegrationTest {
         assertThat(recentPlays.get(0)).containsEntry("pointsAwarded", 99);
         assertThat(recentPlays.get(0)).containsEntry("scoringPolicy", "raw-score-v1");
         assertThat(recentPlays.get(0)).containsEntry("status", "COMPLETED");
+
+        ResponseEntity<Map<String, Object>> wristbandQuery = get("/api/player-info?wristbandUid=2283055618");
+        assertThat(wristbandQuery.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(map(wristbandQuery.getBody().get("profile")).get("id"))).isEqualTo(memberId);
+        assertThat(map(wristbandQuery.getBody().get("points"))).containsEntry("total", 99);
+        assertThat(maps(wristbandQuery.getBody().get("recentPlays"))).hasSize(1);
+    }
+
+    @Test
+    void playerInfoRejectsAmbiguousIdentifiersAndDoesNotPersistExpiryDuringRead() {
+        assertError(get("/api/player-info"), HttpStatus.BAD_REQUEST, "INVALID_PLAYER_INFO_QUERY");
+        assertError(get("/api/player-info?phone=13100131000&wristbandUid=2283055618"), HttpStatus.BAD_REQUEST, "INVALID_PLAYER_INFO_QUERY");
+        assertError(get("/api/player-info?wristbandUid=not-a-uid"), HttpStatus.BAD_REQUEST, "INVALID_WRISTBAND_UID");
+
+        long memberId = number(post("/api/members", Map.of(
+                "phone", "13100131002", "name", "只读查询玩家")).getBody().get("id"));
+        chargeAndBind("2283055618", memberId, 1);
+        post("/api/game-access/activate", Map.of("uid", "2283055618", "deviceId", "player-info-test"));
+        clock.advance(Duration.ofMinutes(2));
+
+        ResponseEntity<Map<String, Object>> response = get("/api/player-info?wristbandUid=2283055618");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(maps(response.getBody().get("wristbands")).get(0)).containsEntry("status", "EXPIRED");
+        assertThat(jdbc.queryForObject("SELECT status FROM wristbands WHERE card_uid=?", String.class, "2283055618"))
+                .isEqualTo("ACTIVE");
+        assertThat(jdbc.queryForObject("SELECT status FROM wristband_bindings WHERE member_id=?", String.class, memberId))
+                .isEqualTo("ACTIVE");
     }
 
     @Test

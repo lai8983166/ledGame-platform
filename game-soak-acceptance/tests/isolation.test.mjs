@@ -20,6 +20,7 @@ test('isolation copies source, overrides inherited dev settings, never reuses ru
     const spring = JSON.parse(runtime.env.SPRING_APPLICATION_JSON);
     assert.equal(spring.ledgame['member-platform']['room-connection-enabled'], false);
     assert.equal(spring.elc408.enabled, false);
+    assert.equal(spring.ledgame.acceptance['search-probe-enabled'], false);
     await fs.writeFile(path.join(runtime.directory, 'user-data/database/runtime/ledgame.mv.db'), 'modified copy');
     await runtime.verifySources();
     await assert.rejects(() => prepareIsolatedRuntime(config), /EEXIST/);
@@ -41,7 +42,7 @@ test('real mode uses existing config TCP port, checks dimensions and never enabl
     await fs.writeFile(exe, 'fixture'); await fs.writeFile(db, 'fixture');
     const port = await availablePort();
     await fs.writeFile(path.join(root, 'conf.json'), JSON.stringify({ tcpServerPort: port }));
-    await fs.writeFile(path.join(root, 'wiring.json'), JSON.stringify({ width: 8, height: 8 }));
+    await fs.writeFile(path.join(root, 'wiring.json'), JSON.stringify({ lines: [[[0, 0], [7, 0]], [[7, 7], [0, 7]]] }));
     const config = { gameExecutable: exe, gameDatabaseSource: db, outputRoot: path.join(root, 'runs'), runId: 'real-config',
       hardwareMode: 'real', backendPort: 0, floor: { width: 8, height: 8, configDirectory: root } };
     const runtime = await prepareIsolatedRuntime(config, { SPRING_PROFILES_ACTIVE: 'acceptance', ELC408_ENABLED: 'false' });
@@ -51,6 +52,7 @@ test('real mode uses existing config TCP port, checks dimensions and never enabl
     const spring = JSON.parse(runtime.env.SPRING_APPLICATION_JSON);
     assert.equal(spring.elc408.enabled, true);
     assert.equal(spring.ledgame.acceptance['fake-hardware-readiness-enabled'], false);
+    assert.equal(spring.ledgame.acceptance['search-probe-enabled'], true);
     await runtime.verifySources();
     await assert.rejects(() => prepareIsolatedRuntime({ ...config, runId: 'mismatch', floor: { ...config.floor, width: 16 } }), /尺寸/);
   } finally { await fs.rm(root, { recursive: true, force: true }); }

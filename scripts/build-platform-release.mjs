@@ -88,6 +88,7 @@ async function writeManifest() {
     gameSoak: await Promise.all([
       describeArtifact("release/game-soak/runtime/node.exe"),
       describeArtifact("release/game-soak/soak.cmd"),
+      describeArtifact("release/game-soak/烤机测试.cmd"),
       describeArtifact("release/game-soak/config.example.json"),
     ]),
   };

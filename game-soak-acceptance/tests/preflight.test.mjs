@@ -93,3 +93,17 @@ test('catalog reader only GETs and never calls seed or start endpoints', async (
   assert.equal(catalog.length, 1);
   assert.deepEqual(calls, [['/games/playable', 'GET'], ['/game-editor/41', 'GET']]);
 });
+
+test('wizard catalog mode keeps unsupported games visible for an explicit disabled reason', async () => {
+  const calls = [];
+  const catalog = await readCatalog('http://127.0.0.1:37680', async (url, options) => {
+    calls.push([new URL(url).pathname, options.method]);
+    const summary = { id: 41, name: 'simple', type: 'default', minPlayers: 1, maxPlayers: 4 };
+    const unsupported = { id: 99, name: 'future', type: 'experimental', minPlayers: 1, maxPlayers: 4 };
+    return { ok: true, json: async () => ({ code: 200, data: url.endsWith('/playable') ? [summary, unsupported] : entry().document }) };
+  }, { includeUnsupported: true });
+  assert.equal(catalog.length, 2);
+  assert.equal(catalog[1].summary.id, 99);
+  assert.equal(catalog[1].document, null);
+  assert.deepEqual(calls, [['/games/playable', 'GET'], ['/game-editor/41', 'GET']]);
+});

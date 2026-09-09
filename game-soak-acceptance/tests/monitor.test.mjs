@@ -38,3 +38,16 @@ test('no real input, simulation, counter resets and missing data never turn into
   monitor.observe({ ...base, epoch: 'b' }); assert.equal(monitor.summary('real').status, '未验证');
   monitor.observe(null); assert.equal(monitor.summary('real').gaps, 1);
 });
+
+test('discovery evidence is aggregated and average excludes timeouts', () => {
+  const base = { epoch: 'search', sendAttempts: 1, sendFailures: 0, receivedPackets: 1,
+    receiveFailures: 0, parseRejected: 0, receiverStatusPackets: 1,
+    searchAttempts: 0, searchResponseSamples: 0, searchTimeouts: 0, searchLatencyTotalMillis: 0 };
+  const monitor = new CommunicationMonitor();
+  monitor.observe(base);
+  monitor.observe({ ...base, sendAttempts: 2, receivedPackets: 2, receiverStatusPackets: 2, searchAttempts: 1,
+    searchResponseSamples: 2, searchTimeouts: 1, searchLatencyTotalMillis: 30 });
+  const summary = monitor.summary('real');
+  assert.deepEqual(summary.discovery, { attempts: 1, responseSamples: 2, timeouts: 1,
+    latencyTotalMillis: 30, averageLatencyMillis: 15, status: '通过' });
+});

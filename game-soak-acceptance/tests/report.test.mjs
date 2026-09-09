@@ -14,4 +14,15 @@ test('Chinese report distinguishes complete, failed, interrupted and unverified'
   assert.match(short, /短时测试，不代表 18 小时/);
   assert.match(short, /真实通信判定：未验证/);
   assert.match(short, /实际接收报文：未取得/);
+  assert.match(renderReport({ ...config, gameDatabaseSource: 'C:\\data\\ledgame.mv.db' }, result), /游戏数据库来源：C:\\data\\ledgame\.mv\.db/);
+  const measured = renderReport(config, { ...result, monitoring: {
+    memory: { status: '通过' },
+    communication: { status: '通过', discovery: {
+      status: '通过', attempts: 4, responseSamples: 3, timeouts: 1,
+      latencyTotalMillis: 45, averageLatencyMillis: 15,
+    } },
+  } });
+  assert.match(measured, /平均响应延迟/);
+  assert.match(measured, /15\.00/);
+  assert.doesNotMatch(measured, /发送时间戳/);
 });

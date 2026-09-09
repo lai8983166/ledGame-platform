@@ -19,7 +19,40 @@ public class PlayerInfoService {
         this.accessService = accessService;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
+    public Map<String, Object> find(String rawPhone, String rawWristbandUid) {
+        boolean hasPhone = rawPhone != null;
+        boolean hasWristbandUid = rawWristbandUid != null;
+        if (hasPhone == hasWristbandUid) {
+            throw GameAccessService.error(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_PLAYER_INFO_QUERY",
+                    "Player Info query requires exactly one identifier");
+        }
+        if (hasPhone) {
+            return findByPhone(rawPhone);
+        }
+
+        String uid = GameAccessService.normalizeUid(rawWristbandUid);
+        List<Map<String, Object>> members = jdbc.queryForList("""
+            SELECT m.phone
+              FROM wristbands w
+              JOIN wristband_bindings b ON b.wristband_id=w.id AND b.status IN ('READY', 'ACTIVE')
+              JOIN members m ON m.id=b.member_id
+             WHERE w.card_uid=? AND m.status='ACTIVE' AND m.deleted_at IS NULL
+             ORDER BY b.id DESC
+             LIMIT 1
+            """, uid);
+        if (members.isEmpty()) {
+            throw GameAccessService.error(
+                    HttpStatus.NOT_FOUND,
+                    "PLAYER_NOT_FOUND",
+                    "No active member matches the supplied wristband");
+        }
+        return findByPhone(String.valueOf(members.get(0).get("phone")));
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Object> findByPhone(String rawPhone) {
         String phone = rawPhone == null ? "" : rawPhone.replaceAll("\\D", "");
         if (!phone.matches("\\d{7,15}")) {
@@ -59,7 +92,7 @@ public class PlayerInfoService {
              WHERE b.member_id=? AND b.status IN ('READY', 'ACTIVE')
              ORDER BY b.id DESC
             """, memberId).stream()
-            .map(row -> accessService.getWristband(String.valueOf(row.get("uid"))))
+            .map(row -> accessService.getWristbandReadOnly(String.valueOf(row.get("uid"))))
             .toList();
 
         List<Map<String, Object>> recentPlays = jdbc.queryForList("""

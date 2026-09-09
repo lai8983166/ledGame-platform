@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import AvatarArt from "./components/AvatarArt.vue";
 import KioskIcon from "./components/KioskIcon.vue";
 import SoftKeyboard from "./components/SoftKeyboard.vue";
@@ -37,13 +37,23 @@ import {
 } from "./localization";
 import { localeFlagUrls } from "./localeFlags";
 import { blurActiveEditableElement, isEditableEventTarget } from "./focusContinuity";
+import {
+  createFlowTimeoutController,
+  flowForScreen,
+  normalizeFlowTimeouts,
+  readFlowTimeouts,
+  writeFlowTimeouts,
+  type KioskFlowKey,
+} from "./flowTimeouts";
 
 type ApiMember = DemoMember & { id: number };
 
-const createSession = (): KioskSession => ({ phone: "", infoPhone: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: createDefaultAvatarId(), memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
+const createSession = (): KioskSession => ({ phone: "", infoPhone: "", infoWristbandUid: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: createDefaultAvatarId(), memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
 const screen = ref<KioskScreen>("home");
 const overlay = ref<KioskOverlay>("none");
 const languageOpen = ref(false);
+const settingsOpen = ref(false);
+const settingsError = ref("");
 const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, REGISTRATION_KIOSK_LOCALE_STORAGE_KEY));
 const session = reactive<KioskSession>(createSession());
 const wristbandScan = reactive(createWristbandScanSession());
@@ -58,10 +68,16 @@ const errors = reactive<Record<string, string>>({});
 const foundMember = ref<ApiMember | null>(null);
 const activationError = ref("");
 const toast = ref("");
+const scanPurpose = ref<"bind" | "player-info" | null>(null);
+const flowTimeouts = ref(readFlowTimeouts(window.localStorage));
+const settingsDraft = reactive({ ...flowTimeouts.value });
+const flowRemainingSeconds = ref(0);
 let toastTimer: number | undefined;
 let scanTimer: number | undefined;
 let removeConnectionListener: (() => void) | undefined;
 let removeStaffExitListener: (() => void) | undefined;
+let playerInfoRequestRevision = 0;
+let sessionRequestRevision = 0;
 const desktopOnline = ref(true);
 const desktopConnectionMessage = ref("");
 const playerInfoFlow = createPlayerInfoFlow(platformApi);
@@ -74,6 +90,14 @@ const scanDialogOpen = computed(() => wristbandScan.state !== "idle");
 const keyboardOpen = computed(() => activeInput.value !== null);
 const copy = computed(() => registrationKioskCatalogs[locale.value]);
 const text = (key: RegistrationKioskMessageKey) => copy.value[key];
+const activeFlow = computed<KioskFlowKey | null>(() => flowForScreen(screen.value));
+const countdownLabel = computed(() => text("countdownRemaining").replace("{seconds}", String(flowRemainingSeconds.value)));
+const timeoutFields: Array<{ key: KioskFlowKey; label: RegistrationKioskMessageKey }> = [
+  { key: "activation", label: "timeoutActivation" },
+  { key: "wristband", label: "timeoutWristband" },
+  { key: "success", label: "timeoutSuccess" },
+  { key: "playerInfo", label: "timeoutPlayerInfo" },
+];
 const titleKeys: Record<KioskScreen, RegistrationKioskMessageKey> = {
   home: "titleHome",
   phone: "titleActivate",
@@ -88,7 +112,23 @@ const currentTitle = computed(() => text(titleKeys[screen.value]));
 const stepLabels = computed(() => [text("stepPhone"), text("stepProfile"), text("stepWristband")]);
 const stepNumber = computed(() => ({ home: 0, phone: 1, confirm: 2, register: 2, swipe: 3, success: 4, "info-phone": 0, "info-result": 0 }[screen.value]));
 const profileScreen = computed<KioskScreen>(() => foundMember.value ? "confirm" : "register");
-const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day", staffExitPassword: text("staffExitPasswordLabel") }[activeInput.value ?? "phone"]));
+const activeFieldLabel = computed(() => ({ phone: "Phone Number", infoPhone: "Phone Number", infoWristbandUid: "Wristband UID", name: "Player Name", birthYear: "Birth Year", birthMonth: "Birth Month", birthDay: "Birth Day", staffExitPassword: text("staffExitPasswordLabel") }[activeInput.value ?? "phone"]));
+const flowTimeoutController = createFlowTimeoutController({
+  getTimeout: (flow) => flowTimeouts.value[flow],
+  onTick: (remaining, flow) => {
+    if (activeFlow.value === flow) flowRemainingSeconds.value = remaining;
+  },
+  onTimeout: (flow) => {
+    if (activeFlow.value !== flow) return;
+    resetSession();
+  },
+});
+watch(screen, (nextScreen) => {
+  flowTimeoutController.stop();
+  flowRemainingSeconds.value = 0;
+  const flow = flowForScreen(nextScreen);
+  if (flow) flowTimeoutController.start(flow);
+}, { immediate: true });
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
@@ -104,7 +144,10 @@ const goTo = (target: KioskScreen) => {
   closeKeyboard();
   overlay.value = "none";
   if (target !== "swipe") {
+    playerInfoRequestRevision += 1;
+    sessionRequestRevision += 1;
     cancelWristbandScan(wristbandScan);
+    scanPurpose.value = null;
     if (session.wristbandStatus !== "detected") session.wristbandStatus = "idle";
   }
   screen.value = target;
@@ -112,7 +155,10 @@ const goTo = (target: KioskScreen) => {
 };
 
 const resetSession = () => {
+  playerInfoRequestRevision += 1;
+  sessionRequestRevision += 1;
   cancelWristbandScan(wristbandScan);
+  scanPurpose.value = null;
   Object.assign(session, createSession());
   Object.keys(errors).forEach((key) => delete errors[key]);
   pendingAvatarId.value = "";
@@ -121,7 +167,11 @@ const resetSession = () => {
   activationError.value = "";
   activeInput.value = null;
   overlay.value = "none";
+  settingsOpen.value = false;
+  settingsError.value = "";
   toast.value = "";
+  flowTimeoutController.stop();
+  flowRemainingSeconds.value = 0;
   screen.value = "home";
 };
 
@@ -164,7 +214,7 @@ const confirmStaffExit = async () => {
 const openInput = (target: InputTarget, layout: KeyboardLayout) => {
   activeInput.value = target;
   keyboardLayout.value = layout;
-  delete errors[target === "phone" || target === "infoPhone" ? target : target.startsWith("birth") ? "birthday" : target];
+  delete errors[target === "phone" || target === "infoPhone" || target === "infoWristbandUid" ? target : target.startsWith("birth") ? "birthday" : target];
   nextTick(() => document.querySelector(`[data-input="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 };
 
@@ -180,7 +230,7 @@ const setInputValue = (value: string) => {
 const handleKeyboardKey = (value: string) => {
   const target = activeInput.value;
   if (!target) return;
-  const maxLength = target === "staffExitPassword" ? 6 : target === "phone" || target === "infoPhone" ? 15 : target === "name" ? 24 : target === "birthYear" ? 4 : 2;
+  const maxLength = target === "staffExitPassword" ? 6 : target === "phone" || target === "infoPhone" ? 15 : target === "infoWristbandUid" ? 32 : target === "name" ? 24 : target === "birthYear" ? 4 : 2;
   if (getInputValue().length < maxLength) setInputValue(getInputValue() + (target === "name" ? value : value.replace(/\D/g, "")));
 };
 const backspace = () => setInputValue(getInputValue().slice(0, -1));
@@ -192,15 +242,59 @@ const handleKeyboardDone = () => {
 
 const isPhoneValid = () => /^\d{7,15}$/.test(session.phone);
 const openPlayerInfo = () => {
+  playerInfoRequestRevision += 1;
   playerInfoFlow.reset();
   session.infoPhone = "";
+  session.infoWristbandUid = "";
   goTo("info-phone");
 };
 const queryPlayerInfo = async () => {
   closeKeyboard();
+  const requestRevision = ++playerInfoRequestRevision;
   playerInfoState.phone = session.infoPhone;
+  playerInfoState.wristbandUid = session.infoWristbandUid;
   await playerInfoFlow.query();
+  if (requestRevision !== playerInfoRequestRevision) return;
   if (playerInfoState.status === "success") screen.value = "info-result";
+};
+const queryPlayerInfoByWristband = async (frame: WristbandScanFrame) => {
+  if (!isWristbandScanCurrent(wristbandScan, frame.revision)) return;
+  const requestRevision = ++playerInfoRequestRevision;
+  playerInfoState.mode = "wristband";
+  playerInfoState.wristbandUid = frame.uid;
+  playerInfoState.phone = "";
+  await playerInfoFlow.query();
+  if (requestRevision !== playerInfoRequestRevision) return;
+  if (!isWristbandScanCurrent(wristbandScan, frame.revision)) return;
+  if (playerInfoState.status === "success") {
+    completeWristbandScan(wristbandScan, frame.revision);
+    scanPurpose.value = null;
+    screen.value = "info-result";
+  } else {
+    failWristbandScan(wristbandScan, frame.revision);
+  }
+};
+const openSettings = () => {
+  Object.assign(settingsDraft, flowTimeouts.value);
+  settingsError.value = "";
+  settingsOpen.value = true;
+};
+const saveSettings = () => {
+  const candidate = normalizeFlowTimeouts(settingsDraft);
+  const allValid = timeoutFields.every(({ key }) => Number.isInteger(Number(settingsDraft[key])) && Number(settingsDraft[key]) >= 10 && Number(settingsDraft[key]) <= 600);
+  if (!allValid) {
+    settingsError.value = text("settingsValidation");
+    return;
+  }
+  try {
+    const saved = writeFlowTimeouts(window.localStorage, candidate);
+    flowTimeouts.value = saved;
+    Object.assign(settingsDraft, saved);
+    settingsError.value = "";
+    settingsOpen.value = false;
+  } catch {
+    settingsError.value = text("settingsValidation");
+  }
 };
 const formatRemaining = (seconds: number) => {
   const safe = Math.max(0, seconds);
@@ -210,12 +304,15 @@ const formatRemaining = (seconds: number) => {
 };
 const submitPhone = async () => {
   closeKeyboard();
+  const requestRevision = ++sessionRequestRevision;
   if (!isPhoneValid()) { errors.phone = "Enter 7–15 digits to continue."; nextTick(() => document.querySelector('[data-input="phone"]')?.scrollIntoView({ behavior: "smooth", block: "center" })); return; }
   delete errors.phone;
   try {
     const members = await request<ApiMember[]>(`/members?phone=${encodeURIComponent(session.phone)}`);
+    if (requestRevision !== sessionRequestRevision) return;
     foundMember.value = members[0] ?? null;
   } catch (error) {
+    if (requestRevision !== sessionRequestRevision) return;
     errors.phone = error instanceof Error ? error.message : "无法连接本机服务";
     return;
   }
@@ -258,8 +355,10 @@ const submitRegistration = async () => {
     nextTick(() => document.querySelector(`[data-field="${first}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
     return;
   }
+  const requestRevision = ++sessionRequestRevision;
   try {
     const member = await request<ApiMember>("/members", { method: "POST", body: JSON.stringify({ phone: session.phone, name: session.name.trim(), avatarId: session.avatarId, birthday: `${session.birthYear}-${session.birthMonth.padStart(2, "0")}-${session.birthDay.padStart(2, "0")}`, gender: session.gender, createdBy: "registration-kiosk" }) });
+    if (requestRevision !== sessionRequestRevision) return;
     foundMember.value = member;
     session.memberId = member.id;
     cancelWristbandScan(wristbandScan);
@@ -267,6 +366,7 @@ const submitRegistration = async () => {
     activationError.value = "";
     screen.value = "swipe";
   } catch (error) {
+    if (requestRevision !== sessionRequestRevision) return;
     errors.phone = error instanceof Error ? error.message : "会员创建失败";
   }
 };
@@ -289,18 +389,33 @@ const selectGender = (gender: Gender) => {
 };
 
 const openScanDialog = () => {
+  sessionRequestRevision += 1;
+  scanPurpose.value = "bind";
   activationError.value = "";
   startWristbandScan(wristbandScan);
   session.wristbandStatus = "waiting";
 };
 
 const cancelScanDialog = () => {
+  playerInfoRequestRevision += 1;
+  sessionRequestRevision += 1;
   cancelWristbandScan(wristbandScan);
+  scanPurpose.value = null;
   session.wristbandStatus = "idle";
   activationError.value = "";
+  playerInfoState.error = "";
+};
+
+const openPlayerInfoScan = () => {
+  closeKeyboard();
+  playerInfoFlow.reset();
+  playerInfoState.mode = "wristband";
+  scanPurpose.value = "player-info";
+  startWristbandScan(wristbandScan);
 };
 
 const bindScannedWristband = async (frame: WristbandScanFrame) => {
+  const requestRevision = ++sessionRequestRevision;
   if (!session.memberId) {
     if (failWristbandScan(wristbandScan, frame.revision)) {
       session.wristbandStatus = "waiting";
@@ -310,8 +425,10 @@ const bindScannedWristband = async (frame: WristbandScanFrame) => {
   }
   try {
     const wristband = await request<Record<string, unknown>>(`/wristbands/${encodeURIComponent(frame.uid)}`);
+    if (requestRevision !== sessionRequestRevision) return;
     if (!isWristbandScanCurrent(wristbandScan, frame.revision)) return;
     await request("/wristbands/bind", { method: "POST", body: JSON.stringify({ uid: frame.uid, memberId: session.memberId }) });
+    if (requestRevision !== sessionRequestRevision) return;
     if (!completeWristbandScan(wristbandScan, frame.revision)) return;
     session.durationMinutes = wristband.durationMinutes == null ? null : Number(wristband.durationMinutes);
     session.wristbandUid = frame.uid;
@@ -319,6 +436,7 @@ const bindScannedWristband = async (frame: WristbandScanFrame) => {
     if (scanTimer) window.clearTimeout(scanTimer);
     scanTimer = window.setTimeout(() => { screen.value = "success"; }, 500);
   } catch (error) {
+    if (requestRevision !== sessionRequestRevision) return;
     if (failWristbandScan(wristbandScan, frame.revision)) {
       session.wristbandStatus = "waiting";
       activationError.value = error instanceof Error ? error.message : "手环绑定失败";
@@ -332,7 +450,7 @@ const handleNativeInput = (target: InputTarget, event: Event) => {
     staffExitPassword.value = value.replace(/\D/g, "").slice(0, 6);
     return;
   }
-  session[target] = target === "name" ? value.slice(0, 24) : value.replace(/\D/g, "").slice(0, target === "phone" || target === "infoPhone" ? 15 : target === "birthYear" ? 4 : 2);
+  session[target] = target === "name" ? value.slice(0, 24) : value.replace(/\D/g, "").slice(0, target === "phone" || target === "infoPhone" ? 15 : target === "infoWristbandUid" ? 32 : target === "birthYear" ? 4 : 2);
 };
 
 const onGlobalKeydown = (event: KeyboardEvent) => {
@@ -343,13 +461,17 @@ const onGlobalKeydown = (event: KeyboardEvent) => {
     activationError.value = "";
     const frame = consumeWristbandScanKey(wristbandScan, event.key);
     session.wristbandStatus = wristbandScan.state;
-    if (frame) void bindScannedWristband(frame);
+    if (frame) {
+      if (scanPurpose.value === "player-info") void queryPlayerInfoByWristband(frame);
+      else void bindScannedWristband(frame);
+    }
     return;
   }
   if (event.key === "Escape") {
     if (scanDialogOpen.value) cancelScanDialog();
     else if (staffExitOpen.value) closeStaffExitDialog();
     else if (languageOpen.value) languageOpen.value = false;
+    else if (settingsOpen.value) settingsOpen.value = false;
     else if (overlay.value !== "none") overlay.value = "none";
     else closeKeyboard();
   }
@@ -375,6 +497,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   cancelWristbandScan(wristbandScan);
+  flowTimeoutController.stop();
   window.removeEventListener("keydown", onGlobalKeydown);
   removeConnectionListener?.();
   removeStaffExitListener?.();
@@ -419,15 +542,16 @@ onBeforeUnmount(() => {
       </section>
     </div>
     <div v-if="!desktopOnline" class="service-offline-overlay" data-testid="kiosk-offline-overlay">
-      <section><strong>{{ text('offlineTitle') }}</strong><p>{{ desktopConnectionMessage }}</p><small>{{ text('offlineRecovery') }}</small></section>
+      <section><strong>{{ text('offlineTitle') }}</strong><p>{{ text('offlineMessage') }}</p><small>{{ text('offlineRecovery') }}</small></section>
     </div>
     <div class="kiosk-bg" aria-hidden="true"><span class="energy-orb energy-orb--one"></span><span class="energy-orb energy-orb--two"></span><span class="scanline"></span></div>
     <div class="portrait-notice"><KioskIcon name="rotate" :size="38" /><strong>{{ text('rotateTitle') }}</strong><span>{{ text('rotateBody') }}</span></div>
 
     <header class="kiosk-header">
-      <div class="kiosk-brand"><span class="kiosk-brand__mark"><i></i><i></i><i></i><i></i></span><div><strong>LED GAME</strong><small>PLAYER STATION</small></div></div>
+      <div class="kiosk-brand"><span class="kiosk-brand__mark"><i></i><i></i><i></i><i></i></span><div><strong>LED GAME</strong><small>PLAYER STATION</small></div><button class="kiosk-settings-button" data-testid="kiosk-settings-open" type="button" :aria-label="text('settings')" @click="openSettings"><KioskIcon name="settings" :size="18" /></button></div>
       <div class="screen-title"><i></i><span>{{ currentTitle }}</span><i></i></div>
       <div class="kiosk-header__actions">
+        <div v-if="activeFlow" class="kiosk-countdown" data-testid="kiosk-flow-countdown"><KioskIcon name="timer" :size="17" /><span>{{ countdownLabel }}</span></div>
         <button class="kiosk-language-button" type="button" :aria-label="text('chooseLanguage')" :aria-expanded="languageOpen" @click="languageOpen = true"><span aria-hidden="true">🌐</span><strong>{{ PLATFORM_LOCALES.find((item) => item.code === locale)?.label }}</strong></button>
         <div class="session-status"><span class="status-light"></span><div><strong>{{ text('localService') }}</strong><small>{{ text('serviceDetail') }}</small></div></div>
       </div>
@@ -446,7 +570,25 @@ onBeforeUnmount(() => {
       <footer class="home-footer"><span><KioskIcon name="info" :size="16" /> {{ text('touchToBegin') }}</span><span>{{ text('sessionClears') }}</span></footer>
     </section>
 
-    <section v-else-if="screen === 'info-phone'" class="screen screen--center" :class="{ 'screen--with-keyboard': keyboardOpen }">
+    <section v-else-if="screen === 'info-phone'" class="screen screen--center player-info-query-screen" :class="{ 'screen--with-keyboard': keyboardOpen }">
+      <div class="phone-layout">
+        <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="user" :size="34" /></span><p class="eyebrow">{{ text('titlePlayerInfo') }}</p><h1>{{ text('playerInfo') }}</h1><p>{{ text('playerInfoDetail') }}</p></div>
+        <div class="tech-panel phone-panel player-info-query-panel">
+          <div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="player-info-mode-toggle" role="tablist" :aria-label="text('playerInfo')">
+            <button type="button" :class="{ active: playerInfoState.mode === 'phone' }" :aria-selected="playerInfoState.mode === 'phone'" @click="playerInfoState.mode = 'phone'; playerInfoState.error = ''">{{ text('playerInfoModePhone') }}</button>
+            <button type="button" :class="{ active: playerInfoState.mode === 'wristband' }" :aria-selected="playerInfoState.mode === 'wristband'" @click="playerInfoState.mode = 'wristband'; playerInfoState.error = ''">{{ text('playerInfoModeWristband') }}</button>
+          </div>
+          <label v-if="playerInfoState.mode === 'phone'" class="kiosk-field" :class="{ focused: activeInput === 'infoPhone', invalid: playerInfoState.status === 'error' }"><span>{{ text('playerInfoModePhone') }}</span><div><KioskIcon name="phone" :size="22" /><input data-input="infoPhone" data-testid="kiosk-info-phone" :value="session.infoPhone" inputmode="none" autocomplete="off" :placeholder="text('playerInfoPhonePlaceholder')" :aria-label="text('playerInfoModePhone')" @pointerdown="openInput('infoPhone','numeric')" @focus="openInput('infoPhone','numeric')" @input="handleNativeInput('infoPhone',$event); playerInfoState.error = ''" @keydown.enter.prevent="queryPlayerInfo" /><small>{{ session.infoPhone.length }}/15</small></div></label>
+          <label v-else class="kiosk-field" :class="{ focused: activeInput === 'infoWristbandUid', invalid: playerInfoState.status === 'error' }"><span>{{ text('playerInfoModeWristband') }}</span><div><KioskIcon name="wristband" :size="22" /><input data-input="infoWristbandUid" data-testid="kiosk-info-wristband" :value="session.infoWristbandUid" inputmode="none" autocomplete="off" :placeholder="text('playerInfoWristbandPlaceholder')" :aria-label="text('playerInfoModeWristband')" @pointerdown="openInput('infoWristbandUid','numeric')" @focus="openInput('infoWristbandUid','numeric')" @input="handleNativeInput('infoWristbandUid',$event); playerInfoState.error = ''" @keydown.enter.prevent="queryPlayerInfo" /><small>{{ session.infoWristbandUid.length }}/32</small></div></label>
+          <p v-if="playerInfoState.error" class="activation-error" data-testid="kiosk-info-error"><KioskIcon name="info" :size="16" />{{ playerInfoState.error }}</p>
+          <div v-if="playerInfoState.mode === 'wristband'" class="player-info-scan-action"><button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-info-scan" type="button" :disabled="playerInfoState.status === 'loading'" @click="openPlayerInfoScan"><KioskIcon name="signal" :size="18" /> {{ text('playerInfoScan') }}</button><small>{{ text('playerInfoScanDescription') }}</small></div>
+          <div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="resetSession"><KioskIcon name="back" :size="20" /> {{ text('settingsCancel') }}</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-info-submit" type="button" :disabled="playerInfoState.status === 'loading'" @click="queryPlayerInfo">{{ playerInfoState.status === 'loading' ? 'Querying...' : text('playerInfo') }} <KioskIcon name="arrow" :size="20" /></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section v-else-if="screen === 'info-result' && !playerInfoState.info" class="screen screen--center" :class="{ 'screen--with-keyboard': keyboardOpen }">
       <div class="phone-layout">
         <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="user" :size="34" /></span><p class="eyebrow">RETURNING PLAYER · READ ONLY</p><h1>Find your<br /><em>player info</em></h1><p>输入会员手机号，查询注册资料、积分排名、手环 ID 和服务端计算的剩余时间。</p></div>
         <div class="tech-panel phone-panel">
@@ -458,7 +600,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else-if="screen === 'info-result' && playerInfoState.info" class="screen screen--player-info" data-testid="kiosk-info-result">
-      <header class="player-info-heading"><div><p class="eyebrow">PLAYER RECORD · LIVE SQLITE DATA</p><h1>Welcome back, <em>{{ playerInfoState.info.profile.name }}</em></h1><p>{{ playerInfoState.info.profile.phone }} · Registered {{ playerInfoState.info.profile.createdAt.slice(0, 10) }}</p></div><button class="kiosk-button kiosk-button--secondary" type="button" @click="screen = 'info-phone'">Query another</button></header>
+      <header class="player-info-heading"><div><p class="eyebrow">{{ text('playerInfoRecordEyebrow') }}</p><h1>Welcome back, <em>{{ playerInfoState.info.profile.name }}</em></h1><p>{{ playerInfoState.info.profile.phone }} · Registered {{ playerInfoState.info.profile.createdAt.slice(0, 10) }}</p></div><button class="kiosk-button kiosk-button--secondary" type="button" @click="openPlayerInfo">Query another</button></header>
       <div class="player-info-grid">
         <section class="tech-panel player-info-profile"><AvatarArt :avatar="avatars.find(item => item.id === playerInfoState.info?.profile.avatarId) ?? avatars[0]" size="large" /><div><small>MEMBER PROFILE</small><h2>{{ playerInfoState.info.profile.name }}</h2><p v-if="playerInfoState.info.profile.birthday">Birthday · {{ playerInfoState.info.profile.birthday }}</p><p v-if="playerInfoState.info.profile.gender">Gender · {{ playerInfoState.info.profile.gender }}</p><span><KioskIcon name="check" :size="16" /> {{ playerInfoState.info.profile.status }}</span></div></section>
         <section class="tech-panel player-info-points" data-testid="kiosk-info-points"><small>TOTAL POINTS</small><strong data-testid="kiosk-info-points-total">{{ playerInfoState.info.points.total }}</strong><p>Current rank <b data-testid="kiosk-info-rank">#{{ playerInfoState.info.points.rank }}</b></p></section>
@@ -521,6 +663,17 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
+    <div v-if="settingsOpen" class="modal-backdrop language-modal-backdrop" data-testid="kiosk-settings-dialog" @mousedown.self="settingsOpen = false">
+      <section class="kiosk-settings-modal tech-panel" role="dialog" aria-modal="true" :aria-label="text('settingsTitle')">
+        <header><div><p class="eyebrow">{{ text('settings') }}</p><h2>{{ text('settingsTitle') }}</h2><p>{{ text('settingsDescription') }}</p></div><button type="button" :aria-label="text('close')" @click="settingsOpen = false"><KioskIcon name="close" :size="24" /></button></header>
+        <div class="kiosk-settings-grid">
+        <label v-for="field in timeoutFields" :key="field.key"><span>{{ text(field.label) }}</span><div><input v-model.number="settingsDraft[field.key]" type="number" min="10" max="600" step="1" /><b>{{ text('secondsShort') }}</b></div></label>
+        </div>
+        <p v-if="settingsError" class="activation-error" data-testid="kiosk-settings-error"><KioskIcon name="info" :size="16" />{{ settingsError }}</p>
+        <footer><button class="kiosk-button kiosk-button--secondary" type="button" @click="settingsOpen = false">{{ text('settingsCancel') }}</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-settings-save" type="button" @click="saveSettings">{{ text('settingsSave') }}</button></footer>
+      </section>
+    </div>
+
     <div v-if="overlay === 'avatar-source'" class="modal-backdrop" @mousedown.self="overlay = 'none'">
       <section class="source-modal tech-panel" role="dialog" aria-modal="true" aria-label="Choose avatar source"><header><div><p class="eyebrow">AVATAR SOURCE</p><h2>How would you like to set your avatar?</h2></div><button type="button" aria-label="Close avatar options" @click="overlay = 'none'"><KioskIcon name="close" :size="22" /></button></header><div class="source-options"><button type="button" data-testid="kiosk-avatar-library-open" @click="openAvatarLibrary"><span><KioskIcon name="library" :size="32" /></span><div><small>OFFLINE COLLECTION</small><strong>Set from Library</strong><p>Choose from 20 built-in player avatars.</p></div><KioskIcon name="arrow" :size="21" /></button><button type="button" @click="takePhoto"><span><KioskIcon name="camera" :size="32" /></span><div><small>DEVICE CAMERA</small><strong>Take Photo</strong><p>Camera is not connected in this UI demo.</p></div><KioskIcon name="arrow" :size="21" /></button></div></section>
     </div>
@@ -532,12 +685,13 @@ onBeforeUnmount(() => {
     <div v-if="scanDialogOpen" class="modal-backdrop scan-modal-backdrop" data-testid="kiosk-scan-dialog">
       <section class="scan-dialog tech-panel" role="dialog" aria-modal="true" aria-labelledby="scan-dialog-title">
         <div class="scan-dialog__signal"><span></span><WristbandArt :size="86" /></div>
-        <p class="eyebrow">{{ text('scanEyebrow') }}</p>
-        <h2 id="scan-dialog-title">{{ text('scanTitle') }}</h2>
-        <p>{{ text(wristbandScan.state === 'submitting' ? 'scanSubmittingDescription' : 'scanDescription') }}</p>
+        <p class="eyebrow">{{ scanPurpose === 'player-info' ? text('playerInfoModeWristband') : text('scanEyebrow') }}</p>
+        <h2 id="scan-dialog-title">{{ scanPurpose === 'player-info' ? text('playerInfoScanTitle') : text('scanTitle') }}</h2>
+        <p>{{ scanPurpose === 'player-info' ? text('playerInfoScanDescription') : text(wristbandScan.state === 'submitting' ? 'scanSubmittingDescription' : 'scanDescription') }}</p>
         <div class="waiting-status"><span></span>{{ text(wristbandScan.state === 'submitting' ? 'scanConnecting' : 'scanWaiting') }}</div>
-        <p v-if="activationError" class="activation-error" data-testid="kiosk-bind-error"><KioskIcon name="info" :size="16" />{{ activationError }}</p>
-        <button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-scan-cancel" type="button" @click="cancelScanDialog"><KioskIcon name="close" :size="18" /> {{ text('scanCancel') }}</button>
+        <p v-if="scanPurpose === 'player-info' && playerInfoState.error" class="activation-error" data-testid="kiosk-info-scan-error"><KioskIcon name="info" :size="16" />{{ playerInfoState.error }}</p>
+        <p v-else-if="activationError" class="activation-error" data-testid="kiosk-bind-error"><KioskIcon name="info" :size="16" />{{ activationError }}</p>
+        <button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-scan-cancel" type="button" @click="cancelScanDialog"><KioskIcon name="close" :size="18" /> {{ scanPurpose === 'player-info' ? text('playerInfoScanCancel') : text('scanCancel') }}</button>
       </section>
     </div>
 

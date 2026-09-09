@@ -146,6 +146,35 @@ describe("platform api client player info", () => {
     );
   });
 
+  it("queries Player Info by wristband UID through the shared endpoint", async () => {
+    const response = {
+      profile: { id: 7, phone: "13800138000", name: "娴嬭瘯鐜╁", status: "ACTIVE", createdAt: "2026-08-09T02:00:00Z", createdBy: "kiosk" },
+      points: { total: 12, rank: 2 },
+      wristbands: [],
+      recentPlays: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createPlatformApiClient().getPlayerInfo({ wristbandUid: " 2283055618 " })).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8090/api/player-info?wristbandUid=2283055618",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
+  it("rejects an ambiguous Player Info query before making a request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createPlatformApiClient();
+
+    await expect(client.getPlayerInfo({ phone: "13800138000", wristbandUid: "2283055618" })).rejects.toMatchObject({
+      status: 400,
+      code: "INVALID_PLAYER_INFO_QUERY",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("queries a typed real leaderboard period", async () => {
     const response = {
       period: "month",

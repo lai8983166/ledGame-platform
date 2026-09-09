@@ -33,7 +33,8 @@ for (const name of ['playwright', 'playwright-core']) {
 for (const file of ['config.example.json', '使用说明.md']) {
   await fs.copyFile(path.join(root, 'game-soak-acceptance', file), path.join(output, file));
 }
-await fs.writeFile(path.join(output, 'soak.cmd'), '@echo off\r\n"%~dp0runtime\\node.exe" "%~dp0app\\cli.mjs" %*\r\nexit /b %errorlevel%\r\n');
+await fs.writeFile(path.join(output, 'soak.cmd'), '@echo off\r\nset "LEDGAME_SOAK_TOOL_ROOT=%~dp0"\r\n"%~dp0runtime\\node.exe" "%~dp0app\\cli.mjs" %*\r\nexit /b %errorlevel%\r\n');
+await fs.writeFile(path.join(output, '烤机测试.cmd'), '@echo off\r\nset "LEDGAME_SOAK_TOOL_ROOT=%~dp0"\r\n"%~dp0runtime\\node.exe" "%~dp0app\\cli.mjs" wizard %*\r\nexit /b %errorlevel%\r\n');
 await fs.writeFile(path.join(output, 'runtime', 'NOTICE.txt'), `Node.js ${process.version}; copyright Node.js contributors; MIT license.\r\nFull runtime license: https://github.com/nodejs/node/blob/${process.version}/LICENSE\r\nPlaywright license/notices are included in node_modules.\r\n`);
 async function verifyContents(directory) {
   for (const entry of await fs.readdir(directory, { withFileTypes: true })) {

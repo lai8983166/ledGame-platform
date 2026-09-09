@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import net from 'node:net';
 import { createHash } from 'node:crypto';
+import { inferWiringDimensions } from './hardware-config.mjs';
 
 export async function availablePort(requested = 0) {
   const server = net.createServer();
@@ -81,7 +82,8 @@ export async function prepareIsolatedRuntime(config, inheritedEnv = process.env)
     const wiring = JSON.parse(await fs.readFile(path.join(confDirectory, 'wiring.json'), 'utf8'));
     requestedFloorPort = conf.tcpServerPort;
     if (!Number.isInteger(requestedFloorPort) || requestedFloorPort < 1 || requestedFloorPort > 65535) throw new Error('conf.json 的 tcpServerPort 无效');
-    if (wiring.width !== width || wiring.height !== height) throw new Error('floor 尺寸与 wiring.json 不一致');
+    const wiringFloor = inferWiringDimensions(wiring);
+    if (!wiringFloor || wiringFloor.width !== width || wiringFloor.height !== height) throw new Error('floor 尺寸与 wiring.json 不一致');
   }
   const floorPort = await allocate(requestedFloorPort);
   const debugPort = await allocate();
@@ -92,7 +94,10 @@ export async function prepareIsolatedRuntime(config, inheritedEnv = process.env)
     elc408: { enabled: !simulated, 'conf-path': path.join(confDirectory, 'conf.json'), 'wiring-path': path.join(confDirectory, 'wiring.json') },
     ledgame: { 'member-platform': { 'room-connection-enabled': false },
       soak: { 'input-enabled': config.simulatedInputEnabled === true, 'run-id': runId },
-      acceptance: { 'fake-hardware-readiness-enabled': simulated } },
+      acceptance: {
+        'fake-hardware-readiness-enabled': simulated,
+        'search-probe-enabled': config.hardwareMode === 'real',
+      } },
     led: { outputs: [
       { name: 'bridge', enabled: false, host: '127.0.0.1', port: 3001 },
       { name: 'debug-panel', enabled: true, host: '127.0.0.1', port: debugPort },

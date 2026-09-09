@@ -67,6 +67,11 @@ public class GameAccessService {
         return decorate(findRaw(normalizeUid(rawUid)), false);
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> getWristbandReadOnly(String rawUid) {
+        return decorate(findRaw(normalizeUid(rawUid)), false, false);
+    }
+
     @Transactional
     public List<Map<String, Object>> listWristbands() {
         return jdbc.queryForList("SELECT card_uid AS uid FROM wristbands ORDER BY card_uid").stream()
@@ -95,6 +100,10 @@ public class GameAccessService {
     }
 
     Map<String, Object> decorate(Map<String, Object> source, boolean denyExpired) {
+        return decorate(source, denyExpired, true);
+    }
+
+    private Map<String, Object> decorate(Map<String, Object> source, boolean denyExpired, boolean persistExpired) {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>(source);
         String status = text(source.get("status"));
         Integer durationMinutes = nullableInt(source.get("bindingDurationMinutes"));
@@ -115,7 +124,9 @@ public class GameAccessService {
             result.put("expiresAt", expiresAt.toString());
             result.put("remainingSeconds", remaining);
             if (!clock.instant().isBefore(expiresAt)) {
-                expire(source, expiresAt.toString());
+                if (persistExpired) {
+                    expire(source, expiresAt.toString());
+                }
                 result.put("status", "EXPIRED");
                 if (denyExpired) {
                     throw error(HttpStatus.CONFLICT, "WRISTBAND_EXPIRED", "手环可用时间已用完，请先续费");

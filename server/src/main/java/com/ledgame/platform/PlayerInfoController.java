@@ -19,7 +19,9 @@ public class PlayerInfoController {
     }
 
     @GetMapping
-    public Map<String, Object> find(@RequestParam String phone) {
-        return playerInfoService.findByPhone(phone);
+    public Map<String, Object> find(
+            @RequestParam(required = false) String phone,
+            @RequestParam(required = false) String wristbandUid) {
+        return playerInfoService.find(phone, wristbandUid);
     }
 }

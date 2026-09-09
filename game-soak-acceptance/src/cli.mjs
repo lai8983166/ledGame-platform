@@ -3,6 +3,7 @@ import { buildPlan, effectiveDuration, readCatalog } from './preflight.mjs';
 import { runAcceptance } from './run.mjs';
 import { launchPackagedGame } from './packaged-app.mjs';
 import { injectFromRun } from './inject.mjs';
+import { loadCatalogFromPackagedGame, runInteractiveWizard } from './wizard.mjs';
 
 function printCatalog(catalog) {
   console.table(catalog.map((entry) => {
@@ -18,6 +19,23 @@ try {
   const [command, baseUrl, configFile] = process.argv.slice(2);
   if (command === 'inject') {
     console.log(await injectFromRun(baseUrl, configFile, Number(process.argv[5]), Number(process.argv[6])));
+  } else if (command === 'wizard') {
+    const result = await runInteractiveWizard({
+      defaults: baseUrl && baseUrl.toLowerCase().endsWith('.exe') ? { gameExecutable: baseUrl } : {},
+      loadCatalog: (config) => loadCatalogFromPackagedGame(config, {
+        launch: launchPackagedGame,
+        readCatalog: (baseUrl) => readCatalog(baseUrl, fetch, { includeUnsupported: true }),
+      }),
+      execute: async (config) => {
+        const controller = new AbortController();
+        const abort = () => controller.abort(new Error('用户中止'));
+        process.once('SIGINT', abort); process.once('SIGTERM', abort);
+        try { return await runAcceptance(config, { signal: controller.signal }); }
+        finally { process.off('SIGINT', abort); process.off('SIGTERM', abort); }
+      },
+    });
+    if (result.cancelled) process.exitCode = 0;
+    else if (result.result?.result?.status !== '完成') process.exitCode = 1;
   } else if (['run', 'inspect'].includes(command) && baseUrl) {
     const config = JSON.parse(await readFile(baseUrl, 'utf8'));
     if (command === 'run') {

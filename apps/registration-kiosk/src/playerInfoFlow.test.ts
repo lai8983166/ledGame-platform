@@ -22,6 +22,32 @@ describe("Player Info kiosk flow", () => {
     expect(flow.state.info).toEqual(playerInfo);
   });
 
+  it("queries by wristband UID without changing the read-only flow", async () => {
+    const getPlayerInfo = vi.fn().mockResolvedValue(playerInfo);
+    const flow = createPlayerInfoFlow({ getPlayerInfo });
+    flow.state.mode = "wristband";
+    flow.state.wristbandUid = " 2283055618 ";
+
+    await flow.query();
+
+    expect(getPlayerInfo).toHaveBeenCalledWith({ wristbandUid: "2283055618" });
+    expect(flow.state.status).toBe("success");
+    expect(flow.state.info).toEqual(playerInfo);
+  });
+
+  it("rejects an invalid wristband UID before calling the backend", async () => {
+    const getPlayerInfo = vi.fn();
+    const flow = createPlayerInfoFlow({ getPlayerInfo });
+    flow.state.mode = "wristband";
+    flow.state.wristbandUid = "not-a-uid";
+
+    await flow.query();
+
+    expect(flow.state.status).toBe("error");
+    expect(flow.state.error).toContain("wristband UID");
+    expect(getPlayerInfo).not.toHaveBeenCalled();
+  });
+
   it("shows not-found and service errors without stale personal data", async () => {
     const getPlayerInfo = vi.fn().mockRejectedValue(new Error("未找到该手机号对应的会员"));
     const flow = createPlayerInfoFlow({ getPlayerInfo });
@@ -43,6 +69,18 @@ describe("Player Info kiosk flow", () => {
 
     flow.reset();
 
-    expect(flow.state).toEqual({ phone: "", status: "idle", info: null, error: "" });
+    expect(flow.state).toEqual({ mode: "phone", phone: "", wristbandUid: "", status: "idle", info: null, error: "" });
+  });
+
+  it("ignores a response that finishes after the flow was reset", async () => {
+    let resolveQuery: ((value: PlayerInfo) => void) | undefined;
+    const getPlayerInfo = vi.fn().mockImplementation(() => new Promise<PlayerInfo>((resolve) => { resolveQuery = resolve; }));
+    const flow = createPlayerInfoFlow({ getPlayerInfo });
+    flow.state.phone = "13800138000";
+    const pending = flow.query();
+    flow.reset();
+    resolveQuery?.(playerInfo);
+    await pending;
+    expect(flow.state).toEqual({ mode: "phone", phone: "", wristbandUid: "", status: "idle", info: null, error: "" });
   });
 });

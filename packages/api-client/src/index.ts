@@ -25,7 +25,7 @@ export interface PlatformApiClient {
     path: string,
     options?: RequestInit,
   ): Promise<TResponse | null>;
-  getPlayerInfo(phone: string): Promise<PlayerInfo>;
+  getPlayerInfo(query: string | PlayerInfoQuery): Promise<PlayerInfo>;
   getLeaderboard(period: LeaderboardPeriod): Promise<LeaderboardResponse>;
   getDashboardOverview(): Promise<DashboardOverview>;
   deleteMember(id: number): Promise<DeletedMember>;
@@ -132,6 +132,11 @@ export interface PlayerInfo {
   points: { total: number; rank: number };
   wristbands: PlayerWristband[];
   recentPlays: PlayerRecentPlay[];
+}
+
+export interface PlayerInfoQuery {
+  phone?: string;
+  wristbandUid?: string;
 }
 
 export type LeaderboardPeriod = "day" | "month" | "year";
@@ -313,10 +318,26 @@ export function createPlatformApiClient({
 
       return data as TResponse | null;
     },
-    async getPlayerInfo(phone: string): Promise<PlayerInfo> {
-      const normalizedPhone = phone.replace(/\D/g, "");
+    async getPlayerInfo(query: string | PlayerInfoQuery): Promise<PlayerInfo> {
+      const input = typeof query === "string" ? { phone: query } : query || {};
+      const hasPhone = input.phone !== undefined;
+      const hasWristbandUid = input.wristbandUid !== undefined;
+      if (hasPhone === hasWristbandUid) {
+        throw new PlatformApiError(
+          "Player Info query requires exactly one identifier",
+          400,
+          "INVALID_PLAYER_INFO_QUERY",
+        );
+      }
+      const params = new URLSearchParams();
+      if (hasPhone) {
+        const normalizedPhone = String(input.phone).replace(/\D/g, "");
+        params.set("phone", normalizedPhone);
+      } else {
+        params.set("wristbandUid", String(input.wristbandUid).trim());
+      }
       const result = await client.request<PlayerInfo>(
-        `/api/player-info?phone=${encodeURIComponent(normalizedPhone)}`,
+        `/api/player-info?${params.toString()}`,
       );
       if (!result) {
         throw new PlatformApiError("会员信息响应为空", 502, "EMPTY_RESPONSE");

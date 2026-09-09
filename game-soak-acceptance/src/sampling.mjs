@@ -8,6 +8,10 @@ import { MemoryMonitor, ProcessMonitor, CommunicationMonitor } from './monitor.m
 import { checkEvidenceBudget } from './evidence-budget.mjs';
 
 const execFileAsync = promisify(execFile);
+export function shouldRunDiscoveryProbe(hardwareMode, completedSamples) {
+  return hardwareMode === 'real' && Number.isSafeInteger(completedSamples) && completedSamples > 0;
+}
+
 export async function sampleProcessTree(pid) {
   if (!Number.isInteger(pid) || pid <= 0) throw new Error('采样 PID 非法');
   const result = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
@@ -46,6 +50,11 @@ export async function startSampling(app, config) {
     const state = await app.get('/engine/game/state');
     const phase = { engineState: state.engineState, sessionId: state.sessionId, gameId: state.gameId,
       runtimeMode: state.runtimeMode, runningMillis: state.runningMillis };
+    // The immediate startup sample stays read-only; real-hardware discovery
+    // probes begin with the first 10-second sample and then follow the sampler.
+    if (shouldRunDiscoveryProbe(config.hardwareMode, sampleCount)) {
+      await app.get('/hardware/elc408/acceptance/search-probe');
+    }
     const metrics = await app.get('/hardware/elc408/metrics'); communication.observe(metrics);
     if (config.simulatedInputEnabled) {
       input = await app.get('/acceptance/soak/input');

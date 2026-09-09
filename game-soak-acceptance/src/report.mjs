@@ -19,6 +19,7 @@ export function renderReport(config, result) {
 
 - 本次循环结果：${text(result.status)}
 - 配置目标：${number(hours)} 小时
+- 游戏数据库来源：${text(config.gameDatabaseSource || '打包包内 seed 数据库')}
 - 实际循环时间：${number(result.elapsedMillis / 1000)} 秒
 - 累计 RUNNING：${number(result.runningMillis / 1000)} 秒
 - 自然收尾超出目标：${number(result.drainMillis / 1000)} 秒
@@ -42,6 +43,9 @@ ${Object.entries(result.counts ?? {}).map(([id, count]) => `| ${text(id)} | ${co
 - 采样数：${memory?.samples ?? '未取得'}；采样缺口：${memory?.gaps ?? '未取得'}
 - 预声明阈值：峰值 ${number(config.limits?.memoryLimitMB)} MB；增长 ${number(config.limits?.memoryGrowthMBPerHour)} MB/小时
 - 未配置阈值、采样不足或证据不连续时，不宣称内存稳定。
+- 向导档位：${text(config.soakWizard?.profileLabel || '底层配置运行')}
+- 本轮已选择游戏：${text(config.soakWizard?.selectedGameIds?.join('、') || Object.keys(result.counts ?? {}).join('、') || '未记录')}
+- 本轮未选择游戏：${text(config.soakWizard?.unselectedGameIds?.join('、') || '未记录')}
 
 ${memory?.windows?.length ? '![预热后私有内存窗口趋势](内存趋势.svg)' : '尚未形成有效趋势窗口，不绘制虚假的长期曲线。'}
 
@@ -56,6 +60,12 @@ ${memory?.windows?.length ? '![预热后私有内存窗口趋势](内存趋势.s
 - SDK 本进程 UDP socket 创建/关闭：${communication?.socketLifecycle?.opened ?? '未取得'} / ${communication?.socketLifecycle?.closed ?? '未取得'}；不是控制器物理在线状态。
 - ACK/丢包率：协议不支持可靠判定，不以收发数量之差计算。
 - 无回传可能是无人踩踏；不能仅凭零接收认定断网。
+
+## 控制器搜索响应
+- 搜索探测状态：${text(communication?.discovery?.status ?? '未验证')}
+- 搜索尝试次数：${communication?.discovery?.attempts ?? '未取得'}；有效回复样本：${communication?.discovery?.responseSamples ?? '未取得'}；超时次数：${communication?.discovery?.timeouts ?? '未取得'}
+- 搜索响应延迟累计：${number(communication?.discovery?.latencyTotalMillis)} 毫秒；平均响应延迟：${number(communication?.discovery?.averageLatencyMillis)} 毫秒
+- 不保留逐次发送/接收时间戳，平均值由累计延迟除以有效回复样本数计算。
 
 ## 模拟输出与输入
 
