@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { SOAK_PROFILES, buildWizardConfig, catalogChoices, parseToggleInput, renderChoices,
+import { SOAK_PROFILES, buildWizardConfig, catalogChoices, parseProfileInput, parseToggleInput, renderChoices,
   runInteractiveWizard, selectionTargets, toggleSelection } from '../src/wizard.mjs';
 import { discoverRealHardwareConfig } from '../src/hardware-config.mjs';
 import { discoverGameDatabaseSource } from '../src/game-database.mjs';
@@ -16,8 +16,12 @@ const entry = (id, name, duration = 60) => ({
 });
 
 test('向导固定档位和选择输入可验证', () => {
-  assert.deepEqual(SOAK_PROFILES.map((profile) => profile.key), ['quick', 'standard', 'formal']);
-  assert.equal(SOAK_PROFILES[2].durationHours, 18);
+  assert.deepEqual(SOAK_PROFILES.map((profile) => profile.key), ['quick', 'standard', 'two-hours', 'formal']);
+  assert.equal(SOAK_PROFILES[2].durationHours, 2);
+  assert.equal(SOAK_PROFILES[3].durationHours, 18);
+  assert.equal(parseProfileInput('3'), 'two-hours');
+  assert.equal(parseProfileInput('2h'), 'two-hours');
+  assert.equal(parseProfileInput('4'), 'formal');
   assert.deepEqual(parseToggleInput('1, 3', 3), { done: false, indexes: [1, 3] });
   assert.deepEqual(parseToggleInput('done', 3), { done: true, indexes: [] });
   assert.throws(() => parseToggleInput('0', 3), /编号/);
@@ -51,6 +55,8 @@ test('向导配置保留真实 ID、稳定选择顺序和未选择列表', () =>
   assert.deepEqual(config.soakWizard.selectedGameIds, ['9007199254740993']);
   assert.deepEqual(config.soakWizard.unselectedGameIds, [42]);
   assert.equal(config.durationHours, 0.5);
+  assert.equal(config.limits.memoryLimitMB, 8192);
+  assert.equal(config.limits.memoryGrowthMBPerHour, null);
   const realConfig = buildWizardConfig({ gameExecutable: 'F:/game/LED Game.exe', hardwareMode: 'real', floor: { width: 8, height: 8 },
     profile: 'quick', choices, selected: new Set([1]) });
   assert.equal(realConfig.floor.configDirectory, path.resolve('F:/game/elc408'));

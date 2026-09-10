@@ -6,17 +6,19 @@ function fixture(fault) {
   let step = 'players'; let time = 0; let read = 0; const clicks = [];
   const target = { gameId: 41, playerCount: 1, startLevelIndex: 0, durationSeconds: 1 };
   const queueSummary = { waiting: [], current: null };
+  const stopped = { engineState: 'STOPPED', sessionId: 's1', gameId: 41, runtimeMode: 'PRODUCTION', userCount: 1,
+    startLevelIndex: 0, terminationReason: 'NATURAL_SUCCESS', runningMillis: 1000, queueSummary };
   const states = [
     { engineState: 'IDLE', queueSummary },
     { engineState: 'PREPARING', preparation: { sessionId: 's1' } },
     { engineState: 'RUNNING', sessionId: 's1', gameId: 41, runtimeMode: 'PRODUCTION' },
-    { engineState: 'STOPPED', sessionId: 's1', gameId: 41, runtimeMode: 'PRODUCTION', userCount: 1,
-      startLevelIndex: 0, terminationReason: 'NATURAL_SUCCESS', runningMillis: 1000, queueSummary },
+    stopped,
     { engineState: 'IDLE' },
   ];
   if (fault === 'manual') states[3].terminationReason = 'MANUAL_STOP';
   if (fault === 'queue') states[3].queueSummary = { waiting: [{ id: 'q' }] };
   if (fault === 'no-running') states[2].engineState = 'STOPPED';
+  if (fault === 'stopping') states.splice(3, 0, { ...stopped, engineState: 'STOPPING' });
   const page = {
     isClosed: () => false,
     getByTestId: (id) => ({
@@ -44,6 +46,12 @@ function fixture(fault) {
 test('UI driver performs navigation contract without debug or direct start calls', async () => {
   const f = fixture(); assert.equal((await f.execute()).terminationReason, 'NATURAL_SUCCESS');
   assert.deepEqual(f.clicks, ['game-touch-idle', 'game-player-count-1', 'game-player-next', 'game-game-next', 'game-level-0', 'game-start', 'game-return-idle']);
+});
+
+test('UI driver waits through normal STOPPING transition before validating STOPPED', async () => {
+  const f = fixture('stopping');
+  assert.equal((await f.execute()).terminationReason, 'NATURAL_SUCCESS');
+  assert.equal(f.clicks.at(-1), 'game-return-idle');
 });
 
 for (const fault of ['manual', 'queue', 'no-running', 'wrong-game', 'step-returned-idle', 'end-page-stuck']) {

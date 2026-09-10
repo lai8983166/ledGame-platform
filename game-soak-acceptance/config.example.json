@@ -8,5 +8,5 @@
   "floor": { "width": 8, "height": 8, "configDirectory": "" },
   "simulatedInputEnabled": false,
   "limits": { "actionSeconds": 10, "startupSeconds": 60, "settleSeconds": 30,
-    "memoryLimitMB": null, "memoryGrowthMBPerHour": null }
+    "memoryLimitMB": 8192, "memoryGrowthMBPerHour": null }
 }

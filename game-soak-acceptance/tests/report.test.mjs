@@ -24,5 +24,7 @@ test('Chinese report distinguishes complete, failed, interrupted and unverified'
   } });
   assert.match(measured, /平均响应延迟/);
   assert.match(measured, /15\.00/);
+  assert.match(measured, /固定峰值上限：8192\.00 MB（8 GiB）/);
+  assert.match(measured, /增长趋势仅作观测记录，不参与通过\/失败判定/);
   assert.doesNotMatch(measured, /发送时间戳/);
 });

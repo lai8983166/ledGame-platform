@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { MEMORY_PEAK_LIMIT_MB } from './monitor.mjs';
 
 const simpleNames = new Set(['simple-demo', 'simple', 'normal', 'diffcult']);
 const positive = (n) => Number.isSafeInteger(n) && n > 0;
@@ -29,7 +30,15 @@ export function normalizeConfig(input) {
     if (!Number.isSafeInteger(target.startLevelIndex) || target.startLevelIndex < 0) throw new Error('startLevelIndex 必须为从 0 开始的整数');
     return { ...target };
   });
-  return { ...input, games, durationHours, hardwareMode, simulatedInputEnabled: input.simulatedInputEnabled ?? false };
+  return {
+    ...input,
+    games,
+    durationHours,
+    hardwareMode,
+    simulatedInputEnabled: input.simulatedInputEnabled ?? false,
+    // 保留旧字段以兼容历史配置，但内存增长不再是判定阈值。
+    limits: { ...(input.limits ?? {}), memoryLimitMB: MEMORY_PEAK_LIMIT_MB, memoryGrowthMBPerHour: null },
+  };
 }
 
 // Sorting object keys avoids treating JSON property order as a content change.

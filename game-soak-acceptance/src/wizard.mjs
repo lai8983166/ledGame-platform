@@ -10,8 +10,17 @@ import { discoverGameDatabaseSource } from './game-database.mjs';
 export const SOAK_PROFILES = Object.freeze([
   { key: 'quick', label: '快速测试', durationHours: 5 / 60 },
   { key: 'standard', label: '标准测试', durationHours: 0.5 },
+  { key: 'two-hours', label: '2 小时烤机', durationHours: 2 },
   { key: 'formal', label: '正式 18 小时烤机', durationHours: 18 },
 ]);
+
+export function parseProfileInput(value) {
+  const answer = String(value ?? '').trim().toLowerCase();
+  if (answer === '4' || answer === 'formal') return 'formal';
+  if (answer === '3' || answer === 'two-hours' || answer === '2h') return 'two-hours';
+  if (answer === '2' || answer === 'standard') return 'standard';
+  return 'quick';
+}
 
 const finiteInteger = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const SUPPORTED_SIMPLE_NAMES = new Set(['simple-demo', 'simple', 'normal', 'diffcult']);
@@ -108,7 +117,7 @@ export function buildWizardConfig({ gameExecutable, outputRoot, hardwareMode, fl
     games, durationHours: chosenProfile.durationHours, hardwareMode,
     floor: { ...floor, ...(hardwareMode === 'real' ? { configDirectory: resolvedConfigDirectory } : {}) },
     simulatedInputEnabled: false,
-    limits: { actionSeconds: 10, startupSeconds: 60, settleSeconds: 30, memoryLimitMB: null, memoryGrowthMBPerHour: null },
+    limits: { actionSeconds: 10, startupSeconds: 60, settleSeconds: 30, memoryLimitMB: 8192, memoryGrowthMBPerHour: null },
     soakWizard: { profile: chosenProfile.key, profileLabel: chosenProfile.label,
       selectedGameIds: games.map((game) => game.gameId),
       unselectedGameIds: choices.filter((choice) => !chosenIds.has(String(choice.gameId))).map((choice) => choice.gameId) },
@@ -181,9 +190,9 @@ export async function runInteractiveWizard({ input = defaultInput, output = defa
         selected = toggleSelection(selected, parsed.indexes.filter((index) => choices[index - 1].selectable));
       }
     }
-    write('\n测试档位：1=快速 5 分钟，2=标准 30 分钟，3=正式 18 小时');
+    write('\n测试档位：1=快速 5 分钟，2=标准 30 分钟，3=2 小时，4=正式 18 小时');
     const profileAnswer = (defaults.profile || await ask('选择测试档位（默认 1）：')).trim();
-    const profile = profileAnswer === '3' || profileAnswer === 'formal' ? 'formal' : profileAnswer === '2' || profileAnswer === 'standard' ? 'standard' : 'quick';
+    const profile = parseProfileInput(profileAnswer);
     const config = buildWizardConfig({ gameExecutable: executable, outputRoot: defaults.outputRoot || path.join(toolRoot, 'runs'), hardwareMode,
       floor, configDirectory, gameDatabaseSource: database?.path, profile, choices, selected });
     write('\n即将运行：');

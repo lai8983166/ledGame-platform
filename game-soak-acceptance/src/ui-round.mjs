@@ -64,7 +64,10 @@ export async function playUiRound(page, target, {
   await until(async () => {
     const state = await readState();
     if (state.sessionId !== sessionId || String(state.gameId) !== String(target.gameId)) throw new Error('游玩中会话被替换');
-    if (!['RUNNING', 'SETTLING', 'STOPPED'].includes(state.engineState)) throw new Error(`游玩异常状态：${state.engineState}`);
+    // STOPPING is the engine's normal transition after the game-over page and
+    // before the terminal STOPPED snapshot. Keep polling within settleMillis;
+    // validateTerminal still runs only on the final STOPPED state.
+    if (!['RUNNING', 'SETTLING', 'STOPPING', 'STOPPED'].includes(state.engineState)) throw new Error(`游玩异常状态：${state.engineState}`);
     if (state.queueSummary?.waiting?.length || state.queueSummary?.current) throw new Error('游玩中出现意外排队');
     if (state.engineState !== 'STOPPED') return false;
     validateTerminal(state, target, sessionId); terminal = state; return true;

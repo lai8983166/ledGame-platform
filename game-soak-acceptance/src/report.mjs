@@ -1,3 +1,5 @@
+import { MEMORY_PEAK_LIMIT_MB } from './monitor.mjs';
+
 const text = (value) => String(value ?? '无').replaceAll('|', '\\|').replaceAll('\n', ' ');
 const number = (value) => Number.isFinite(value) ? value.toFixed(2) : '未取得';
 
@@ -41,8 +43,8 @@ ${Object.entries(result.counts ?? {}).map(([id, count]) => `| ${text(id)} | ${co
 - Java 趋势：${number(memory?.javaGrowthMBPerHour)} MB/小时
 - Electron 趋势：${number(memory?.electronGrowthMBPerHour)} MB/小时
 - 采样数：${memory?.samples ?? '未取得'}；采样缺口：${memory?.gaps ?? '未取得'}
-- 预声明阈值：峰值 ${number(config.limits?.memoryLimitMB)} MB；增长 ${number(config.limits?.memoryGrowthMBPerHour)} MB/小时
-- 未配置阈值、采样不足或证据不连续时，不宣称内存稳定。
+- 固定峰值上限：${number(MEMORY_PEAK_LIMIT_MB)} MB（8 GiB）；仅按游戏端进程树私有内存峰值判定
+- 增长趋势仅作观测记录，不参与通过/失败判定；采样不足或证据不连续时仍标记为未判定。
 - 向导档位：${text(config.soakWizard?.profileLabel || '底层配置运行')}
 - 本轮已选择游戏：${text(config.soakWizard?.selectedGameIds?.join('、') || Object.keys(result.counts ?? {}).join('、') || '未记录')}
 - 本轮未选择游戏：${text(config.soakWizard?.unselectedGameIds?.join('、') || '未记录')}

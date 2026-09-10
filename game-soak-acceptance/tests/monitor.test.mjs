@@ -1,21 +1,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MemoryMonitor, ProcessMonitor, CommunicationMonitor } from '../src/monitor.mjs';
+import { MEMORY_PEAK_LIMIT_MB, MemoryMonitor, ProcessMonitor, CommunicationMonitor } from '../src/monitor.mjs';
 const processRow = (role, pid, mb = 100) => ({ role, pid, createdAt: '2026-09-06T00:00:00Z', responding: true, privateBytes: mb * 1048576, workingSetBytes: mb * 1048576 });
 
-test('memory trends distinguish stable, growing, missing samples and absent thresholds', () => {
-  for (const [growth, limits, gap, status] of [
-    [0, true, false, '通过'], [100, true, false, '失败'], [0, false, false, '未判定'], [0, true, true, '未判定'],
-  ]) {
-    const monitor = new MemoryMonitor(limits ? { memoryLimitMB: 1000, memoryGrowthMBPerHour: 10 } : {});
-    for (let at = 0; at <= 3000000; at += 10000) {
-      if (gap && at === 1200000) continue;
-      monitor.observe(at, [processRow('java', 1, 100 + growth * at / 3600000), processRow('main', 2)]);
-    }
-    assert.equal(monitor.summary().status, status);
+test('memory uses a fixed 8 GiB peak limit and records growth without gating', () => {
+  assert.equal(MEMORY_PEAK_LIMIT_MB, 8192);
+  const monitor = new MemoryMonitor({ memoryLimitMB: 1, memoryGrowthMBPerHour: 0 });
+  for (let at = 0; at <= 3000000; at += 10000) {
+    monitor.observe(at, [processRow('java', 1, 100 + 100 * at / 3600000), processRow('main', 100)]);
   }
-  const short = new MemoryMonitor({ memoryLimitMB: 1000, memoryGrowthMBPerHour: 10 });
-  short.observe(0, [processRow('main', 1)]); assert.equal(short.summary().status, '未判定');
+  const summary = monitor.summary();
+  assert.equal(summary.status, '通过');
+  assert.equal(summary.limits.memoryLimitMB, 8192);
+  assert.equal(summary.limits.memoryGrowthMBPerHour, null);
+  assert.ok(Number.isFinite(summary.growthMBPerHour));
+
+  const over = new MemoryMonitor();
+  over.observe(0, [processRow('main', 1, 8193)]);
+  assert.equal(over.summary().status, '失败');
+
+  const gap = new MemoryMonitor();
+  gap.observe(0, [processRow('main', 1)]);
+  gap.observe(30000, [processRow('main', 1)]);
+  assert.equal(gap.summary().status, '未判定');
 });
 
 test('PID reuse and critical exit fail, utility exit and owned cleanup are allowed', () => {

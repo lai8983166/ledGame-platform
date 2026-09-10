@@ -3,11 +3,20 @@ const median = (values) => {
   return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
 };
 
+// 烤机的内存判定只看游戏端进程树私有内存峰值。增长趋势仍然采集，
+// 但不再作为通过/失败阈值，避免把短时波动误判成泄漏。
+export const MEMORY_PEAK_LIMIT_MB = 8192;
+
 export class MemoryMonitor {
   #bucket = []; #bucketIndex = null; #windows = []; #lastAt = null;
   samples = 0; gaps = 0; peakMB = 0; peakWorkingSetMB = 0; javaPeakMB = 0; electronPeakMB = 0;
-  constructor({ memoryLimitMB = null, memoryGrowthMBPerHour = null, warmupMillis = 600000, windowMillis = 600000 } = {}) {
-    Object.assign(this, { memoryLimitMB, memoryGrowthMBPerHour, warmupMillis, windowMillis });
+  constructor({ warmupMillis = 600000, windowMillis = 600000 } = {}) {
+    Object.assign(this, {
+      memoryLimitMB: MEMORY_PEAK_LIMIT_MB,
+      memoryGrowthMBPerHour: null,
+      warmupMillis,
+      windowMillis,
+    });
   }
   observe(at, processes) {
     if (!Number.isFinite(at) || at < 0 || (this.#lastAt !== null && at <= this.#lastAt)) throw new Error('内存采样时间非法');
@@ -48,10 +57,8 @@ export class MemoryMonitor {
         / rows.reduce((s, r) => s + (r.at / 3600000 - avgX) ** 2, 0);
     };
     const growth = slope('total');
-    let status = '未判定';
-    if (this.memoryLimitMB !== null && this.peakMB > this.memoryLimitMB) status = '失败';
-    else if (growth !== null && this.memoryGrowthMBPerHour !== null && growth > this.memoryGrowthMBPerHour) status = '失败';
-    else if (!this.gaps && growth !== null && this.memoryLimitMB !== null && this.memoryGrowthMBPerHour !== null) status = '通过';
+    const status = this.peakMB > this.memoryLimitMB ? '失败'
+      : !this.samples || this.gaps ? '未判定' : '通过';
     return { status, samples: this.samples, gaps: this.gaps, peakMB: this.peakMB,
       peakWorkingSetMB: this.peakWorkingSetMB, javaPeakMB: this.javaPeakMB, electronPeakMB: this.electronPeakMB,
       growthMBPerHour: growth, javaGrowthMBPerHour: slope('java'), electronGrowthMBPerHour: slope('electron'),

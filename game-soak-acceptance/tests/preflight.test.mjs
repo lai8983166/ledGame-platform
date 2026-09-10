@@ -10,7 +10,10 @@ const entry = () => ({
 });
 
 test('default is eighteen hours; empty and duplicate lists fail', () => {
-  assert.equal(normalizeConfig(config()).durationHours, 18);
+  const normalized = normalizeConfig(config());
+  assert.equal(normalized.durationHours, 18);
+  assert.equal(normalized.limits.memoryLimitMB, 8192);
+  assert.equal(normalized.limits.memoryGrowthMBPerHour, null);
   assert.throws(() => normalizeConfig(config([])), /不能为空/);
   assert.throws(() => normalizeConfig(config([config().games[0], config().games[0]])), /重复/);
   for (const durationHours of [0, -1, '18', Infinity]) {
