@@ -181,7 +181,6 @@ onMounted(() => void loadRecords());
     <button class="secondary-button compact-button" data-testid="admin-records-refresh" type="button" :disabled="refreshing" @click="loadRecords"><AppIcon name="refresh" :size="16" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新" }}</button>
     <button v-if="exportDataset && canExport" class="secondary-button compact-button" data-testid="admin-records-export" type="button" :disabled="exporting" @click="exportRecords"><AppIcon name="download" :size="16" />{{ exporting ? "导出中…" : exportLabel }}</button>
   </section>
-  <p v-if="exportDataset && canExport" class="export-note">{{ text("recordExportNote") }}</p>
   <p v-if="loadError" class="form-error"><AppIcon name="alert" :size="16" />{{ loadError }}</p>
 
   <section class="table-card glass-panel">

@@ -51,7 +51,6 @@ const settingsTabs = computed(() => props.backupStatus?.state === "MAINTENANCE_L
   { id: "password", label: "修改密码", icon: "settings", desc: "修改当前登录账号密码" },
   ...(isFactory.value ? [
     { id: "basic", label: "基础设置", icon: "clock", desc: "手环与计时规则" },
-    { id: "upload", label: "数据上传", icon: "upload", desc: "邮箱与服务器目标" },
     backupTab,
   ] : []),
 ] as Array<{ id: SettingsTab; label: string; icon: string; desc: string }>);

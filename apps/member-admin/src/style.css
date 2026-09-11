@@ -244,6 +244,8 @@ html[data-language-direction="rtl"] :is(input, textarea) { direction: rtl; text-
 }
 
 .leaderboard-state { position: relative; z-index: 1; }
+.leaderboard__header { margin-bottom: 72px; }
+@media (max-width: 650px) { .leaderboard__header { margin-bottom: 54px; } }
 .leaderboard-message { display: grid; justify-items: center; align-content: center; gap: 8px; min-height: 350px; color: var(--muted); text-align: center; }
 .leaderboard-message > svg { color: var(--purple); }
 .leaderboard-message strong { color: var(--text); font-size: 14px; }

@@ -41,7 +41,7 @@ describe("authoritative points projections", () => {
     expect(records).toContain('members: "members", transactions: "wristband-charges", plays: "game-plays", cards: null');
     expect(records).toContain('data-testid="admin-records-export"');
     expect(records).toContain('canUseOperatorCapability(operatorSession.current.value, "exportData")');
-    expect(records).toContain('text("recordExportNote")');
+    expect(records).not.toContain('class="export-note"');
   });
 
   it("gives acceptance stable Player Info business selectors", () => {
