@@ -49,7 +49,7 @@ class DatabaseBackupControllerAuthorizationTest {
     }
 
     @Test
-    void statusStillRequiresAnEnabledLoggedInOperator() {
+    void statusRequiresFactoryAuthorization() {
         DatabaseBackupCoordinator coordinator = mock(DatabaseBackupCoordinator.class);
         OperatorAuthorizationService authorization = mock(OperatorAuthorizationService.class);
         DatabaseImportService imports = mock(DatabaseImportService.class);
@@ -60,7 +60,7 @@ class DatabaseBackupControllerAuthorizationTest {
         when(coordinator.status()).thenReturn(expected);
 
         assertThat(controller.backupStatus(request, 1L)).isSameAs(expected);
-        verify(authorization).require(1L);
+        verify(authorization).requireFactory(1L);
     }
 
     @Test

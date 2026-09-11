@@ -17,11 +17,14 @@ public class OperatorAccountService {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
+    private final OperatorAuthorizationService authorization;
 
-    public OperatorAccountService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, Clock clock) {
+    public OperatorAccountService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, Clock clock,
+            OperatorAuthorizationService authorization) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
+        this.authorization = authorization;
     }
 
     public Map<String, Object> login(String rawUsername, String rawPassword) {
@@ -30,7 +33,7 @@ public class OperatorAccountService {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT id, username, display_name, password_hash, account_type, enabled
               FROM operator_accounts
-             WHERE username=? COLLATE NOCASE
+             WHERE username=? COLLATE NOCASE AND deleted_at IS NULL
             """, username);
         if (rows.isEmpty()) {
             throw loginFailed();
@@ -43,12 +46,19 @@ public class OperatorAccountService {
         return loginProfile(row);
     }
 
-    public List<Map<String, Object>> listAccounts() {
-        return jdbc.query("""
+    public List<Map<String, Object>> listAccounts(Long actorId) {
+        OperatorAuthorizationService.AuthorizedOperator actor = authorization.require(actorId);
+        OperatorRole actorRole = OperatorRole.valueOf(actor.accountType());
+        if (actorRole == OperatorRole.CLERK) throw forbidden();
+        String where = actorRole == OperatorRole.STORE_MANAGER
+                ? "WHERE deleted_at IS NULL AND account_type='CLERK'"
+                : "WHERE deleted_at IS NULL";
+        return jdbc.query(("""
             SELECT id, username, display_name, account_type, enabled, created_at, updated_at
               FROM operator_accounts
-             ORDER BY CASE account_type WHEN 'FACTORY_ADMIN' THEN 0 ELSE 1 END, id
-            """, (resultSet, rowNumber) -> publicAccount(resultSet.getLong("id"),
+             %s
+             ORDER BY CASE account_type WHEN 'FACTORY_ADMIN' THEN 0 WHEN 'STORE_MANAGER' THEN 1 ELSE 2 END, id
+            """).formatted(where), (resultSet, rowNumber) -> publicAccount(resultSet.getLong("id"),
                     resultSet.getString("username"), resultSet.getString("display_name"),
                     resultSet.getString("account_type"), resultSet.getInt("enabled") != 0,
                     resultSet.getString("created_at"), resultSet.getString("updated_at")));
@@ -56,7 +66,11 @@ public class OperatorAccountService {
 
     @Transactional
     public Map<String, Object> createOperator(
-            String rawUsername, String rawDisplayName, String rawPassword, Long createdByOperatorId) {
+            String rawUsername, String rawDisplayName, String rawPassword,
+            String rawAccountType, Long createdByOperatorId) {
+        OperatorAuthorizationService.AuthorizedOperator actor = authorization.require(createdByOperatorId);
+        OperatorRole accountType = OperatorRole.parse(rawAccountType);
+        if (!authorization.canManage(actor, accountType)) throw forbidden();
         String username = normalizeUsername(rawUsername, true);
         String displayName = normalizeDisplayName(rawDisplayName);
         String password = validatePassword(rawPassword);
@@ -67,8 +81,9 @@ public class OperatorAccountService {
                 INSERT INTO operator_accounts(
                     username, display_name, password_hash, account_type,
                     enabled, created_by_operator_id, created_at, updated_at)
-                VALUES (?, ?, ?, 'OPERATOR', 1, ?, ?, ?)
-                """, username, displayName, passwordEncoder.encode(password), createdByOperatorId, now, now);
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+                """, username, displayName, passwordEncoder.encode(password), accountType.name(),
+                    createdByOperatorId, now, now);
         } catch (DataAccessException exception) {
             throw usernameConflict();
         }
@@ -78,8 +93,9 @@ public class OperatorAccountService {
     }
 
     @Transactional
-    public Map<String, Object> updateProfile(Long id, String rawUsername, String rawDisplayName) {
+    public Map<String, Object> updateProfile(Long actorId, Long id, String rawUsername, String rawDisplayName) {
         Map<String, Object> existing = requireAccount(id);
+        requireCanManage(authorization.require(actorId), existing);
         String username = normalizeUsername(rawUsername, true);
         String displayName = normalizeDisplayName(rawDisplayName);
         ensureUsernameAvailable(username, id);
@@ -99,8 +115,10 @@ public class OperatorAccountService {
     }
 
     @Transactional
-    public Map<String, Object> resetPassword(Long id, String rawPassword) {
-        requireAccount(id);
+    public Map<String, Object> resetPassword(Long actorId, Long id, String rawPassword) {
+        Map<String, Object> target = requireAccount(id);
+        OperatorAuthorizationService.AuthorizedOperator actor = authorization.require(actorId);
+        if (actor.id() != id) requireCanManage(actor, target);
         String password = validatePassword(rawPassword);
         jdbc.update("UPDATE operator_accounts SET password_hash=?, updated_at=? WHERE id=?",
                 passwordEncoder.encode(password), now(), id);
@@ -108,18 +126,35 @@ public class OperatorAccountService {
     }
 
     @Transactional
-    public Map<String, Object> setEnabled(Long id, Boolean enabled) {
+    public Map<String, Object> setEnabled(Long actorId, Long id, Boolean enabled) {
         Map<String, Object> existing = requireAccount(id);
         if ("FACTORY_ADMIN".equals(existing.get("account_type")) && !Boolean.TRUE.equals(enabled)) {
             throw new PlatformApiException(HttpStatus.CONFLICT, "FACTORY_ADMIN_PROTECTED",
                     "出厂管理员不能被停用");
         }
+        requireCanManage(authorization.require(actorId), existing);
         if (enabled == null) {
             throw invalid("enabled 必须是布尔值");
         }
         jdbc.update("UPDATE operator_accounts SET enabled=?, updated_at=? WHERE id=?",
                 enabled ? 1 : 0, now(), id);
         return getAccount(id);
+    }
+
+    @Transactional
+    public Map<String, Object> delete(Long actorId, Long id) {
+        Map<String, Object> existing = requireAccount(id);
+        if ("FACTORY_ADMIN".equals(existing.get("account_type"))) {
+            throw new PlatformApiException(HttpStatus.CONFLICT, "FACTORY_ADMIN_PROTECTED",
+                    "出厂管理员不能被删除");
+        }
+        requireCanManage(authorization.require(actorId), existing);
+        String deletedAt = now();
+        jdbc.update("UPDATE operator_accounts SET enabled=0, deleted_at=?, updated_at=? WHERE id=?",
+                deletedAt, deletedAt, id);
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>(getAccountIncludingDeleted(id));
+        result.put("deletedAt", deletedAt);
+        return result;
     }
 
     public Map<String, Object> getAccount(Long id) {
@@ -137,12 +172,29 @@ public class OperatorAccountService {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT id, username, display_name, password_hash, account_type,
                    enabled, created_at, updated_at
-              FROM operator_accounts WHERE id=?
+              FROM operator_accounts WHERE id=? AND deleted_at IS NULL
             """, id);
         if (rows.isEmpty()) {
             throw accountNotFound();
         }
         return rows.get(0);
+    }
+
+    private Map<String, Object> getAccountIncludingDeleted(Long id) {
+        Map<String, Object> row = jdbc.queryForMap("""
+            SELECT id, username, display_name, account_type, enabled, created_at, updated_at
+              FROM operator_accounts WHERE id=?
+            """, id);
+        return publicAccount(number(row.get("id")), String.valueOf(row.get("username")),
+                String.valueOf(row.get("display_name")), String.valueOf(row.get("account_type")),
+                asBoolean(row.get("enabled")), String.valueOf(row.get("created_at")),
+                String.valueOf(row.get("updated_at")));
+    }
+
+    private void requireCanManage(OperatorAuthorizationService.AuthorizedOperator actor,
+            Map<String, Object> target) {
+        OperatorRole targetRole = OperatorRole.valueOf(String.valueOf(target.get("account_type")));
+        if (!authorization.canManage(actor, targetRole)) throw forbidden();
     }
 
     private void ensureUsernameAvailable(String username, Long excludedId) {
@@ -233,5 +285,10 @@ public class OperatorAccountService {
 
     private static PlatformApiException invalid(String message) {
         return new PlatformApiException(HttpStatus.BAD_REQUEST, "OPERATOR_ACCOUNT_INVALID", message);
+    }
+
+    private static PlatformApiException forbidden() {
+        return new PlatformApiException(HttpStatus.FORBIDDEN, "OPERATOR_FORBIDDEN",
+                "当前账号不能管理此账号");
     }
 }

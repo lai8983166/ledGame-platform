@@ -47,9 +47,13 @@ class MemberDeletionApiIntegrationTest {
     @Autowired private TestRestTemplate http;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataSource dataSource;
+    private long factoryOperatorId;
 
     @BeforeEach
     void clearData() {
+        factoryOperatorId = jdbc.queryForObject(
+                "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
+                Long.class);
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
         jdbc.update("DELETE FROM wristband_bindings");
@@ -147,7 +151,10 @@ class MemberDeletionApiIntegrationTest {
     }
 
     private ResponseEntity<Map<String, Object>> deleteMember(long id) {
-        return http.exchange("/api/members/" + id, HttpMethod.DELETE, null, new ParameterizedTypeReference<>() {});
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(factoryOperatorId));
+        return http.exchange("/api/members/" + id, HttpMethod.DELETE,
+                new HttpEntity<>(headers), new ParameterizedTypeReference<>() {});
     }
 
     private List<Map<String, Object>> getMembers(String phone) {

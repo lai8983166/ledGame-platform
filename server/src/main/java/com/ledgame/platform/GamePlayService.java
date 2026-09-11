@@ -34,18 +34,21 @@ public class GamePlayService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final GamePointsPolicy pointsPolicy;
+    private final ProtectedDataService protectedData;
 
     public GamePlayService(
             JdbcTemplate jdbc,
             GameAccessService accessService,
             ObjectMapper objectMapper,
             Clock clock,
-            GamePointsPolicy pointsPolicy) {
+            GamePointsPolicy pointsPolicy,
+            ProtectedDataService protectedData) {
         this.jdbc = jdbc;
         this.accessService = accessService;
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.pointsPolicy = pointsPolicy;
+        this.protectedData = protectedData;
     }
 
     @Transactional(readOnly = true)
@@ -141,7 +144,8 @@ public class GamePlayService {
                         status, started_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
                     """,
-                    number(access.get("memberId")), number(access.get("bindingId")), access.get("uid"),
+                    number(access.get("memberId")), number(access.get("bindingId")),
+                    protectedData.encryptField("game_play_records", "wristband_uid", String.valueOf(access.get("uid"))),
                     deviceId, blankToNull(command.roomId()), externalSessionId, index,
                     gameId, gameName, clock.instant().toString());
             }
@@ -160,9 +164,9 @@ public class GamePlayService {
                 deviceId, externalSessionId);
     }
 
-    private static void assertSameParticipants(List<Map<String, Object>> existing, List<String> requestedUids) {
+    private void assertSameParticipants(List<Map<String, Object>> existing, List<String> requestedUids) {
         List<String> existingUids = existing.stream()
-                .map(play -> String.valueOf(play.get("uid")))
+                .map(play -> protectedData.decryptField("game_play_records", "wristband_uid", play.get("uid")))
                 .toList();
         if (!existingUids.equals(requestedUids)) {
             throw GameAccessService.error(
@@ -189,7 +193,8 @@ public class GamePlayService {
                    points_awarded=?, scoring_policy=?, result_json=?
              WHERE id=? AND status='RUNNING'
             """, status, clock.instant().toString(), success, reason, command.rawScore(), award.points(),
-            award.version(), toStoredResult(command.resultPayload(), award.scoringInput()), playId);
+            award.version(), protectedData.encryptField("game_play_records", "result_json",
+                    toStoredResult(command.resultPayload(), award.scoringInput())), playId);
         if (updated == 0) return playView(find(playId));
         return playView(find(playId));
     }
@@ -204,9 +209,13 @@ public class GamePlayService {
 
     private Map<String, Object> playView(Map<String, Object> row) {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>(row);
+        result.put("uid", protectedData.decryptField("game_play_records", "wristband_uid", row.get("uid")));
+        if (row.get("memberName") != null) {
+            result.put("memberName", protectedData.decryptField("members", "name", row.get("memberName")));
+        }
         Object success = row.get("success");
         result.put("success", success == null ? null : number(success) != 0);
-        Object json = row.get("resultJson");
+        Object json = protectedData.decryptField("game_play_records", "result_json", row.get("resultJson"));
         if (json != null) {
             try {
                 Object parsed = objectMapper.readValue(String.valueOf(json), Object.class);

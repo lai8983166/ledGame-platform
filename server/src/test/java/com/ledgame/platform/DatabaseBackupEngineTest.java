@@ -2,6 +2,8 @@ package com.ledgame.platform;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
@@ -29,6 +31,8 @@ class DatabaseBackupEngineTest {
     private DatabaseFileInspector inspector;
     private DatabaseBackupProperties properties;
     private Clock clock;
+    private DataProtectionKeyManager keyManager;
+    private ProtectedDataService protectedData;
 
     @BeforeEach
     void setup() throws Exception {
@@ -46,14 +50,19 @@ class DatabaseBackupEngineTest {
         properties.setEnvironment("TEST");
         properties.setMinimumFreeBytes(1);
         clock = Clock.fixed(Instant.parse("2026-09-02T02:03:04Z"), ZoneOffset.UTC);
+        DataKeyMaterial key = DataProtectionKeyManager.material(new byte[32]);
+        keyManager = mock(DataProtectionKeyManager.class);
+        when(keyManager.loadOrCreate()).thenReturn(key);
+        when(keyManager.loadExisting()).thenReturn(key);
+        when(keyManager.envelopeBytes()).thenReturn("dpapi-test-envelope".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        protectedData = new ProtectedDataService(keyManager);
+        new DataProtectionMigration(jdbc, keyManager, protectedData, clock)
+                .run(new DefaultApplicationArguments());
     }
 
     @Test
     void onlineBackupPublishesVerifiedLatestMetadataAndDailyHistory() throws Exception {
-        jdbc.update("""
-            INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
-            VALUES ('13800138000', '备份玩家', 'ACTIVE', 'now', 'now', 'test')
-            """);
+        insertMember("13800138000", "备份玩家");
         DatabaseStateSnapshot sourceState = new DatabaseStateService(jdbc).current();
         DatabaseBackupEngine engine = engine(new SqliteOnlineBackup(dataSource));
 
@@ -63,16 +72,27 @@ class DatabaseBackupEngineTest {
         assertThat(latest).isRegularFile();
         assertThat(inspector.inspect(latest).valid()).isTrue();
         assertThat(inspector.inspect(latest).state().revision()).isEqualTo(sourceState.revision());
-        assertThat(new JdbcTemplate(new DriverManagerDataSource("jdbc:sqlite:" + latest.toAbsolutePath()))
-                .queryForObject("SELECT COUNT(*) FROM members WHERE phone='13800138000'", Integer.class)).isEqualTo(1);
+        Object storedPhone = new JdbcTemplate(new DriverManagerDataSource("jdbc:sqlite:" + latest.toAbsolutePath()))
+                .queryForObject("SELECT phone FROM members", Object.class);
+        assertThat(String.valueOf(storedPhone)).startsWith("enc:v1:").doesNotContain("13800138000");
+        assertThat(protectedData.decryptField("members", "phone", storedPhone)).isEqualTo("13800138000");
+        byte[] rawBackup = Files.readAllBytes(latest);
+        assertThat(indexOf(rawBackup, "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
+        assertThat(indexOf(rawBackup, "备份玩家".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
         assertThat(metadata.sha256()).isEqualTo(inspector.sha256(latest));
         assertThat(metadata.targetDiskIdentity()).isEqualTo("uid:disk-b");
         assertThat(metadata.format()).isEqualTo("ledgame-platform-backup-v2");
         assertThat(metadata.environment()).isEqualTo("TEST");
         assertThat(backupRoot.resolve("latest/metadata.json")).isRegularFile();
-        try (var stream = Files.list(backupRoot.resolve("history"))) {
-            assertThat(stream.filter(path -> path.getFileName().toString().endsWith("-platform.db"))).hasSize(1);
-        }
+        assertThat(backupRoot.resolve("latest/data-key.dpapi")).hasContent("dpapi-test-envelope");
+        assertThat(metadata.encryptionVersion()).isEqualTo(ProtectedDataService.ENCRYPTION_VERSION);
+        assertThat(metadata.keyId()).isEqualTo(protectedData.keyId());
+        Path historyDatabase = historyDatabases().get(0);
+        assertThat(indexOf(Files.readAllBytes(historyDatabase),
+                "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
+        String historyKey = historyDatabase.getFileName().toString()
+                .replace("-platform.db", "-data-key.dpapi");
+        assertThat(historyDatabase.resolveSibling(historyKey)).hasContent("dpapi-test-envelope");
     }
 
     @Test
@@ -98,9 +118,12 @@ class DatabaseBackupEngineTest {
         try (var connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try (var statement = connection.prepareStatement("""
-                INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
-                VALUES ('13900139000', '未提交玩家', 'ACTIVE', 'now', 'now', 'test')
+                INSERT INTO members(phone, phone_lookup_hash, name, status, created_at, updated_at, created_by)
+                VALUES (?, ?, ?, 'ACTIVE', 'now', 'now', 'test')
                 """)) {
+                statement.setString(1, protectedData.encryptField("members", "phone", "13900139000"));
+                statement.setString(2, protectedData.phoneLookupHash("13900139000"));
+                statement.setString(3, protectedData.encryptField("members", "name", "未提交玩家"));
                 statement.executeUpdate();
             }
             engine(new SqliteOnlineBackup(dataSource)).backup(backupRoot, "uid:disk-b");
@@ -157,7 +180,15 @@ class DatabaseBackupEngineTest {
     private DatabaseBackupEngine engine(SqliteOnlineBackup onlineBackup) {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         return new DatabaseBackupEngine(onlineBackup, inspector, mapper, properties, clock,
-                "Asia/Shanghai", "jdbc:sqlite:" + source.toAbsolutePath());
+                "Asia/Shanghai", "jdbc:sqlite:" + source.toAbsolutePath(), keyManager, protectedData);
+    }
+
+    private void insertMember(String phone, String name) {
+        jdbc.update("""
+            INSERT INTO members(phone, phone_lookup_hash, name, status, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, 'ACTIVE', 'now', 'now', 'test')
+            """, protectedData.encryptField("members", "phone", phone), protectedData.phoneLookupHash(phone),
+                protectedData.encryptField("members", "name", name));
     }
 
     private static final class MutableClock extends Clock {
@@ -166,5 +197,15 @@ class DatabaseBackupEngineTest {
         @Override public ZoneId getZone() { return ZoneOffset.UTC; }
         @Override public Clock withZone(ZoneId zone) { return this; }
         @Override public Instant instant() { return instant; }
+    }
+
+    private static int indexOf(byte[] content, byte[] needle) {
+        outer: for (int offset = 0; offset <= content.length - needle.length; offset++) {
+            for (int index = 0; index < needle.length; index++) {
+                if (content[offset + index] != needle[index]) continue outer;
+            }
+            return offset;
+        }
+        return -1;
     }
 }

@@ -132,13 +132,13 @@ class PlatformSchemaMigrationTest {
                 INSERT INTO operator_accounts(
                     username, display_name, password_hash, account_type,
                     enabled, created_at, updated_at)
-                VALUES ('StoreUser', '门店操作员', 'hash-a', 'OPERATOR', 1, 'now', 'now')
+                VALUES ('StoreUser', '门店操作员', 'hash-a', 'CLERK', 1, 'now', 'now')
                 """);
             org.junit.jupiter.api.Assertions.assertThrows(DataAccessException.class, () -> jdbc.update("""
                 INSERT INTO operator_accounts(
                     username, display_name, password_hash, account_type,
                     enabled, created_at, updated_at)
-                VALUES ('storeuser', '重名操作员', 'hash-b', 'OPERATOR', 1, 'now', 'now')
+                VALUES ('storeuser', '重名操作员', 'hash-b', 'CLERK', 1, 'now', 'now')
                 """));
         } finally {
             Files.deleteIfExists(database);

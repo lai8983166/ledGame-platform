@@ -36,10 +36,11 @@ describe("authoritative points projections", () => {
   });
 
   it("routes each visible operational export to a fixed complete dataset", () => {
-    expect(members).toContain('exportData("members", operator.id)');
-    expect(members).toContain('data-testid="admin-members-export"');
+    expect(members).not.toContain('exportData("members", operator.id)');
+    expect(members).not.toContain('data-testid="admin-members-export"');
     expect(records).toContain('members: "members", transactions: "wristband-charges", plays: "game-plays", cards: null');
     expect(records).toContain('data-testid="admin-records-export"');
+    expect(records).toContain('canUseOperatorCapability(operatorSession.current.value, "exportData")');
     expect(records).toContain('text("recordExportNote")');
   });
 

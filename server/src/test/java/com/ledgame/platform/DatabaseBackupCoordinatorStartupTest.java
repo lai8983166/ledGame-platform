@@ -191,6 +191,7 @@ class DatabaseBackupCoordinatorStartupTest {
         Files.createDirectories(latest.getParent());
         Files.writeString(latest, "backup");
         Files.writeString(backupRoot.resolve("latest/metadata.json"), "metadata");
+        Files.writeString(backupRoot.resolve("latest/data-key.dpapi"), "protected-key");
         DatabaseBackupProperties properties = new DatabaseBackupProperties();
         properties.setRootOverride(backupRoot.toString());
         properties.setPollMillis(60_000);
@@ -203,17 +204,19 @@ class DatabaseBackupCoordinatorStartupTest {
         DatabaseBackupMetadata metadata = new DatabaseBackupMetadata(format, environment, 1,
                 backupState.instanceId(), backupState.revision(), backupState.lastBusinessModifiedAt(),
                 backupState.importedFromRevision(), backupState.importedAt(), Instant.parse("2026-09-02T00:00:01Z"),
-                source.toString(), "test", 6, "hash", "ok");
+                source.toString(), "test", 6, "hash", "ok",
+                ProtectedDataService.ENCRYPTION_VERSION, "test-key-id");
         when(engine.readLatestMetadata(any())).thenReturn(metadata);
         when(engine.acceptsMetadata(any())).thenAnswer(invocation -> {
             DatabaseBackupMetadata value = invocation.getArgument(0);
             return DatabaseBackupEngine.METADATA_FORMAT.equals(value.format())
                     && properties.getEnvironment().equals(value.environment());
         });
+        when(engine.acceptsKeyEnvelope(any(), any())).thenReturn(true);
         DatabaseBackupMetadata mainMetadata = new DatabaseBackupMetadata("ledgame-platform-backup-v2", "PRODUCTION", 1,
                 mainState.instanceId(), mainState.revision(), mainState.lastBusinessModifiedAt(),
                 mainState.importedFromRevision(), mainState.importedAt(), Instant.parse("2026-09-02T00:00:02Z"),
-                source.toString(), "override", 6, "hash", "ok");
+                source.toString(), "override", 6, "hash", "ok", null, null);
         when(engine.backup(any(), anyString())).thenReturn(mainMetadata);
         DatabaseStateService stateService = mock(DatabaseStateService.class);
         when(stateService.current()).thenReturn(mainState);

@@ -10,6 +10,7 @@ type OperatorAccountApi = {
   updateOperatorAccount(id: number, input: UpdateOperatorAccountInput): Promise<OperatorAccount>;
   resetOperatorPassword(id: number, password: string): Promise<OperatorAccount>;
   setOperatorEnabled(id: number, enabled: boolean): Promise<OperatorAccount>;
+  deleteOperatorAccount(id: number): Promise<OperatorAccount>;
 };
 
 export function createOperatorAccountManager(api: OperatorAccountApi) {
@@ -50,6 +51,16 @@ export function createOperatorAccountManager(api: OperatorAccountApi) {
         return false;
       }
       return submit(async () => replace(await api.setOperatorEnabled(id, enabled)));
+    },
+    async remove(id: number) {
+      if (state.accounts.find((account) => account.id === id)?.accountType === "FACTORY_ADMIN") {
+        state.error = "出厂管理员不能被删除";
+        return false;
+      }
+      return submit(async () => {
+        await api.deleteOperatorAccount(id);
+        state.accounts = state.accounts.filter((account) => account.id !== id);
+      });
     },
   };
 

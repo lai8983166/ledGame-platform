@@ -38,7 +38,7 @@ public class DatabaseBackupController {
             HttpServletRequest request,
             @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
         requireLoopback(request);
-        authorization.require(operatorId);
+        authorization.requireFactory(operatorId);
         return coordinator.status();
     }
 

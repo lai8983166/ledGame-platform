@@ -16,6 +16,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
@@ -31,6 +33,9 @@ class RoomConnectionWebSocketIntegrationTest {
 
     @Autowired
     private TestRestTemplate http;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Test
     void connectsPublishesEventAndMarksProjectionOfflineAfterDisconnect() throws Exception {
@@ -59,7 +64,7 @@ class RoomConnectionWebSocketIntegrationTest {
                     .containsEntry("running", true);
             ResponseEntity<Map> renamed = http.exchange(
                     "/api/rooms/127.0.0.1", HttpMethod.PUT,
-                    new HttpEntity<>(Map.of("roomName", "测试房间")), Map.class);
+                    new HttpEntity<>(Map.of("roomName", "测试房间"), operatorHeaders()), Map.class);
             assertThat(renamed.getStatusCode().is2xxSuccessful()).isTrue();
             assertThat(awaitRoom(room -> "测试房间".equals(room.get("roomName"))))
                     .containsEntry("online", true);
@@ -91,14 +96,14 @@ class RoomConnectionWebSocketIntegrationTest {
 
             ResponseEntity<Map> updated = http.exchange(
                     "/api/feature-settings/child-mode", HttpMethod.PUT,
-                    new HttpEntity<>(Map.of("enabled", true)), Map.class);
+                    new HttpEntity<>(Map.of("enabled", true), operatorHeaders()), Map.class);
             assertThat(updated.getBody()).containsEntry("childMode", true);
             assertThat(messages.poll(3, TimeUnit.SECONDS))
                     .contains("CHILD_MODE_CHANGED", "\"childMode\":true");
         } finally {
             session.close();
             http.exchange("/api/feature-settings/child-mode", HttpMethod.PUT,
-                    new HttpEntity<>(Map.of("enabled", false)), Map.class);
+                    new HttpEntity<>(Map.of("enabled", false), operatorHeaders()), Map.class);
         }
     }
 
@@ -106,8 +111,9 @@ class RoomConnectionWebSocketIntegrationTest {
     private Map<String, Object> awaitRoom(Predicate<Map<String, Object>> predicate) throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
         while (System.nanoTime() < deadline) {
-            ResponseEntity<List<Map<String, Object>>> response = http.getForEntity(
-                    "/api/rooms", (Class<List<Map<String, Object>>>) (Class<?>) List.class);
+            ResponseEntity<List<Map<String, Object>>> response = http.exchange(
+                    "/api/rooms", HttpMethod.GET, new HttpEntity<>(operatorHeaders()),
+                    (Class<List<Map<String, Object>>>) (Class<?>) List.class);
             if (response.getBody() != null) {
                 for (Map<String, Object> room : response.getBody()) {
                     if (predicate.test(room)) return room;
@@ -116,5 +122,14 @@ class RoomConnectionWebSocketIntegrationTest {
             Thread.sleep(50);
         }
         throw new AssertionError("Timed out waiting for room projection");
+    }
+
+    private HttpHeaders operatorHeaders() {
+        Long id = jdbc.queryForObject(
+                "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
+                Long.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(id));
+        return headers;
     }
 }

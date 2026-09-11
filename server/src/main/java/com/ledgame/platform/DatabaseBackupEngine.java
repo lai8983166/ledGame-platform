@@ -7,6 +7,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -17,6 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -31,7 +33,10 @@ public class DatabaseBackupEngine {
     private final ZoneId zoneId;
     private final Path sourceDatabase;
     private final boolean inMemoryDatabase;
+    private final DataProtectionKeyManager dataKeys;
+    private final ProtectedDataService protectedData;
 
+    @Autowired
     public DatabaseBackupEngine(
             SqliteOnlineBackup onlineBackup,
             DatabaseFileInspector inspector,
@@ -39,7 +44,9 @@ public class DatabaseBackupEngine {
             DatabaseBackupProperties properties,
             Clock clock,
             @Value("${ledgame.time-zone:Asia/Shanghai}") String timeZone,
-            @Value("${spring.datasource.url}") String datasourceUrl) {
+            @Value("${spring.datasource.url}") String datasourceUrl,
+            DataProtectionKeyManager dataKeys,
+            ProtectedDataService protectedData) {
         this.onlineBackup = onlineBackup;
         this.inspector = inspector;
         this.objectMapper = objectMapper;
@@ -48,6 +55,23 @@ public class DatabaseBackupEngine {
         this.zoneId = ZoneId.of(timeZone);
         this.inMemoryDatabase = isInMemoryDatabase(datasourceUrl);
         this.sourceDatabase = databasePath(datasourceUrl);
+        this.dataKeys = dataKeys;
+        this.protectedData = protectedData;
+    }
+
+    DatabaseBackupEngine(
+            SqliteOnlineBackup onlineBackup, DatabaseFileInspector inspector, ObjectMapper objectMapper,
+            DatabaseBackupProperties properties, Clock clock, String timeZone, String datasourceUrl) {
+        this.onlineBackup = onlineBackup;
+        this.inspector = inspector;
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+        this.clock = clock;
+        this.zoneId = ZoneId.of(timeZone);
+        this.inMemoryDatabase = isInMemoryDatabase(datasourceUrl);
+        this.sourceDatabase = databasePath(datasourceUrl);
+        this.dataKeys = null;
+        this.protectedData = null;
     }
 
     public Path sourceDatabase() { return sourceDatabase; }
@@ -57,7 +81,19 @@ public class DatabaseBackupEngine {
     public boolean acceptsMetadata(DatabaseBackupMetadata metadata) {
         return metadata != null
                 && METADATA_FORMAT.equals(metadata.format())
-                && properties.getEnvironment().equals(metadata.environment());
+                && properties.getEnvironment().equals(metadata.environment())
+                && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
+                && metadata.keyId() != null && !metadata.keyId().isBlank();
+    }
+
+    public boolean acceptsKeyEnvelope(Path envelopePath, DatabaseBackupMetadata metadata) {
+        if (!acceptsMetadata(metadata)) return false;
+        if (dataKeys == null || !dataKeys.requiresProtectedEnvelope()) return true;
+        try {
+            return metadata.keyId().equals(dataKeys.loadEnvelope(envelopePath).keyId());
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     public DatabaseBackupMetadata backup(Path root, String targetDiskIdentity) {
@@ -74,6 +110,7 @@ public class DatabaseBackupEngine {
             onlineBackup.create(candidate);
             InspectedDatabase inspected = inspector.inspect(candidate);
             if (!inspected.valid()) throw new IllegalStateException(BackupErrorCode.BACKUP_INTEGRITY_FAILED.name());
+            verifyProtectedDatabase(candidate);
             Instant generatedAt = clock.instant();
             DatabaseStateSnapshot state = inspected.state();
             DatabaseBackupMetadata metadata = new DatabaseBackupMetadata(
@@ -81,9 +118,11 @@ public class DatabaseBackupEngine {
                     state.instanceId(), state.revision(),
                     state.lastBusinessModifiedAt(), state.importedFromRevision(), state.importedAt(), generatedAt,
                     sourceDatabase.toString(), targetDiskIdentity, inspected.fileSize(), inspected.sha256(),
-                    inspected.integrityResult());
+                    inspected.integrityResult(), ProtectedDataService.ENCRYPTION_VERSION,
+                    protectedData == null ? "test-key" : protectedData.keyId());
             Path candidateMetadata = stagingDirectory.resolve(candidate.getFileName() + ".json");
             writeJson(candidateMetadata, metadata);
+            publishKeyEnvelope(latestDirectory);
             publishPair(candidate, candidateMetadata,
                     latestDirectory.resolve("platform.db"), latestDirectory.resolve("metadata.json"));
             createDailyHistory(latestDirectory, historyDirectory, metadata);
@@ -122,6 +161,11 @@ public class DatabaseBackupEngine {
         Path historyMetadata = historyDirectory.resolve(prefix + "-platform.json");
         Files.copy(latestDirectory.resolve("platform.db"), historyDatabase, StandardCopyOption.COPY_ATTRIBUTES);
         Files.copy(latestDirectory.resolve("metadata.json"), historyMetadata, StandardCopyOption.COPY_ATTRIBUTES);
+        Path latestKey = latestDirectory.resolve("data-key.dpapi");
+        if (Files.isRegularFile(latestKey)) {
+            Files.copy(latestKey, historyDirectory.resolve(prefix + "-data-key.dpapi"),
+                    StandardCopyOption.COPY_ATTRIBUTES);
+        }
     }
 
     private void cleanupHistory(Path historyDirectory) throws IOException {
@@ -136,6 +180,74 @@ public class DatabaseBackupEngine {
             if (modified(database).isBefore(cutoff)) {
                 Files.deleteIfExists(database);
                 Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-platform.json")));
+                Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-data-key.dpapi")));
+            }
+        }
+    }
+
+    private void publishKeyEnvelope(Path latestDirectory) throws IOException {
+        if (dataKeys == null) return;
+        byte[] envelope = dataKeys.envelopeBytes();
+        if (envelope.length == 0) return;
+        Path target = latestDirectory.resolve("data-key.dpapi");
+        Path temporary = target.resolveSibling("data-key.dpapi.writing");
+        Files.write(temporary, envelope);
+        move(temporary, target, true);
+    }
+
+    private void verifyProtectedDatabase(Path database) {
+        if (protectedData == null) return;
+        try {
+            org.sqlite.SQLiteConfig config = new org.sqlite.SQLiteConfig();
+            config.setReadOnly(true);
+            try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database, config.toProperties());
+                 var state = connection.prepareStatement(
+                         "SELECT format_version, key_id, status FROM data_protection_state WHERE id=1");
+                 var rows = state.executeQuery()) {
+                if (!rows.next()
+                        || rows.getInt("format_version") != DataProtectionMigration.FORMAT_VERSION
+                        || !"COMPLETE".equals(rows.getString("status"))
+                        || !protectedData.keyId().equals(rows.getString("key_id"))) {
+                    throw new IllegalStateException("DATA_PROTECTION_BACKUP_STATE_INVALID");
+                }
+                verifyColumn(connection, "members", "phone");
+                verifyColumn(connection, "members", "name");
+                verifyColumn(connection, "members", "avatar_id");
+                verifyColumn(connection, "members", "birthday");
+                verifyColumn(connection, "members", "gender");
+                verifyColumn(connection, "wristbands", "card_uid");
+                verifyColumn(connection, "wristband_charge_records", "wristband_uid");
+                verifyColumn(connection, "game_play_records", "wristband_uid");
+                verifyColumn(connection, "game_play_records", "result_json");
+                verifyColumn(connection, "operator_action_logs", "operator_username");
+                verifyColumn(connection, "operator_action_logs", "operator_display_name");
+                verifyColumn(connection, "operator_action_logs", "target_id");
+                verifyColumn(connection, "operator_action_logs", "summary_json");
+            }
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("DATA_PROTECTION_BACKUP_VERIFY_FAILED", exception);
+        }
+    }
+
+    private void verifyColumn(java.sql.Connection connection, String table, String column) throws Exception {
+        try (var plaintext = connection.createStatement();
+             var rows = plaintext.executeQuery("SELECT COUNT(*) FROM " + table
+                     + " WHERE " + column + " IS NOT NULL AND " + column + " NOT LIKE 'enc:v1:%'")) {
+            if (rows.next() && rows.getLong(1) != 0) {
+                throw new IllegalStateException("DATA_PROTECTION_BACKUP_PLAINTEXT_FOUND: " + table + "." + column);
+            }
+        }
+        try (var statement = connection.prepareStatement(
+                "SELECT " + column + " FROM " + table + " WHERE " + column + " IS NOT NULL LIMIT 50");
+             var rows = statement.executeQuery()) {
+            while (rows.next()) {
+                String value = rows.getString(1);
+                if (!protectedData.isEncrypted(value)) {
+                    throw new IllegalStateException("DATA_PROTECTION_BACKUP_PLAINTEXT_FOUND: " + table + "." + column);
+                }
+                protectedData.decryptField(table, column, value);
             }
         }
     }

@@ -3,7 +3,8 @@ import { createOperatorSession } from "./operatorSession";
 import { canUseOperatorCapability } from "./operatorPolicy";
 
 const factory = { id: 1, username: "admin", displayName: "出厂管理员", accountType: "FACTORY_ADMIN" as const };
-const operator = { id: 2, username: "counter", displayName: "前台", accountType: "OPERATOR" as const };
+const manager = { id: 2, username: "manager", displayName: "店长", accountType: "STORE_MANAGER" as const };
+const clerk = { id: 3, username: "counter", displayName: "前台", accountType: "CLERK" as const };
 
 describe("in-memory operator session", () => {
   it("starts empty, accepts a login profile and clears it on logout", () => {
@@ -24,15 +25,22 @@ describe("in-memory operator session", () => {
 
 describe("fixed operator role policy", () => {
   it("allows the factory administrator to use all protected capabilities", () => {
-    for (const capability of ["settings", "deleteMember", "clearWristbandBalance", "renameRoom", "manageAccounts"] as const) {
+    for (const capability of ["operationsView", "deleteMember", "clearWristbandBalance", "renameRoom", "exportData"] as const) {
       expect(canUseOperatorCapability(factory, capability)).toBe(true);
     }
   });
 
-  it("keeps daily work available but hides dangerous capabilities from an operator", () => {
-    expect(canUseOperatorCapability(operator, "dailyOperations")).toBe(true);
-    for (const capability of ["settings", "deleteMember", "clearWristbandBalance", "renameRoom", "manageAccounts"] as const) {
-      expect(canUseOperatorCapability(operator, capability)).toBe(false);
+  it("allows managers to operate and export but blocks factory-only deletion and maintenance", () => {
+    for (const capability of ["operationsView", "clearWristbandBalance", "renameRoom", "exportData"] as const) {
+      expect(canUseOperatorCapability(manager, capability)).toBe(true);
+    }
+    expect(canUseOperatorCapability(manager, "deleteMember")).toBe(false);
+  });
+
+  it("limits clerks to front-desk operations and feature switches", () => {
+    expect(canUseOperatorCapability(clerk, "clearWristbandBalance")).toBe(true);
+    for (const capability of ["operationsView", "deleteMember", "renameRoom", "exportData"] as const) {
+      expect(canUseOperatorCapability(clerk, capability)).toBe(false);
     }
   });
 });

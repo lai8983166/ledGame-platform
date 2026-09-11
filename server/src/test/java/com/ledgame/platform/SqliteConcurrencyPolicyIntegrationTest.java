@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -40,6 +41,7 @@ class SqliteConcurrencyPolicyIntegrationTest {
 
     @Autowired private DataSource dataSource;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private ProtectedDataService protectedData;
 
     @Test
     void appliesSingleConnectionWalAndConfiguredBusyTimeoutToTheRealDatasource() {
@@ -56,16 +58,20 @@ class SqliteConcurrencyPolicyIntegrationTest {
     }
 
     @Test
-    void preservesExistingBusinessDataAndAcceptsNewWritesWithoutMigration() {
-        assertThat(jdbc.queryForObject(
-                "SELECT name FROM members WHERE phone='13900000001'",
-                String.class)).isEqualTo("existing member");
+    void migratesExistingBusinessDataAndAcceptsProtectedNewWrites() {
+        Map<String, Object> existing = jdbc.queryForMap("SELECT phone, name FROM members WHERE id=1");
+        assertThat(protectedData.decryptField("members", "phone", existing.get("phone")))
+                .isEqualTo("13900000001");
+        assertThat(protectedData.decryptField("members", "name", existing.get("name")))
+                .isEqualTo("existing member");
 
         jdbc.update("""
-            INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
-            VALUES ('13900000002', 'new member', 'ACTIVE',
+            INSERT INTO members(phone, phone_lookup_hash, name, status, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, 'ACTIVE',
                     '2026-09-05T00:00:00Z', '2026-09-05T00:00:00Z', 'compatibility-test')
-            """);
+            """, protectedData.encryptField("members", "phone", "13900000002"),
+                protectedData.phoneLookupHash("13900000002"),
+                protectedData.encryptField("members", "name", "new member"));
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM members", Integer.class)).isEqualTo(2);
     }

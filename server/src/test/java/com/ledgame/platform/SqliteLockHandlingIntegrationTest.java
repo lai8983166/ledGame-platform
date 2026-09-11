@@ -28,6 +28,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,9 +55,13 @@ class SqliteLockHandlingIntegrationTest {
     @Autowired private TestRestTemplate http;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataSource dataSource;
+    private long factoryOperatorId;
 
     @BeforeEach
     void clearBusinessData() {
+        factoryOperatorId = jdbc.queryForObject(
+                "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
+                Long.class);
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
         jdbc.update("DELETE FROM wristband_bindings");
@@ -78,10 +83,10 @@ class SqliteLockHandlingIntegrationTest {
             ResponseEntity<Map<String, Object>> response = pending.get();
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM wristbands WHERE card_uid='73000000000000000001'",
+                    "SELECT COUNT(*) FROM wristbands",
                     Integer.class)).isEqualTo(1);
             assertThat(jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM wristband_charge_records WHERE wristband_uid='73000000000000000001'",
+                    "SELECT COUNT(*) FROM wristband_charge_records",
                     Integer.class)).isEqualTo(1);
         } finally {
             executor.shutdownNow();
@@ -108,23 +113,25 @@ class SqliteLockHandlingIntegrationTest {
             assertThat(Duration.between(started, Instant.now())).isBetween(
                     Duration.ofMillis(300), Duration.ofSeconds(3));
             assertThat(jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM wristbands WHERE card_uid='73000000000000000002'",
+                    "SELECT COUNT(*) FROM wristbands",
                     Integer.class)).isZero();
             assertThat(jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM wristband_charge_records WHERE wristband_uid='73000000000000000002'",
+                    "SELECT COUNT(*) FROM wristband_charge_records",
                     Integer.class)).isZero();
 
             ResponseEntity<Map<String, Object>> next = charge("73000000000000000003");
             assertThat(next.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM wristband_charge_records WHERE wristband_uid='73000000000000000003'",
+                    "SELECT COUNT(*) FROM wristband_charge_records",
                     Integer.class)).isEqualTo(1);
         }
     }
 
     private ResponseEntity<Map<String, Object>> charge(String uid) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(factoryOperatorId));
         return http.exchange("/api/wristbands/charge", HttpMethod.POST,
-                new HttpEntity<>(Map.of("uid", uid, "durationMinutes", 30)),
+                new HttpEntity<>(Map.of("uid", uid, "durationMinutes", 30), headers),
                 new ParameterizedTypeReference<>() {});
     }
 

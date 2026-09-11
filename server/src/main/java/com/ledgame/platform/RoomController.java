@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @RestController
 @RequestMapping("/api/rooms")
@@ -18,19 +19,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class RoomController {
     private final RoomConnectionRegistry registry;
     private final RoomSettingsService settings;
+    private final OperatorAuthorizationService authorization;
 
-    public RoomController(RoomConnectionRegistry registry, RoomSettingsService settings) {
+    public RoomController(RoomConnectionRegistry registry, RoomSettingsService settings,
+            OperatorAuthorizationService authorization) {
         this.registry = registry;
         this.settings = settings;
+        this.authorization = authorization;
     }
 
     @GetMapping
-    public List<Map<String, Object>> list() {
+    public List<Map<String, Object>> list(@RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.OPERATIONS_VIEW);
         return settings.merge(registry.list());
     }
 
     @GetMapping("/{ip}")
-    public Map<String, Object> get(@PathVariable String ip) {
+    public Map<String, Object> get(@PathVariable String ip,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.OPERATIONS_VIEW);
         Map<String, Object> projection = registry.find(ip);
         Map<String, Object> room = projection == null
                 ? settings.merge(List.of()).stream()
@@ -42,9 +49,11 @@ public class RoomController {
     }
 
     @PutMapping("/{ip}")
-    public Map<String, Object> rename(@PathVariable String ip, @RequestBody RoomNameRequest request) {
+    public Map<String, Object> rename(@PathVariable String ip, @RequestBody RoomNameRequest request,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.OPERATIONS_VIEW);
         settings.saveName(ip, request == null ? null : request.roomName());
-        return get(ip);
+        return get(ip, operatorId);
     }
 
     public record RoomNameRequest(String roomName) {}

@@ -52,6 +52,17 @@ describe("member-admin operational CSV export", () => {
     assert.equal(writes.length, 0);
   });
 
+  it("does not create a file when the backend rejects a clerk with 403", async () => {
+    const writes = [];
+    await assert.rejects(() => exportDataset({ key: "game-plays", operatorId: 3, window: {},
+      dialog: { showSaveDialog: async () => ({ canceled: false, filePath: "C:/output/denied.csv" }) },
+      transport: async () => ({ status: 403, body: JSON.stringify({
+        code: "OPERATOR_FORBIDDEN", message: "当前账号没有执行此操作的权限",
+      }) }),
+      fileSystem: { writeFileSync: (...args) => writes.push(args) } }), /权限/);
+    assert.equal(writes.length, 0);
+  });
+
   it("cleans up the temporary file when the atomic write fails", async () => {
     const calls = [];
     const fileSystem = {

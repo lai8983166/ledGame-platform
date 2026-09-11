@@ -63,7 +63,12 @@ const descriptionKeys: Record<PageId, MemberAdminMessageKey> = {
 const maintenanceMode = computed(() => backupStatus.value?.state === "MAINTENANCE_LOGIN_REQUIRED");
 const navItems = computed(() => navDefinitions
   .filter((item) => !maintenanceMode.value || item.id === "settings")
-  .filter((item) => item.id !== "settings" || canUseOperatorCapability(currentOperator.value, "settings"))
+  .filter((item) => {
+    if (["overview", "rooms", "records", "ranking"].includes(item.id)) {
+      return canUseOperatorCapability(currentOperator.value, "operationsView");
+    }
+    return true;
+  })
   .map((item) => ({ ...item, label: text(item.labelKey) })));
 const currentMeta = computed(() => ({
   title: navItems.value.find((item) => item.id === activePage.value)?.label ?? "",
@@ -77,6 +82,7 @@ const selectLocale = (value: PlatformLocale) => {
 };
 
 const navigate = (page: PageId) => {
+  if (!navItems.value.some((item) => item.id === page)) return;
   activePage.value = page;
   mobileNavOpen.value = false;
   window.scrollTo({ top: 0, behavior: "smooth" });

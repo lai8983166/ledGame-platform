@@ -37,6 +37,7 @@ export interface PlatformApiClient {
   updateOperatorAccount(id: number, input: UpdateOperatorAccountInput): Promise<OperatorAccount>;
   resetOperatorPassword(id: number, password: string): Promise<OperatorAccount>;
   setOperatorEnabled(id: number, enabled: boolean): Promise<OperatorAccount>;
+  deleteOperatorAccount(id: number): Promise<OperatorAccount>;
   getFeatureSettings(): Promise<ChildModeSetting>;
   setChildMode(enabled: boolean): Promise<ChildModeSetting>;
   recordSystemSettingsChange(): Promise<void>;
@@ -45,7 +46,7 @@ export interface PlatformApiClient {
   keepCurrentDatabase(): Promise<DatabaseBackupStatus>;
 }
 
-export type OperatorAccountType = "FACTORY_ADMIN" | "OPERATOR";
+export type OperatorAccountType = "FACTORY_ADMIN" | "STORE_MANAGER" | "CLERK";
 
 export interface OperatorProfile {
   id: number;
@@ -64,6 +65,7 @@ export interface CreateOperatorAccountInput {
   username: string;
   displayName: string;
   password: string;
+  accountType: Exclude<OperatorAccountType, "FACTORY_ADMIN">;
 }
 
 export interface UpdateOperatorAccountInput {
@@ -420,6 +422,11 @@ export function createPlatformApiClient({
         method: "PUT",
         body: JSON.stringify({ enabled }),
       }), "修改账号状态响应为空");
+    },
+    async deleteOperatorAccount(id: number): Promise<OperatorAccount> {
+      return requireResponse(await client.request<OperatorAccount>(`/api/operator-accounts/${id}`, {
+        method: "DELETE",
+      }), "删除账号响应为空");
     },
     async getFeatureSettings(): Promise<ChildModeSetting> {
       return requireResponse(await client.request<ChildModeSetting>("/api/feature-settings"),

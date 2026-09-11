@@ -71,6 +71,48 @@ describe("member admin atomic database import", () => {
     expect(fs.readFileSync(files.databasePath, "utf8")).toBe("old-database");
   });
 
+  it("atomically replaces and rolls back the DPAPI key envelope with the database", () => {
+    const files = fixture();
+    const keyPath = path.join(path.dirname(files.databasePath), "security", "data-key.dpapi");
+    const preparedKey = path.join(path.dirname(files.preparedDatabasePath), "candidate-key.dpapi");
+    fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+    fs.writeFileSync(keyPath, "old-protected-key");
+    fs.writeFileSync(preparedKey, "new-protected-key");
+
+    const state = replaceDatabase(files.databasePath, {
+      preparedDatabasePath: files.preparedDatabasePath,
+      sha256: sha256(files.preparedDatabasePath),
+      preparedKeyEnvelopePath: preparedKey,
+      keyEnvelopeSha256: sha256(preparedKey),
+    });
+
+    expect(fs.readFileSync(files.databasePath, "utf8")).toBe("new-database");
+    expect(fs.readFileSync(keyPath, "utf8")).toBe("new-protected-key");
+    expect(fs.readFileSync(path.join(state.rollbackDirectory, "data-key.dpapi"), "utf8"))
+      .toBe("old-protected-key");
+    expect(restoreRollback(files.databasePath, state)).toBe(true);
+    expect(fs.readFileSync(files.databasePath, "utf8")).toBe("old-database");
+    expect(fs.readFileSync(keyPath, "utf8")).toBe("old-protected-key");
+  });
+
+  it("rejects an invalid prepared key envelope hash before touching current data", () => {
+    const files = fixture();
+    const keyPath = path.join(path.dirname(files.databasePath), "security", "data-key.dpapi");
+    const preparedKey = path.join(path.dirname(files.preparedDatabasePath), "candidate-key.dpapi");
+    fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+    fs.writeFileSync(keyPath, "old-protected-key");
+    fs.writeFileSync(preparedKey, "new-protected-key");
+
+    expect(() => replaceDatabase(files.databasePath, {
+      preparedDatabasePath: files.preparedDatabasePath,
+      sha256: sha256(files.preparedDatabasePath),
+      preparedKeyEnvelopePath: preparedKey,
+      keyEnvelopeSha256: "0".repeat(64),
+    })).toThrow("IMPORT_PREPARED_KEY_HASH_MISMATCH");
+    expect(fs.readFileSync(files.databasePath, "utf8")).toBe("old-database");
+    expect(fs.readFileSync(keyPath, "utf8")).toBe("old-protected-key");
+  });
+
   it("recovers when power is lost after the main file moved but before the phase advanced", () => {
     const files = fixture();
     const rollbackDirectory = path.join(path.dirname(files.databasePath), "pre-import", "interrupted");

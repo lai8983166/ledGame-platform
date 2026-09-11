@@ -23,9 +23,12 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -75,6 +78,9 @@ class OperatorAccountApiIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private ProtectedDataService protectedData;
 
     private long factoryId;
 
@@ -141,40 +147,41 @@ class OperatorAccountApiIntegrationTest {
 
     @Test
     void factoryCanListCreateEditResetPasswordAndDisableOperatorWithoutPasswordLeaks() {
-        ResponseEntity<Map<String, Object>> created = post("/api/operator-accounts", Map.of(
+        ResponseEntity<Map<String, Object>> created = postAsOperator("/api/operator-accounts", Map.of(
                 "username", "front-desk",
                 "displayName", "前台小王",
-                "password", "initial-password"));
+                "password", "initial-password",
+                "accountType", "CLERK"), factoryId);
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(created.getBody())
                 .containsEntry("username", "front-desk")
                 .containsEntry("displayName", "前台小王")
-                .containsEntry("accountType", "OPERATOR")
+                .containsEntry("accountType", "CLERK")
                 .containsEntry("enabled", true)
                 .doesNotContainKeys("password", "passwordHash");
         long operatorId = number(created.getBody().get("id"));
 
         ResponseEntity<List<Map<String, Object>>> listed = http.exchange(
-                "/api/operator-accounts", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+                "/api/operator-accounts", HttpMethod.GET, operatorEntity(factoryId), new ParameterizedTypeReference<>() {});
         assertThat(listed.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listed.getBody()).hasSize(2);
         assertThat(listed.getBody()).allSatisfy(account ->
                 assertThat(account).doesNotContainKeys("password", "passwordHash"));
 
-        ResponseEntity<Map<String, Object>> edited = put(
+        ResponseEntity<Map<String, Object>> edited = putAsOperator(
                 "/api/operator-accounts/" + operatorId,
-                Map.of("username", "counter", "displayName", "收银台"));
+                Map.of("username", "counter", "displayName", "收银台"), factoryId);
         assertThat(edited.getBody())
                 .containsEntry("username", "counter")
                 .containsEntry("displayName", "收银台");
 
-        assertThat(put("/api/operator-accounts/" + operatorId + "/password",
-                Map.of("password", "changed-password")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(putAsOperator("/api/operator-accounts/" + operatorId + "/password",
+                Map.of("password", "changed-password"), factoryId).getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(post("/api/operator-auth/login", Map.of(
                 "username", "counter", "password", "changed-password")).getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        ResponseEntity<Map<String, Object>> disabled = put(
-                "/api/operator-accounts/" + operatorId + "/enabled", Map.of("enabled", false));
+        ResponseEntity<Map<String, Object>> disabled = putAsOperator(
+                "/api/operator-accounts/" + operatorId + "/enabled", Map.of("enabled", false), factoryId);
         assertThat(disabled.getBody()).containsEntry("enabled", false);
         assertThat(post("/api/operator-auth/login", Map.of(
                 "username", "counter", "password", "changed-password")).getStatusCode())
@@ -185,19 +192,20 @@ class OperatorAccountApiIntegrationTest {
     void rejectsCaseInsensitiveUsernameConflictsAndProtectsFactoryAdmin() {
         long operatorId = createOperator("front-desk", "前台", "initial-password", true);
 
-        ResponseEntity<Map<String, Object>> duplicate = post("/api/operator-accounts", Map.of(
+        ResponseEntity<Map<String, Object>> duplicate = postAsOperator("/api/operator-accounts", Map.of(
                 "username", "FRONT-DESK",
                 "displayName", "重名",
-                "password", "another-password"));
+                "password", "another-password",
+                "accountType", "CLERK"), factoryId);
         assertError(duplicate, HttpStatus.CONFLICT, "OPERATOR_USERNAME_CONFLICT");
 
-        ResponseEntity<Map<String, Object>> renamedDuplicate = put(
+        ResponseEntity<Map<String, Object>> renamedDuplicate = putAsOperator(
                 "/api/operator-accounts/" + operatorId,
-                Map.of("username", "FACTORY-TEST", "displayName", "前台"));
+                Map.of("username", "FACTORY-TEST", "displayName", "前台"), factoryId);
         assertError(renamedDuplicate, HttpStatus.CONFLICT, "OPERATOR_USERNAME_CONFLICT");
 
-        ResponseEntity<Map<String, Object>> disabledFactory = put(
-                "/api/operator-accounts/" + factoryId + "/enabled", Map.of("enabled", false));
+        ResponseEntity<Map<String, Object>> disabledFactory = putAsOperator(
+                "/api/operator-accounts/" + factoryId + "/enabled", Map.of("enabled", false), factoryId);
         assertError(disabledFactory, HttpStatus.CONFLICT, "FACTORY_ADMIN_PROTECTED");
         assertThat(jdbc.queryForObject(
                 "SELECT enabled FROM operator_accounts WHERE id=?", Integer.class, factoryId)).isEqualTo(1);
@@ -209,18 +217,21 @@ class OperatorAccountApiIntegrationTest {
                 "phone", "13800138000", "name", "留痕测试会员"), factoryId);
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(jdbc.queryForObject(
-                "SELECT created_by FROM members WHERE phone='13800138000'", String.class))
+                "SELECT created_by FROM members WHERE id=?", String.class, number(created.getBody().get("id"))))
                 .isEqualTo("operator:factory-test");
-        assertThat(jdbc.queryForMap("SELECT * FROM operator_action_logs"))
+        Map<String, Object> audit = jdbc.queryForMap("SELECT * FROM operator_action_logs");
+        assertThat(audit)
                 .containsEntry("operator_id", (int) factoryId)
-                .containsEntry("operator_username", "factory-test")
-                .containsEntry("operator_display_name", "测试出厂管理员")
                 .containsEntry("action", "MEMBER_CREATED")
                 .containsEntry("target_type", "MEMBER");
+        assertThat(protectedData.decryptField("operator_action_logs", "operator_username", audit.get("operator_username")))
+                .isEqualTo("factory-test");
+        assertThat(protectedData.decryptField("operator_action_logs", "operator_display_name", audit.get("operator_display_name")))
+                .isEqualTo("测试出厂管理员");
 
         jdbc.update("UPDATE operator_accounts SET display_name='已改名管理员' WHERE id=?", factoryId);
-        assertThat(jdbc.queryForObject(
-                "SELECT operator_display_name FROM operator_action_logs", String.class))
+        assertThat(protectedData.decryptField("operator_action_logs", "operator_display_name",
+                jdbc.queryForObject("SELECT operator_display_name FROM operator_action_logs", String.class)))
                 .isEqualTo("测试出厂管理员");
 
         ResponseEntity<Map<String, Object>> failed = postAsOperator("/api/members", Map.of(
@@ -233,9 +244,29 @@ class OperatorAccountApiIntegrationTest {
     void rejectsUnknownOperatorHeaderBeforeMutatingBusinessData() {
         ResponseEntity<Map<String, Object>> response = postAsOperator("/api/members", Map.of(
                 "phone", "13900139000", "name", "不应写入"), 999999L);
-        assertError(response, HttpStatus.BAD_REQUEST, "OPERATOR_CONTEXT_INVALID");
+        assertError(response, HttpStatus.FORBIDDEN, "OPERATOR_SESSION_INVALID");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM members", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_action_logs", Integer.class)).isZero();
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void normalFailureDeniedAndExportLogsDoNotContainSensitiveValues(CapturedOutput output) {
+        String phone = "13977112233";
+        String name = "日志脱敏会员";
+        String uid = "887766554433";
+        String password = "never-log-this-password";
+        long clerkId = number(postAsOperator("/api/operator-accounts", Map.of(
+                "username", "log-safe-clerk", "displayName", "日志测试店员", "password", password,
+                "accountType", "CLERK"), factoryId).getBody().get("id"));
+        postAsOperator("/api/members", Map.of("phone", phone, "name", name), factoryId);
+        postAsOperator("/api/members", Map.of("phone", phone, "name", name), factoryId);
+        postAsOperator("/api/wristbands/charge", Map.of("uid", uid, "durationMinutes", 10), factoryId);
+        export("members", factoryId);
+        export("members", clerkId);
+
+        assertThat(output.getAll()).doesNotContain(phone, name, uid, password,
+                "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=");
     }
 
     @Test
@@ -243,7 +274,8 @@ class OperatorAccountApiIntegrationTest {
         long memberId = number(postAsOperator("/api/members", Map.of(
                 "phone", "13700137000", "name", "综合留痕会员"), factoryId).getBody().get("id"));
         long operatorId = number(postAsOperator("/api/operator-accounts", Map.of(
-                "username", "audit-user", "displayName", "留痕操作员", "password", "123456"), factoryId)
+                "username", "audit-user", "displayName", "留痕操作员", "password", "123456",
+                "accountType", "CLERK"), factoryId)
                 .getBody().get("id"));
         putAsOperator("/api/operator-accounts/" + operatorId,
                 Map.of("username", "audit-user", "displayName", "留痕改名"), factoryId);
@@ -274,8 +306,11 @@ class OperatorAccountApiIntegrationTest {
                         "ACCOUNT_ENABLED_CHANGED", "MEMBER_CREATED", "MEMBER_DELETED",
                         "WRISTBAND_CHARGED", "WRISTBAND_BALANCE_CLEARED", "WRISTBAND_UNBOUND",
                         "WRISTBAND_RECLAIMED", "ROOM_RENAMED", "SYSTEM_SETTINGS_UPDATED");
-        assertThat(jdbc.queryForMap("SELECT action, target_id FROM operator_action_logs WHERE action='SYSTEM_SETTINGS_UPDATED'"))
-                .containsEntry("target_id", "child-mode");
+        Object settingsTarget = jdbc.queryForMap(
+                "SELECT action, target_id FROM operator_action_logs WHERE action='SYSTEM_SETTINGS_UPDATED'")
+                .get("target_id");
+        assertThat(protectedData.decryptField("operator_action_logs", "target_id", settingsTarget))
+                .isEqualTo("child-mode");
         assertThat(jdbc.queryForList("SELECT summary_json FROM operator_action_logs").stream()
                 .map(row -> String.valueOf(row.get("summary_json"))))
                 .allSatisfy(summary -> assertThat(summary).doesNotContain("654321", "123456"));
@@ -283,12 +318,11 @@ class OperatorAccountApiIntegrationTest {
 
     @Test
     void exportsOperationalCsvOnlyForAnAuthorizedOperator() {
-        postAsOperator("/api/members", Map.of(
+        ResponseEntity<Map<String, Object>> firstMember = postAsOperator("/api/members", Map.of(
                 "phone", "13800138888", "name", "CSV,\"member\""), factoryId);
         postAsOperator("/api/members", Map.of(
                 "phone", "13800138889", "name", "second member"), factoryId);
-        long memberId = jdbc.queryForObject(
-                "SELECT id FROM members WHERE phone='13800138888'", Long.class);
+        long memberId = number(firstMember.getBody().get("id"));
         postAsOperator("/api/wristbands/charge", Map.of(
                 "uid", "99887766", "durationMinutes", 7), factoryId);
         postAsOperator("/api/wristbands/bind", Map.of(
@@ -328,29 +362,33 @@ class OperatorAccountApiIntegrationTest {
                 .contains(",42,42,raw-score-v1");
         assertThat(jdbc.queryForObject(
                 "SELECT revision FROM database_state WHERE id=1", Long.class))
-                .isEqualTo(revisionBeforeExport);
+                .isEqualTo(revisionBeforeExport + 3);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM operator_action_logs WHERE action='DATA_EXPORTED'",
+                Integer.class)).isGreaterThanOrEqualTo(3);
 
         HttpHeaders invalidHeaders = new HttpHeaders();
         invalidHeaders.set("X-Operator-Id", "999999");
         ResponseEntity<byte[]> rejected = http.exchange(
                 "/api/exports/members.csv", HttpMethod.GET,
                 new HttpEntity<>(invalidHeaders), byte[].class);
-        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
     void memberExportReadsOneCommittedSnapshotWhileAnotherTransactionWrites() throws Exception {
-        postAsOperator("/api/members", Map.of(
+        ResponseEntity<Map<String, Object>> member = postAsOperator("/api/members", Map.of(
                 "phone", "13800139991", "name", "并发导出会员"), factoryId);
-        long memberId = jdbc.queryForObject(
-                "SELECT id FROM members WHERE phone='13800139991'", Long.class);
+        long memberId = number(member.getBody().get("id"));
         String now = clock.instant().toString();
         jdbc.update("""
-            INSERT INTO wristbands(card_uid, status, duration_minutes, charged_at, created_at, updated_at)
-            VALUES ('export-concurrent-band', 'ACTIVE', 60, ?, ?, ?)
-            """, now, now, now);
+            INSERT INTO wristbands(card_uid, card_uid_lookup_hash, status, duration_minutes, charged_at, created_at, updated_at)
+            VALUES (?, ?, 'ACTIVE', 60, ?, ?, ?)
+            """, protectedData.encryptField("wristbands", "card_uid", "99009901"),
+                protectedData.wristbandLookupHash("99009901"), now, now, now);
         long wristbandId = jdbc.queryForObject(
-                "SELECT id FROM wristbands WHERE card_uid='export-concurrent-band'", Long.class);
+                "SELECT id FROM wristbands WHERE card_uid_lookup_hash=?", Long.class,
+                protectedData.wristbandLookupHash("99009901"));
         jdbc.update("""
             INSERT INTO wristband_bindings(wristband_id, member_id, status, duration_minutes, bound_at, started_at)
             VALUES (?, ?, 'ACTIVE', 60, ?, ?)
@@ -398,9 +436,11 @@ class OperatorAccountApiIntegrationTest {
             INSERT INTO game_play_records(member_id, binding_id, wristband_uid, device_id,
                 external_session_id, game_id, game_name, status, started_at, ended_at,
                 success, termination_reason, raw_score, points_awarded, scoring_policy)
-            VALUES (?, ?, 'export-concurrent-band', 'export-device', ?, 'simple', '并发快照',
+            VALUES (?, ?, ?, 'export-device', ?, 'simple', '并发快照',
                 'COMPLETED', ?, ?, 1, 'NATURAL_COMPLETION', ?, ?, 'raw-score-v1')
-            """, memberId, bindingId, sessionId, now, now, points, points);
+            """, memberId, bindingId,
+                protectedData.encryptField("game_play_records", "wristband_uid", "99009901"),
+                sessionId, now, now, points, points);
     }
 
     private static int memberCsvPoints(String csv, String phone) {
@@ -434,7 +474,7 @@ class OperatorAccountApiIntegrationTest {
             INSERT INTO operator_accounts(
                 username, display_name, password_hash, account_type,
                 enabled, created_by_operator_id, created_at, updated_at)
-            VALUES (?, ?, ?, 'OPERATOR', ?, ?, ?, ?)
+            VALUES (?, ?, ?, 'CLERK', ?, ?, ?, ?)
             """, username, displayName, passwordEncoder.encode(password), enabled ? 1 : 0,
                 factoryId, now, now);
         return jdbc.queryForObject("SELECT id FROM operator_accounts WHERE username=?", Long.class, username);
@@ -446,6 +486,12 @@ class OperatorAccountApiIntegrationTest {
 
     private ResponseEntity<Map<String, Object>> put(String path, Object body) {
         return http.exchange(path, HttpMethod.PUT, new HttpEntity<>(body), new ParameterizedTypeReference<>() {});
+    }
+
+    private static HttpEntity<Void> operatorEntity(long operatorId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(operatorId));
+        return new HttpEntity<>(headers);
     }
 
     private ResponseEntity<Map<String, Object>> postAsOperator(String path, Object body, long operatorId) {

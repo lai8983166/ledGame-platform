@@ -55,9 +55,13 @@ class DashboardOverviewApiIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataSource dataSource;
     @Autowired private MutableClock clock;
+    private long factoryOperatorId;
 
     @BeforeEach
     void clearData() {
+        factoryOperatorId = jdbc.queryForObject(
+                "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
+                Long.class);
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
@@ -84,10 +88,11 @@ class DashboardOverviewApiIntegrationTest {
         ResponseEntity<Map<String, Object>> rejected = charge("2283055802", 10);
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 
-        jdbc.update("INSERT INTO wristband_charge_records(wristband_id,wristband_uid,duration_minutes,unit_price_cents,amount_cents,charged_at) SELECT id,card_uid,20,100,2000,'2026-08-08T15:59:59Z' FROM wristbands WHERE card_uid='2283055801'");
+        jdbc.update("INSERT INTO wristband_charge_records(wristband_id,wristband_uid,duration_minutes,unit_price_cents,amount_cents,charged_at) SELECT id,card_uid,20,100,2000,'2026-08-08T15:59:59Z' FROM wristbands ORDER BY id LIMIT 1");
 
+        HttpHeaders overviewHeaders = operatorHeaders();
         ResponseEntity<Map<String, Object>> response = http.exchange(
-                "/api/dashboard/overview", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+                "/api/dashboard/overview", HttpMethod.GET, new HttpEntity<>(overviewHeaders), new ParameterizedTypeReference<>() {});
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody())
                 .containsEntry("totalMembers", 2)
@@ -105,11 +110,17 @@ class DashboardOverviewApiIntegrationTest {
     }
 
     private ResponseEntity<Map<String, Object>> charge(String uid, int minutes) {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaders headers = operatorHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         return http.exchange("/api/wristbands/charge", HttpMethod.POST,
                 new HttpEntity<>(Map.of("uid", uid, "durationMinutes", minutes), headers),
                 new ParameterizedTypeReference<>() {});
+    }
+
+    private HttpHeaders operatorHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(factoryOperatorId));
+        return headers;
     }
 
     private static Path createDatabasePath() {

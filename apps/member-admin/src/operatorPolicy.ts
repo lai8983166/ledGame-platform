@@ -1,25 +1,26 @@
 import type { OperatorProfile } from "@ledgame/platform-api-client";
 
 export type OperatorCapability =
-  | "dailyOperations"
-  | "settings"
+  | "operationsView"
   | "deleteMember"
   | "clearWristbandBalance"
   | "renameRoom"
-  | "manageAccounts";
+  | "exportData";
 
-const FACTORY_ONLY = new Set<OperatorCapability>([
-  "settings",
-  "deleteMember",
-  "clearWristbandBalance",
-  "renameRoom",
-  "manageAccounts",
-]);
+const MATRIX: Record<OperatorProfile["accountType"], ReadonlySet<OperatorCapability>> = {
+  FACTORY_ADMIN: new Set([
+    "operationsView", "deleteMember", "clearWristbandBalance", "renameRoom", "exportData",
+  ]),
+  STORE_MANAGER: new Set([
+    "operationsView", "clearWristbandBalance", "renameRoom", "exportData",
+  ]),
+  CLERK: new Set(["clearWristbandBalance"]),
+};
 
 export function canUseOperatorCapability(
   operator: OperatorProfile | null | undefined,
   capability: OperatorCapability,
 ): boolean {
   if (!operator) return false;
-  return !FACTORY_ONLY.has(capability) || operator.accountType === "FACTORY_ADMIN";
+  return MATRIX[operator.accountType].has(capability);
 }

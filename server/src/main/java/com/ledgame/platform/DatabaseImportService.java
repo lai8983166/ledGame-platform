@@ -28,6 +28,8 @@ public class DatabaseImportService {
     private final RoomConnectionRegistry rooms;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ProtectedDataService protectedData;
+    private final DataProtectionKeyManager dataKeys;
     private final Map<String, RegisteredCandidate> candidates = new ConcurrentHashMap<>();
 
     public DatabaseImportService(
@@ -38,7 +40,9 @@ public class DatabaseImportService {
             DatabaseStateService databaseState,
             RoomConnectionRegistry rooms,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            ProtectedDataService protectedData,
+            DataProtectionKeyManager dataKeys) {
         this.coordinator = coordinator;
         this.engine = engine;
         this.inspector = inspector;
@@ -47,6 +51,8 @@ public class DatabaseImportService {
         this.rooms = rooms;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.protectedData = protectedData;
+        this.dataKeys = dataKeys;
     }
 
     public List<DatabaseBackupCandidate> discoverFixedCandidates() {
@@ -76,7 +82,10 @@ public class DatabaseImportService {
         InspectedDatabase inspected = requireValid(path);
         ImportSummary summary = requireImportSummary(path);
         String id = UUID.randomUUID().toString();
-        RegisteredCandidate registered = new RegisteredCandidate(path, "EXTERNAL", null);
+        DatabaseBackupMetadata metadata = readAdjacentMetadata(path);
+        Path keyEnvelope = adjacentKeyEnvelope(path, metadata);
+        RegisteredCandidate registered = new RegisteredCandidate(path, "EXTERNAL", metadata, keyEnvelope);
+        if (metadata != null) verifyMetadata(registered, inspected);
         candidates.put(id, registered);
         return toCandidate(id, registered, inspected, summary);
     }
@@ -85,7 +94,8 @@ public class DatabaseImportService {
         RegisteredCandidate registered = requireRegistered(candidateId);
         InspectedDatabase inspected = requireValid(registered.path());
         requireImportSummary(registered.path());
-        verifyMetadata(registered, inspected);
+        ProtectedDataService candidateProtection = verifyMetadata(registered, inspected);
+        verifyDataProtection(registered.path(), registered.metadata(), candidateProtection);
         if (rooms.hasActiveBusiness()) {
             throw new PlatformApiException(HttpStatus.CONFLICT, BackupErrorCode.IMPORT_BUSINESS_ACTIVE.name(),
                     BackupErrorCode.IMPORT_BUSINESS_ACTIVE.defaultMessage());
@@ -98,12 +108,18 @@ public class DatabaseImportService {
         Instant preparedAt = clock.instant();
         Path stagingDirectory = engine.sourceDatabase().getParent().resolve("import-staging");
         Path prepared = stagingDirectory.resolve("prepared-" + UUID.randomUUID() + ".db");
+        Path preparedKey = stagingDirectory.resolve(prepared.getFileName() + ".data-key.dpapi");
         try {
             Files.createDirectories(stagingDirectory);
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(stagingDirectory, "prepared-*.db")) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(stagingDirectory, "prepared-*")) {
                 for (Path stale : stream) Files.deleteIfExists(stale);
             }
             Files.copy(registered.path(), prepared, StandardCopyOption.REPLACE_EXISTING);
+            String keyEnvelopeSha256 = null;
+            if (registered.keyEnvelope() != null && Files.isRegularFile(registered.keyEnvelope())) {
+                Files.copy(registered.keyEnvelope(), preparedKey, StandardCopyOption.REPLACE_EXISTING);
+                keyEnvelopeSha256 = inspector.sha256(preparedKey);
+            }
             try (var connection = DriverManager.getConnection("jdbc:sqlite:" + prepared);
                  var statement = connection.prepareStatement("""
                      UPDATE database_state
@@ -117,14 +133,16 @@ public class DatabaseImportService {
             }
             InspectedDatabase preparedInspection = requireValid(prepared);
             coordinator.beginImport();
-            return new DatabaseImportManifest(candidateId, prepared.toString(), preparedInspection.sha256(),
-                    preparedInspection.state().instanceId(), preparedInspection.state().revision(),
-                    importedFromRevision, preparedInspection.state().lastBusinessModifiedAt(), preparedAt);
+            return new DatabaseImportManifest(prepared.toString(),
+                    Files.isRegularFile(preparedKey) ? preparedKey.toString() : null,
+                    keyEnvelopeSha256, preparedInspection.sha256());
         } catch (PlatformApiException exception) {
             deleteQuietly(prepared);
+            deleteQuietly(preparedKey);
             throw exception;
         } catch (Exception exception) {
             deleteQuietly(prepared);
+            deleteQuietly(preparedKey);
             throw new PlatformApiException(HttpStatus.INTERNAL_SERVER_ERROR, BackupErrorCode.IMPORT_FAILED.name(),
                     BackupErrorCode.IMPORT_FAILED.defaultMessage());
         }
@@ -142,7 +160,10 @@ public class DatabaseImportService {
             if (!metadataMatchesEnvironment(metadata)) return;
             InspectedDatabase inspected = requireValid(database);
             ImportSummary summary = requireImportSummary(database);
-            RegisteredCandidate registered = new RegisteredCandidate(database, sourceType, metadata);
+            Path keyEnvelope = "LATEST".equals(sourceType)
+                    ? database.getParent().resolve("data-key.dpapi")
+                    : Path.of(database.toString().replace("-platform.db", "-data-key.dpapi"));
+            RegisteredCandidate registered = new RegisteredCandidate(database, sourceType, metadata, keyEnvelope);
             verifyMetadata(registered, inspected);
             String id = UUID.randomUUID().toString();
             candidates.put(id, registered);
@@ -181,9 +202,9 @@ public class DatabaseImportService {
         }
     }
 
-    private void verifyMetadata(RegisteredCandidate registered, InspectedDatabase inspected) {
+    private ProtectedDataService verifyMetadata(RegisteredCandidate registered, InspectedDatabase inspected) {
         DatabaseBackupMetadata metadata = registered.metadata();
-        if (metadata == null) return;
+        if (metadata == null) return protectedData;
         boolean valid = DatabaseBackupEngine.METADATA_FORMAT.equals(metadata.format())
                 && properties.getEnvironment().equals(metadata.environment())
                 && metadata.schemaVersion() == inspected.schemaVersion()
@@ -191,14 +212,97 @@ public class DatabaseImportService {
                 && metadata.revision() == inspected.state().revision()
                 && metadata.instanceId().equals(inspected.state().instanceId())
                 && metadata.fileSize() == inspected.fileSize()
-                && metadata.sha256().equalsIgnoreCase(inspected.sha256());
+                && metadata.sha256().equalsIgnoreCase(inspected.sha256())
+                && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
+                && metadata.keyId() != null && !metadata.keyId().isBlank();
+        ProtectedDataService candidateProtection = null;
+        if (valid && dataKeys.requiresProtectedEnvelope()) {
+            try {
+                DataKeyMaterial material = dataKeys.loadEnvelope(registered.keyEnvelope());
+                valid = metadata.keyId().equals(material.keyId());
+                candidateProtection = ProtectedDataService.forKey(material);
+            } catch (RuntimeException exception) {
+                valid = false;
+            }
+        } else if (valid) {
+            valid = metadata.keyId().equals(protectedData.keyId());
+            candidateProtection = protectedData;
+        }
         if (!valid) invalid();
+        return candidateProtection;
     }
 
     private boolean metadataMatchesEnvironment(DatabaseBackupMetadata metadata) {
         return metadata != null
                 && DatabaseBackupEngine.METADATA_FORMAT.equals(metadata.format())
-                && properties.getEnvironment().equals(metadata.environment());
+                && properties.getEnvironment().equals(metadata.environment())
+                && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
+                && metadata.keyId() != null && !metadata.keyId().isBlank();
+    }
+
+    private void verifyDataProtection(
+            Path path, DatabaseBackupMetadata metadata, ProtectedDataService candidateProtection) {
+        try {
+            org.sqlite.SQLiteConfig config = new org.sqlite.SQLiteConfig();
+            config.setReadOnly(true);
+            try (var connection = DriverManager.getConnection("jdbc:sqlite:" + path, config.toProperties());
+                 var state = connection.prepareStatement(
+                         "SELECT format_version, key_id, status FROM data_protection_state WHERE id=1");
+                 ResultSet stateRows = state.executeQuery()) {
+                if (!stateRows.next()
+                        || stateRows.getInt("format_version") != DataProtectionMigration.FORMAT_VERSION
+                        || !"COMPLETE".equals(stateRows.getString("status"))
+                        || !candidateProtection.keyId().equals(stateRows.getString("key_id"))) invalid();
+                if (metadata != null && !stateRows.getString("key_id").equals(metadata.keyId())) invalid();
+                verifyColumn(connection, candidateProtection, "members", "phone");
+                verifyColumn(connection, candidateProtection, "members", "name");
+                verifyColumn(connection, candidateProtection, "members", "avatar_id");
+                verifyColumn(connection, candidateProtection, "members", "birthday");
+                verifyColumn(connection, candidateProtection, "members", "gender");
+                verifyColumn(connection, candidateProtection, "wristbands", "card_uid");
+                verifyColumn(connection, candidateProtection, "wristband_charge_records", "wristband_uid");
+                verifyColumn(connection, candidateProtection, "game_play_records", "wristband_uid");
+                verifyColumn(connection, candidateProtection, "game_play_records", "result_json");
+                verifyColumn(connection, candidateProtection, "operator_action_logs", "operator_username");
+                verifyColumn(connection, candidateProtection, "operator_action_logs", "operator_display_name");
+                verifyColumn(connection, candidateProtection, "operator_action_logs", "target_id");
+                verifyColumn(connection, candidateProtection, "operator_action_logs", "summary_json");
+            }
+        } catch (PlatformApiException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            invalid();
+        }
+    }
+
+    private void verifyColumn(java.sql.Connection connection, ProtectedDataService candidateProtection,
+            String table, String column) throws Exception {
+        try (var plaintext = connection.createStatement();
+             var rows = plaintext.executeQuery("SELECT COUNT(*) FROM " + table
+                     + " WHERE " + column + " IS NOT NULL AND " + column + " NOT LIKE 'enc:v1:%'")) {
+            if (rows.next() && rows.getLong(1) != 0) invalid();
+        }
+        try (var statement = connection.prepareStatement(
+                "SELECT " + column + " FROM " + table + " WHERE " + column + " IS NOT NULL LIMIT 50");
+             ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) candidateProtection.decryptField(table, column, rows.getString(1));
+        }
+    }
+
+    private DatabaseBackupMetadata readAdjacentMetadata(Path database) {
+        Path metadata = database.getFileName().toString().equals("platform.db")
+                ? database.resolveSibling("metadata.json")
+                : Path.of(database.toString().replace("-platform.db", "-platform.json"));
+        if (!Files.isRegularFile(metadata)) return null;
+        try { return objectMapper.readValue(metadata.toFile(), DatabaseBackupMetadata.class); }
+        catch (Exception exception) { invalid(); return null; }
+    }
+
+    private Path adjacentKeyEnvelope(Path database, DatabaseBackupMetadata metadata) {
+        if (metadata == null) return null;
+        return database.getFileName().toString().equals("platform.db")
+                ? database.resolveSibling("data-key.dpapi")
+                : Path.of(database.toString().replace("-platform.db", "-data-key.dpapi"));
     }
 
     private ImportSummary requireImportSummary(Path path) {
@@ -208,7 +312,7 @@ public class DatabaseImportService {
             try (var connection = DriverManager.getConnection("jdbc:sqlite:" + path, config.toProperties());
                  var factory = connection.prepareStatement("""
                      SELECT username FROM operator_accounts
-                      WHERE account_type='FACTORY_ADMIN' AND enabled=1 ORDER BY id
+                      WHERE account_type='FACTORY_ADMIN' AND enabled=1 AND deleted_at IS NULL ORDER BY id
                      """);
                  ResultSet factoryRows = factory.executeQuery()) {
                 String username = factoryRows.next() ? factoryRows.getString("username") : null;
@@ -249,6 +353,7 @@ public class DatabaseImportService {
         try { Files.deleteIfExists(path); } catch (Exception ignored) {}
     }
 
-    private record RegisteredCandidate(Path path, String sourceType, DatabaseBackupMetadata metadata) {}
+    private record RegisteredCandidate(
+            Path path, String sourceType, DatabaseBackupMetadata metadata, Path keyEnvelope) {}
     private record ImportSummary(String factoryAdminUsername, long memberCount) {}
 }

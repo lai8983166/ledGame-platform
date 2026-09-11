@@ -4,6 +4,7 @@ import java.time.Clock;
 
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,22 +19,37 @@ public class OperatorAccountBootstrap implements ApplicationRunner {
     private final PasswordEncoder passwordEncoder;
     private final OperatorAccountProperties properties;
     private final Clock clock;
+    private final StartupGate startupGate;
 
+    @Autowired
     public OperatorAccountBootstrap(
             JdbcTemplate jdbc,
             PasswordEncoder passwordEncoder,
             OperatorAccountProperties properties,
-            Clock clock) {
+            Clock clock,
+            StartupGate startupGate) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
         this.properties = properties;
         this.clock = clock;
+        this.startupGate = startupGate;
+    }
+
+    OperatorAccountBootstrap(
+            JdbcTemplate jdbc,
+            PasswordEncoder passwordEncoder,
+            OperatorAccountProperties properties,
+            Clock clock) {
+        this(jdbc, passwordEncoder, properties, clock, null);
     }
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM operator_accounts", Integer.class);
+        if (startupGate != null && startupGate.status().state() == BackupLifecycleState.BLOCKED) return;
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
+                Integer.class);
         if (count != null && count > 0) {
             return;
         }

@@ -54,7 +54,7 @@ async function waitForStartupWindow(desktop, timeoutMs = 20_000) {
   while (Date.now() < deadline) {
     for (const window of desktop.windows()) {
       try {
-        if (!window.isClosed() && await window.getByText("正在检查本机数据").count()) return window;
+        if (!window.isClosed() && await window.title() === "LED Game 启动检查") return window;
       } catch { /* window can be destroyed after a fast startup check */ }
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -72,7 +72,13 @@ async function waitForMemberWindow(desktop, timeoutMs = 60_000) {
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error("packaged member admin main window did not open");
+  const diagnostics = [];
+  for (const window of desktop.windows()) {
+    try {
+      diagnostics.push(`${await window.title()}: ${await window.locator("body").innerText()}`);
+    } catch { /* window can close while diagnostics are collected */ }
+  }
+  throw new Error(`packaged member admin main window did not open\n${diagnostics.join("\n")}`);
 }
 
 async function loginUi(page, username = factoryUsername, password = factoryPassword) {
@@ -149,7 +155,7 @@ test("final package shows the startup check, creates a TEST backup, enforces IPC
   try {
     desktop = await launchPackaged(env);
     const startup = await waitForStartupWindow(desktop);
-    await expect(startup.getByText("正在检查本机数据")).toBeVisible();
+    await expect(startup.locator("h1")).toContainText(/正在启动会员管理端|正在检查本机数据/);
     const startupText = await startup.locator("body").innerText();
     expect(startupText).not.toContain("导入");
     expect(startupText).not.toContain("candidate");
@@ -170,13 +176,44 @@ test("final package shows the startup check, creates a TEST backup, enforces IPC
       path: "/api/operator-accounts",
       method: "POST",
       headers: { "X-Operator-Id": factory.id },
-      body: JSON.stringify({ username: "packaged-operator", displayName: "打包测试操作员", password: "operator-password" }),
+      body: JSON.stringify({
+        username: "packaged-operator",
+        displayName: "打包测试操作员",
+        password: "operator-password",
+        accountType: "CLERK",
+      }),
+    });
+    await request(page, {
+      path: "/api/operator-accounts",
+      method: "POST",
+      headers: { "X-Operator-Id": factory.id },
+      body: JSON.stringify({
+        username: "packaged-manager",
+        displayName: "打包测试店长",
+        password: "manager-password",
+        accountType: "STORE_MANAGER",
+      }),
     });
     await expect(page.evaluate((operatorId) => window.memberAdminDesktop.importBackupDatabase("missing", operatorId), created.id))
-      .rejects.toThrow(/IMPORT_FORBIDDEN|只有出厂账号/);
+      .rejects.toThrow(/IMPORT_FORBIDDEN|OPERATOR_FORBIDDEN|只有出厂账号|没有执行此操作的权限/);
+    await page.getByTestId("operator-logout").click();
+    await loginUi(page, "packaged-manager", "manager-password");
+    await expect(page.getByTestId("admin-nav-overview")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-rooms")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-records")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-ranking")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-wristbands")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-members")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-settings")).toBeVisible();
     await page.getByTestId("operator-logout").click();
     await loginUi(page, "packaged-operator", "operator-password");
-    await expect(page.getByTestId("admin-nav-settings")).toHaveCount(0);
+    await expect(page.getByTestId("admin-nav-overview")).toHaveCount(0);
+    await expect(page.getByTestId("admin-nav-rooms")).toHaveCount(0);
+    await expect(page.getByTestId("admin-nav-records")).toHaveCount(0);
+    await expect(page.getByTestId("admin-nav-ranking")).toHaveCount(0);
+    await expect(page.getByTestId("admin-nav-wristbands")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-members")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-settings")).toBeVisible();
 
     const duplicate = spawn(executablePath, [], {
       cwd: path.dirname(executablePath), env, windowsHide: true, stdio: "ignore",

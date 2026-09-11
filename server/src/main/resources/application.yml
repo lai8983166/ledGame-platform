@@ -20,10 +20,21 @@ server:
   address: ${SERVER_ADDRESS:0.0.0.0}
   port: ${SERVER_PORT:8090}
 
+# 即使运行环境误设 DEBUG，也禁止框架把请求/响应正文、CSV 字节或 JDBC 参数写入 server.log。
+logging:
+  level:
+    org.springframework.web.client.RestTemplate: WARN
+    org.springframework.web.HttpLogging: WARN
+    org.springframework.web.servlet.mvc.method.annotation: WARN
+    org.springframework.jdbc.core: WARN
+
 ledgame:
   time-zone: ${PLATFORM_TIME_ZONE:Asia/Shanghai}
   sqlite:
     busy-timeout-millis: ${LEDGAME_SQLITE_BUSY_TIMEOUT_MILLIS:5000}
+  data-protection:
+    key-path: ${PLATFORM_DATA_KEY_PATH:}
+    test-key-base64: ${PLATFORM_DATA_TEST_KEY_BASE64:}
   operator-accounts:
     factory:
       username: ${PLATFORM_FACTORY_ADMIN_USERNAME:admin}

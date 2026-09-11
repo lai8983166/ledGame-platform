@@ -11,4 +11,8 @@ ledgame:
 logging:
   level:
     org.springframework: warn
+    org.springframework.web.client.RestTemplate: warn
+    org.springframework.web.HttpLogging: warn
+    org.springframework.web.servlet.mvc.method.annotation: warn
+    org.springframework.jdbc.core: warn
     com.ledgame.platform: info

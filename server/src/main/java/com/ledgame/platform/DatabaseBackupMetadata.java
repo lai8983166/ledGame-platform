@@ -16,4 +16,6 @@ public record DatabaseBackupMetadata(
         String targetDiskIdentity,
         long fileSize,
         String sha256,
-        String integrityCheck) {}
+        String integrityCheck,
+        String encryptionVersion,
+        String keyId) {}

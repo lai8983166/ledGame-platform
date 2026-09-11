@@ -55,7 +55,7 @@ describe("platform operator account api", () => {
     const responses = [
       { id: 1, username: "admin", displayName: "出厂管理员", accountType: "FACTORY_ADMIN" },
       [{ id: 1, username: "admin", displayName: "出厂管理员", accountType: "FACTORY_ADMIN", enabled: true }],
-      { id: 2, username: "counter", displayName: "前台", accountType: "OPERATOR", enabled: true },
+      { id: 2, username: "counter", displayName: "前台", accountType: "CLERK", enabled: true },
     ];
     const transport = vi.fn()
       .mockResolvedValueOnce({ status: 200, body: JSON.stringify(responses[0]) })
@@ -66,13 +66,13 @@ describe("platform operator account api", () => {
     await expect(client.loginOperator("admin", "888888")).resolves.toEqual(responses[0]);
     await expect(client.listOperatorAccounts()).resolves.toEqual(responses[1]);
     await expect(client.createOperatorAccount({
-      username: "counter", displayName: "前台", password: "123456",
+      username: "counter", displayName: "前台", password: "123456", accountType: "CLERK",
     })).resolves.toEqual(responses[2]);
 
     expect(transport.mock.calls.map(([request]) => [request.path, request.method, request.body])).toEqual([
       ["/api/operator-auth/login", "POST", JSON.stringify({ username: "admin", password: "888888" })],
       ["/api/operator-accounts", "GET", undefined],
-      ["/api/operator-accounts", "POST", JSON.stringify({ username: "counter", displayName: "前台", password: "123456" })],
+      ["/api/operator-accounts", "POST", JSON.stringify({ username: "counter", displayName: "前台", password: "123456", accountType: "CLERK" })],
     ]);
   });
 

@@ -48,6 +48,13 @@ function restoreRollback(databasePath, state) {
   for (const suffix of ["", "-wal", "-shm"]) {
     moveIfExists(path.join(rollbackDirectory, `platform.db${suffix}`), `${databasePath}${suffix}`);
   }
+  if (state.replaceKeyEnvelope) {
+    const keyPath = path.join(dataDirectory, "security", "data-key.dpapi");
+    fs.rmSync(keyPath, { force: true });
+    moveIfExists(path.join(rollbackDirectory, "data-key.dpapi"), keyPath);
+  }
+  if (state.staging) fs.rmSync(state.staging, { force: true });
+  if (state.stagingKey) fs.rmSync(state.stagingKey, { force: true });
   fs.rmSync(statePath(databasePath), { force: true });
   return true;
 }
@@ -75,27 +82,46 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
   if (!fs.existsSync(source) || !/^[a-f0-9]{64}$/.test(expectedHash) || sha256(source) !== expectedHash) {
     throw new Error("IMPORT_PREPARED_HASH_MISMATCH");
   }
+  const sourceKeyEnvelope = manifest?.preparedKeyEnvelopePath
+    ? path.resolve(String(manifest.preparedKeyEnvelopePath)) : null;
+  const expectedKeyHash = String(manifest?.keyEnvelopeSha256 || "").toLowerCase();
+  if (sourceKeyEnvelope && (!fs.existsSync(sourceKeyEnvelope)
+      || !/^[a-f0-9]{64}$/.test(expectedKeyHash)
+      || sha256(sourceKeyEnvelope) !== expectedKeyHash)) {
+    throw new Error("IMPORT_PREPARED_KEY_HASH_MISMATCH");
+  }
   const dataDirectory = path.dirname(path.resolve(databasePath));
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const rollbackDirectory = path.join(dataDirectory, "pre-import", stamp);
   const staging = path.join(dataDirectory, `platform.db.importing-${process.pid}-${Date.now()}`);
-  const state = { phase: "PREPARED", rollbackDirectory, staging, preparedDatabasePath: source, expectedHash };
+  const keyPath = path.join(dataDirectory, "security", "data-key.dpapi");
+  const stagingKey = path.join(dataDirectory, `data-key.dpapi.importing-${process.pid}-${Date.now()}`);
+  const state = { phase: "PREPARED", rollbackDirectory, staging,
+    preparedDatabasePath: source, expectedHash, replaceKeyEnvelope: Boolean(sourceKeyEnvelope), stagingKey };
   fs.mkdirSync(rollbackDirectory, { recursive: true });
   writeState(databasePath, state);
   try {
     for (const suffix of ["", "-wal", "-shm"]) {
       moveIfExists(`${databasePath}${suffix}`, path.join(rollbackDirectory, `platform.db${suffix}`));
     }
+    if (sourceKeyEnvelope) moveIfExists(keyPath, path.join(rollbackDirectory, "data-key.dpapi"));
     state.phase = "BACKED_UP";
     writeState(databasePath, state);
     fs.copyFileSync(source, staging);
     if (sha256(staging) !== expectedHash) throw new Error("IMPORT_STAGING_HASH_MISMATCH");
     fs.renameSync(staging, databasePath);
+    if (sourceKeyEnvelope) {
+      fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+      fs.copyFileSync(sourceKeyEnvelope, stagingKey);
+      if (sha256(stagingKey) !== expectedKeyHash) throw new Error("IMPORT_STAGING_KEY_HASH_MISMATCH");
+      fs.renameSync(stagingKey, keyPath);
+    }
     state.phase = "REPLACED";
     writeState(databasePath, state);
     return state;
   } catch (error) {
     fs.rmSync(staging, { force: true });
+    fs.rmSync(stagingKey, { force: true });
     restoreRollback(databasePath, state);
     throw error;
   }

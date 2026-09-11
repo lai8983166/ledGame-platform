@@ -25,15 +25,17 @@ public class GameAccessService {
           FROM wristbands w
           LEFT JOIN wristband_bindings b ON b.wristband_id = w.id AND b.status IN ('READY', 'ACTIVE')
           LEFT JOIN members m ON m.id = b.member_id
-         WHERE w.card_uid = ?
+         WHERE w.card_uid_lookup_hash = ? OR (w.card_uid_lookup_hash IS NULL AND w.card_uid = ?)
         """;
 
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final ProtectedDataService protectedData;
 
-    public GameAccessService(JdbcTemplate jdbc, Clock clock) {
+    public GameAccessService(JdbcTemplate jdbc, Clock clock, ProtectedDataService protectedData) {
         this.jdbc = jdbc;
         this.clock = clock;
+        this.protectedData = protectedData;
     }
 
     @Transactional(noRollbackFor = PlatformApiException.class)
@@ -74,8 +76,8 @@ public class GameAccessService {
 
     @Transactional
     public List<Map<String, Object>> listWristbands() {
-        return jdbc.queryForList("SELECT card_uid AS uid FROM wristbands ORDER BY card_uid").stream()
-            .map(row -> getWristband(text(row.get("uid"))))
+        return jdbc.queryForList("SELECT card_uid AS uid FROM wristbands ORDER BY id").stream()
+            .map(row -> getWristband(protectedData.decryptField("wristbands", "card_uid", row.get("uid"))))
             .toList();
     }
 
@@ -92,11 +94,20 @@ public class GameAccessService {
 
     Map<String, Object> findRaw(String rawUid) {
         String uid = normalizeUid(rawUid);
-        List<Map<String, Object>> rows = jdbc.queryForList(WRISTBAND_SQL, uid);
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                WRISTBAND_SQL, protectedData.wristbandLookupHash(uid), uid);
         if (rows.isEmpty()) {
             throw error(HttpStatus.NOT_FOUND, "WRISTBAND_NOT_FOUND", "未找到该手环，请先在会员管理端充时");
         }
-        return rows.get(0);
+        LinkedHashMap<String, Object> row = new LinkedHashMap<>(rows.get(0));
+        row.put("uid", protectedData.decryptField("wristbands", "card_uid", row.get("uid")));
+        if (row.get("phone") != null) {
+            row.put("phone", protectedData.decryptField("members", "phone", row.get("phone")));
+        }
+        if (row.get("memberName") != null) {
+            row.put("memberName", protectedData.decryptField("members", "name", row.get("memberName")));
+        }
+        return row;
     }
 
     Map<String, Object> decorate(Map<String, Object> source, boolean denyExpired) {

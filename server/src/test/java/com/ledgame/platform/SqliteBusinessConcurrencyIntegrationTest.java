@@ -30,6 +30,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -59,9 +60,13 @@ class SqliteBusinessConcurrencyIntegrationTest {
     @Autowired private DataSource dataSource;
     @Autowired private SqliteOnlineBackup onlineBackup;
     @Autowired private DatabaseFileInspector databaseInspector;
+    private long factoryOperatorId;
 
     @BeforeEach
     void clearBusinessData() {
+        factoryOperatorId = jdbc.queryForObject(
+                "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
+                Long.class);
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
         jdbc.update("DELETE FROM wristband_bindings");
@@ -88,17 +93,16 @@ class SqliteBusinessConcurrencyIntegrationTest {
         });
         assertThat(Duration.between(started, Instant.now())).isLessThan(Duration.ofSeconds(10));
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM wristbands WHERE card_uid LIKE '7400000000000000000%'",
+                "SELECT COUNT(*) FROM wristbands",
                 Integer.class)).isEqualTo(8);
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM wristband_charge_records WHERE wristband_uid LIKE '7400000000000000000%'",
+                "SELECT COUNT(*) FROM wristband_charge_records",
                 Integer.class)).isEqualTo(8);
         assertThat(jdbc.queryForObject("""
             SELECT COUNT(*) FROM (
                 SELECT w.id
                   FROM wristbands w
                   LEFT JOIN wristband_charge_records c ON c.wristband_id=w.id
-                 WHERE w.card_uid LIKE '7400000000000000000%'
                  GROUP BY w.id
                 HAVING COUNT(c.id) <> 1
             ) invalid_wristbands
@@ -120,18 +124,16 @@ class SqliteBusinessConcurrencyIntegrationTest {
         assertThat(results).hasSize(8);
         assertThat(results.stream().map(FlowResult::memberId)).doesNotHaveDuplicates();
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM members WHERE phone LIKE '1319000000%'",
+                "SELECT COUNT(*) FROM members",
                 Integer.class)).isEqualTo(8);
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM wristbands WHERE card_uid LIKE '7500000000000000000%'",
+                "SELECT COUNT(*) FROM wristbands",
                 Integer.class)).isEqualTo(8);
         assertThat(jdbc.queryForObject("""
             SELECT COUNT(*)
               FROM wristband_bindings b
               JOIN wristbands w ON w.id=b.wristband_id
               JOIN members m ON m.id=b.member_id
-             WHERE w.card_uid LIKE '7500000000000000000%'
-               AND substr(w.card_uid, 20, 1)=substr(m.phone, 11, 1)
             """, Integer.class)).isEqualTo(8);
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM game_play_records WHERE external_session_id LIKE 'concurrent-session-%'",
@@ -174,12 +176,12 @@ class SqliteBusinessConcurrencyIntegrationTest {
              var statement = connection.createStatement()) {
             int backupWristbands;
             try (var rows = statement.executeQuery(
-                    "SELECT COUNT(*) FROM wristbands WHERE card_uid LIKE '760000000000000000%'")) {
+                    "SELECT COUNT(*) FROM wristbands")) {
                 backupWristbands = rows.getInt(1);
             }
             int backupCharges;
             try (var rows = statement.executeQuery(
-                    "SELECT COUNT(*) FROM wristband_charge_records WHERE wristband_uid LIKE '760000000000000000%'")) {
+                    "SELECT COUNT(*) FROM wristband_charge_records")) {
                 backupCharges = rows.getInt(1);
             }
             assertThat(backupWristbands).isBetween(1, 17);
@@ -188,17 +190,17 @@ class SqliteBusinessConcurrencyIntegrationTest {
                 SELECT COUNT(*)
                   FROM wristband_charge_records c
                   LEFT JOIN wristbands w ON w.id=c.wristband_id
-                 WHERE c.wristband_uid LIKE '760000000000000000%' AND w.id IS NULL
+                 WHERE w.id IS NULL
                 """)) {
                 assertThat(rows.getInt(1)).isZero();
             }
         }
 
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM wristbands WHERE card_uid LIKE '760000000000000000%'",
+                "SELECT COUNT(*) FROM wristbands",
                 Integer.class)).isEqualTo(17);
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM wristband_charge_records WHERE wristband_uid LIKE '760000000000000000%'",
+                "SELECT COUNT(*) FROM wristband_charge_records",
                 Integer.class)).isEqualTo(17);
     }
 
@@ -269,18 +271,24 @@ class SqliteBusinessConcurrencyIntegrationTest {
     }
 
     private ResponseEntity<Map<String, Object>> post(String path, Map<String, Object> body) {
-        return http.exchange(path, HttpMethod.POST, new HttpEntity<>(body),
+        return http.exchange(path, HttpMethod.POST, new HttpEntity<>(body, operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
     }
 
     private ResponseEntity<Map<String, Object>> put(String path, Map<String, Object> body) {
-        return http.exchange(path, HttpMethod.PUT, new HttpEntity<>(body),
+        return http.exchange(path, HttpMethod.PUT, new HttpEntity<>(body, operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
     }
 
     private ResponseEntity<Map<String, Object>> get(String path) {
-        return http.exchange(path, HttpMethod.GET, null,
+        return http.exchange(path, HttpMethod.GET, new HttpEntity<>(operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
+    }
+
+    private HttpHeaders operatorHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(factoryOperatorId));
+        return headers;
     }
 
     private void assertOk(ResponseEntity<?> response) {

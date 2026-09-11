@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createOperatorAccountManager } from "./operatorAccountState";
 
 const factory = { id: 1, username: "admin", displayName: "出厂管理员", accountType: "FACTORY_ADMIN" as const, enabled: true, createdAt: "now", updatedAt: "now" };
-const operator = { id: 2, username: "counter", displayName: "前台", accountType: "OPERATOR" as const, enabled: true, createdAt: "now", updatedAt: "now" };
+const operator = { id: 2, username: "counter", displayName: "前台", accountType: "CLERK" as const, enabled: true, createdAt: "now", updatedAt: "now" };
 
 describe("operator account manager", () => {
   it("loads, creates, edits, resets password and toggles an operator", async () => {
@@ -12,10 +12,11 @@ describe("operator account manager", () => {
       updateOperatorAccount: vi.fn().mockResolvedValue({ ...operator, displayName: "收银台" }),
       resetOperatorPassword: vi.fn().mockResolvedValue({ ...operator, displayName: "收银台" }),
       setOperatorEnabled: vi.fn().mockResolvedValue({ ...operator, displayName: "收银台", enabled: false }),
+      deleteOperatorAccount: vi.fn().mockResolvedValue({ ...operator, enabled: false }),
     };
     const state = createOperatorAccountManager(api);
     await state.load();
-    await state.create({ username: "counter", displayName: "前台", password: "123456" });
+    await state.create({ username: "counter", displayName: "前台", password: "123456", accountType: "CLERK" });
     await state.update(2, { username: "counter", displayName: "收银台" });
     await state.resetPassword(2, "654321");
     await state.setEnabled(2, false);
@@ -29,10 +30,11 @@ describe("operator account manager", () => {
       listOperatorAccounts: vi.fn().mockResolvedValue([]),
       createOperatorAccount: vi.fn().mockReturnValue(pending),
       updateOperatorAccount: vi.fn(), resetOperatorPassword: vi.fn(), setOperatorEnabled: vi.fn(),
+      deleteOperatorAccount: vi.fn(),
     };
     const state = createOperatorAccountManager(api);
-    const first = state.create({ username: "counter", displayName: "前台", password: "123456" });
-    await state.create({ username: "other", displayName: "其他", password: "123456" });
+    const first = state.create({ username: "counter", displayName: "前台", password: "123456", accountType: "CLERK" });
+    await state.create({ username: "other", displayName: "其他", password: "123456", accountType: "CLERK" });
     expect(api.createOperatorAccount).toHaveBeenCalledTimes(1);
     release();
     await first;

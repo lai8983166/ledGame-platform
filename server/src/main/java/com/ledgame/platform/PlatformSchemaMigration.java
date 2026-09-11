@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 2;
+    public static final int CURRENT_SCHEMA_VERSION = 3;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
             "members", "wristbands", "wristband_charge_records", "wristband_bindings",
             "game_play_records", "room_settings", "store_feature_settings",
@@ -26,6 +26,7 @@ public class PlatformSchemaMigration implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        migrateOperatorAccounts();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -60,6 +61,51 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         }
         ensureDatabaseStateAndRevisionTriggers();
         jdbc.execute("PRAGMA user_version=" + CURRENT_SCHEMA_VERSION);
+    }
+
+    private void migrateOperatorAccounts() {
+        List<Map<String, Object>> columns = jdbc.queryForList("PRAGMA table_info(operator_accounts)");
+        if (columns.isEmpty()) return;
+        boolean hasDeletedAt = columns.stream()
+                .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
+        String createSql = jdbc.queryForObject(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='operator_accounts'", String.class);
+        boolean oldRoleConstraint = createSql != null && createSql.contains("'OPERATOR'");
+        if (!oldRoleConstraint) {
+            if (!hasDeletedAt) jdbc.execute("ALTER TABLE operator_accounts ADD COLUMN deleted_at TEXT");
+            return;
+        }
+
+        jdbc.execute("PRAGMA foreign_keys=OFF");
+        try {
+            jdbc.execute("""
+                CREATE TABLE operator_accounts_v3 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    display_name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    account_type TEXT NOT NULL CHECK (account_type IN ('FACTORY_ADMIN', 'STORE_MANAGER', 'CLERK')),
+                    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                    deleted_at TEXT,
+                    created_by_operator_id INTEGER REFERENCES operator_accounts_v3(id),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL)
+                """);
+            String deletedAtExpression = hasDeletedAt ? "deleted_at" : "NULL";
+            jdbc.execute("""
+                INSERT INTO operator_accounts_v3(
+                    id, username, display_name, password_hash, account_type, enabled,
+                    deleted_at, created_by_operator_id, created_at, updated_at)
+                SELECT id, username, display_name, password_hash,
+                       CASE account_type WHEN 'OPERATOR' THEN 'CLERK' ELSE account_type END,
+                       enabled, %s, created_by_operator_id, created_at, updated_at
+                  FROM operator_accounts
+                """.formatted(deletedAtExpression));
+            jdbc.execute("DROP TABLE operator_accounts");
+            jdbc.execute("ALTER TABLE operator_accounts_v3 RENAME TO operator_accounts");
+        } finally {
+            jdbc.execute("PRAGMA foreign_keys=ON");
+        }
     }
 
     private void ensureDatabaseStateAndRevisionTriggers() {

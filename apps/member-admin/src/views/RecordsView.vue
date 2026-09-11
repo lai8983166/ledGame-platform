@@ -8,6 +8,7 @@ import { platformApi } from "../platformApi";
 import { memberAdminCatalogs, type MemberAdminMessageKey } from "../localization";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 import { operatorSession } from "../operatorSession";
+import { canUseOperatorCapability } from "../operatorPolicy";
 
 const props = defineProps<{ locale: PlatformLocale }>();
 const text = (key: MemberAdminMessageKey) => memberAdminCatalogs[props.locale][key];
@@ -58,6 +59,7 @@ const plays = ref<RealPlay[]>([]);
 const refreshing = ref(false);
 const exporting = ref(false);
 const loadError = ref("");
+const canExport = computed(() => canUseOperatorCapability(operatorSession.current.value, "exportData"));
 
 const tabs: Array<{ id: RecordTab; label: string; icon: string }> = [
   { id: "cards", label: "发卡记录", icon: "card" },
@@ -177,9 +179,9 @@ onMounted(() => void loadRecords());
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="搜索记录" :placeholder="searchPlaceholder" /></div>
     <select v-if="activeTab !== 'members'" v-model="dateFilter" class="select-control" aria-label="时间范围"><option value="all">全部时间</option><option value="today">今天</option><option value="week">近 7 天</option><option value="month">本月</option></select>
     <button class="secondary-button compact-button" data-testid="admin-records-refresh" type="button" :disabled="refreshing" @click="loadRecords"><AppIcon name="refresh" :size="16" :class="{ spinning: refreshing }" />{{ refreshing ? "刷新中…" : "刷新" }}</button>
-    <button v-if="exportDataset" class="secondary-button compact-button" data-testid="admin-records-export" type="button" :disabled="exporting" @click="exportRecords"><AppIcon name="download" :size="16" />{{ exporting ? "导出中…" : exportLabel }}</button>
+    <button v-if="exportDataset && canExport" class="secondary-button compact-button" data-testid="admin-records-export" type="button" :disabled="exporting" @click="exportRecords"><AppIcon name="download" :size="16" />{{ exporting ? "导出中…" : exportLabel }}</button>
   </section>
-  <p v-if="exportDataset" class="export-note">{{ text("recordExportNote") }}</p>
+  <p v-if="exportDataset && canExport" class="export-note">{{ text("recordExportNote") }}</p>
   <p v-if="loadError" class="form-error"><AppIcon name="alert" :size="16" />{{ loadError }}</p>
 
   <section class="table-card glass-panel">

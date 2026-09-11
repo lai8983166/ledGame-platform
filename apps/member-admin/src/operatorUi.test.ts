@@ -30,7 +30,7 @@ describe("member admin login gate", () => {
 
 describe("operator UI capability boundaries", () => {
   it("uses one role policy for protected navigation and dangerous actions", () => {
-    expect(app).toContain('canUseOperatorCapability(currentOperator.value, "settings")');
+    expect(app).toContain('canUseOperatorCapability(currentOperator.value, "operationsView")');
     expect(members).toContain('canUseOperatorCapability(operatorSession.current.value, "deleteMember")');
     expect(wristbands).toContain('canUseOperatorCapability(operatorSession.current.value, "clearWristbandBalance")');
     expect(rooms).toContain('canUseOperatorCapability(operatorSession.current.value, "renameRoom")');
@@ -45,11 +45,12 @@ describe("operator UI capability boundaries", () => {
     expect(members).toContain('v-if="canDeleteMembers"');
   });
 
-  it("offers account management without account deletion and protects the factory row", () => {
+  it("offers scoped account management with soft deletion and protects the factory row", () => {
     expect(settings).toContain('data-testid="operator-account-management"');
     expect(settings).toContain("createOperatorAccountManager");
-    expect(settings).toContain("account.accountType === 'OPERATOR'");
-    expect(settings).not.toContain("deleteOperatorAccount");
+    expect(settings).toContain('account.accountType === "STORE_MANAGER"');
+    expect(settings).toContain("accountManager.remove(account.id)");
+    expect(settings).toContain("account.accountType !== 'FACTORY_ADMIN'");
   });
 
   it("keeps database import behind the factory account and outside the startup window", () => {

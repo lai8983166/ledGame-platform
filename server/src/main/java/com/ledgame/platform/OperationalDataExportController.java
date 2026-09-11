@@ -22,20 +22,20 @@ public class OperationalDataExportController {
     }
 
     @GetMapping(value = "/members.csv", produces = "text/csv;charset=UTF-8")
-    public ResponseEntity<byte[]> members(@RequestHeader("X-Operator-Id") Long operatorId) {
-        authorization.require(operatorId);
+    public ResponseEntity<byte[]> members(@RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.DATA_EXPORT);
         return response("members.csv", exportService.members());
     }
 
     @GetMapping(value = "/wristband-charges.csv", produces = "text/csv;charset=UTF-8")
-    public ResponseEntity<byte[]> wristbandCharges(@RequestHeader("X-Operator-Id") Long operatorId) {
-        authorization.require(operatorId);
+    public ResponseEntity<byte[]> wristbandCharges(@RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.DATA_EXPORT);
         return response("wristband-charges.csv", exportService.wristbandCharges());
     }
 
     @GetMapping(value = "/game-plays.csv", produces = "text/csv;charset=UTF-8")
-    public ResponseEntity<byte[]> gamePlays(@RequestHeader("X-Operator-Id") Long operatorId) {
-        authorization.require(operatorId);
+    public ResponseEntity<byte[]> gamePlays(@RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.DATA_EXPORT);
         return response("game-plays.csv", exportService.gamePlays());
     }
 

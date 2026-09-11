@@ -31,6 +31,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -69,9 +70,12 @@ class CoreFlowApiIntegrationTest {
 
     @Autowired
     private MutableClock clock;
+    private long factoryOperatorId;
 
     @BeforeEach
     void clearData() {
+        factoryOperatorId = jdbc.queryForObject(
+                "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN'", Long.class);
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
@@ -194,11 +198,7 @@ class CoreFlowApiIntegrationTest {
     void listsRealWristbandBindingAndChargeRecords() {
         long memberId = createReadyWristband("13900139000", "流水玩家", 45);
 
-        ResponseEntity<List<Map<String, Object>>> bindings = http.exchange(
-                "/api/records/wristband-bindings",
-                HttpMethod.GET,
-                null,
-                new ParameterizedTypeReference<>() {});
+        ResponseEntity<List<Map<String, Object>>> bindings = getList("/api/records/wristband-bindings");
         assertThat(bindings.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(bindings.getBody()).singleElement().satisfies(record -> assertThat(record)
                 .containsEntry("uid", "2283055618")
@@ -207,11 +207,7 @@ class CoreFlowApiIntegrationTest {
                 .containsEntry("durationMinutes", 45));
         assertThat(number(bindings.getBody().get(0).get("memberId"))).isEqualTo(memberId);
 
-        ResponseEntity<List<Map<String, Object>>> charges = http.exchange(
-                "/api/records/wristband-charges",
-                HttpMethod.GET,
-                null,
-                new ParameterizedTypeReference<>() {});
+        ResponseEntity<List<Map<String, Object>>> charges = getList("/api/records/wristband-charges");
         assertThat(charges.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(charges.getBody()).singleElement().satisfies(record -> assertThat(record)
                 .containsEntry("uid", "2283055618")
@@ -289,11 +285,13 @@ class CoreFlowApiIntegrationTest {
                 Map.of("uid", "2283055618", "deviceId", "game-01"));
         assertError(expired, HttpStatus.CONFLICT, "WRISTBAND_EXPIRED");
         assertThat(jdbc.queryForObject(
-                "SELECT status FROM wristbands WHERE card_uid='2283055618'",
-                String.class)).isEqualTo("EXPIRED");
+                "SELECT w.status FROM wristbands w JOIN wristband_bindings b ON b.wristband_id=w.id WHERE b.member_id=? ORDER BY b.id DESC LIMIT 1",
+                String.class,
+                frozenMember)).isEqualTo("EXPIRED");
         assertThat(jdbc.queryForObject(
-                "SELECT status FROM wristband_bindings WHERE wristband_id=(SELECT id FROM wristbands WHERE card_uid='2283055618') ORDER BY id DESC LIMIT 1",
-                String.class)).isEqualTo("EXPIRED");
+                "SELECT status FROM wristband_bindings WHERE member_id=? ORDER BY id DESC LIMIT 1",
+                String.class,
+                frozenMember)).isEqualTo("EXPIRED");
     }
 
     @Test
@@ -367,8 +365,7 @@ class CoreFlowApiIntegrationTest {
         assertThat(successResult.getBody()).containsEntry("rawScore", 88);
         assertThat(successResult.getBody()).containsEntry("pointsAwarded", 88);
         assertThat(successResult.getBody()).containsEntry("scoringPolicy", "raw-score-v1");
-        ResponseEntity<List<Map<String, Object>>> playList = http.exchange(
-                "/api/game-plays", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        ResponseEntity<List<Map<String, Object>>> playList = getList("/api/game-plays");
         assertThat(playList.getBody()).anySatisfy(play -> assertThat(play)
                 .containsEntry("rawScore", 88)
                 .containsEntry("pointsAwarded", 88)
@@ -458,7 +455,7 @@ class CoreFlowApiIntegrationTest {
         assertThat(profile).containsEntry("avatarId", "avatar-07");
         assertThat(profile).containsEntry("birthday", "1999-09-09");
         assertThat(profile).containsEntry("gender", "female");
-        assertThat(profile).containsEntry("createdBy", "kiosk");
+        assertThat(profile).containsEntry("createdBy", "operator:admin");
 
         Map<String, Object> points = map(response.getBody().get("points"));
         assertThat(number(points.get("total"))).isEqualTo(99L);
@@ -500,7 +497,10 @@ class CoreFlowApiIntegrationTest {
         ResponseEntity<Map<String, Object>> response = get("/api/player-info?wristbandUid=2283055618");
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(maps(response.getBody().get("wristbands")).get(0)).containsEntry("status", "EXPIRED");
-        assertThat(jdbc.queryForObject("SELECT status FROM wristbands WHERE card_uid=?", String.class, "2283055618"))
+        assertThat(jdbc.queryForObject(
+                "SELECT w.status FROM wristbands w JOIN wristband_bindings b ON b.wristband_id=w.id WHERE b.member_id=? ORDER BY b.id DESC LIMIT 1",
+                String.class,
+                memberId))
                 .isEqualTo("ACTIVE");
         assertThat(jdbc.queryForObject("SELECT status FROM wristband_bindings WHERE member_id=?", String.class, memberId))
                 .isEqualTo("ACTIVE");
@@ -564,17 +564,15 @@ class CoreFlowApiIntegrationTest {
                 VALUES (?,?,'880002','filter-device',?,'simple','其他游戏','COMPLETED',?,?,1)
                 """, other, binding, "filter-" + i, clock.instant().toString(), clock.instant().toString());
         }
-        ResponseEntity<List<Map<String, Object>>> all = http.exchange("/api/game-plays",
-                HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        ResponseEntity<List<Map<String, Object>>> all = getList("/api/game-plays");
         assertThat(all.getBody()).hasSize(200);
-        ResponseEntity<List<Map<String, Object>>> filtered = http.exchange("/api/game-plays?memberId=" + first,
-                HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        ResponseEntity<List<Map<String, Object>>> filtered = getList("/api/game-plays?memberId=" + first);
         assertThat(filtered.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(filtered.getBody()).hasSize(1);
         assertThat(filtered.getBody().get(0)).containsEntry("externalSessionId", "filtered-first");
         for (String endpoint : List.of("wristband-charges", "wristband-bindings")) {
-            ResponseEntity<List<Map<String, Object>>> records = http.exchange(
-                    "/api/records/" + endpoint + "?uid=880001", HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+            ResponseEntity<List<Map<String, Object>>> records = getList(
+                    "/api/records/" + endpoint + "?uid=880001");
             assertThat(records.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(records.getBody()).hasSize(1);
             assertThat(records.getBody().get(0)).containsEntry("uid", "880001");
@@ -941,7 +939,7 @@ class CoreFlowApiIntegrationTest {
         return http.exchange(
                 path,
                 HttpMethod.POST,
-                new HttpEntity<>(body),
+                new HttpEntity<>(body, operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
     }
 
@@ -949,7 +947,7 @@ class CoreFlowApiIntegrationTest {
         return http.exchange(
                 path,
                 HttpMethod.POST,
-                new HttpEntity<>(body),
+                new HttpEntity<>(body, operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
     }
 
@@ -957,7 +955,15 @@ class CoreFlowApiIntegrationTest {
         return http.exchange(
                 path,
                 HttpMethod.GET,
-                null,
+                new HttpEntity<>(operatorHeaders()),
+                new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<List<Map<String, Object>>> getList(String path) {
+        return http.exchange(
+                path,
+                HttpMethod.GET,
+                new HttpEntity<>(operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
     }
 
@@ -965,8 +971,14 @@ class CoreFlowApiIntegrationTest {
         return http.exchange(
                 path,
                 HttpMethod.PUT,
-                new HttpEntity<>(body),
+                new HttpEntity<>(body, operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
+    }
+
+    private HttpHeaders operatorHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Operator-Id", String.valueOf(factoryOperatorId));
+        return headers;
     }
 
     private ResponseEntity<Map<String, Object>> startPlay(

@@ -13,10 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class PlayerInfoService {
     private final JdbcTemplate jdbc;
     private final GameAccessService accessService;
+    private final ProtectedDataService protectedData;
 
-    public PlayerInfoService(JdbcTemplate jdbc, GameAccessService accessService) {
+    public PlayerInfoService(JdbcTemplate jdbc, GameAccessService accessService, ProtectedDataService protectedData) {
         this.jdbc = jdbc;
         this.accessService = accessService;
+        this.protectedData = protectedData;
     }
 
     @Transactional(readOnly = true)
@@ -39,17 +41,18 @@ public class PlayerInfoService {
               FROM wristbands w
               JOIN wristband_bindings b ON b.wristband_id=w.id AND b.status IN ('READY', 'ACTIVE')
               JOIN members m ON m.id=b.member_id
-             WHERE w.card_uid=? AND m.status='ACTIVE' AND m.deleted_at IS NULL
+             WHERE (w.card_uid_lookup_hash=? OR (w.card_uid_lookup_hash IS NULL AND w.card_uid=?))
+               AND m.status='ACTIVE' AND m.deleted_at IS NULL
              ORDER BY b.id DESC
              LIMIT 1
-            """, uid);
+            """, protectedData.wristbandLookupHash(uid), uid);
         if (members.isEmpty()) {
             throw GameAccessService.error(
                     HttpStatus.NOT_FOUND,
                     "PLAYER_NOT_FOUND",
                     "No active member matches the supplied wristband");
         }
-        return findByPhone(String.valueOf(members.get(0).get("phone")));
+        return findByPhone(protectedData.decryptField("members", "phone", members.get(0).get("phone")));
     }
 
     @Transactional(readOnly = true)
@@ -62,12 +65,18 @@ public class PlayerInfoService {
             SELECT id, phone, name, avatar_id AS avatarId, birthday, gender, status,
                    created_at AS createdAt, created_by AS createdBy
               FROM members
-             WHERE phone=? AND status='ACTIVE' AND deleted_at IS NULL
-            """, phone);
+             WHERE (phone_lookup_hash=? OR (phone_lookup_hash IS NULL AND phone=?))
+               AND status='ACTIVE' AND deleted_at IS NULL
+            """, protectedData.phoneLookupHash(phone), phone);
         if (members.isEmpty()) {
             throw GameAccessService.error(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "未找到该手机号对应的会员");
         }
-        Map<String, Object> profile = members.get(0);
+        LinkedHashMap<String, Object> profile = new LinkedHashMap<>(members.get(0));
+        profile.put("phone", protectedData.decryptField("members", "phone", profile.get("phone")));
+        profile.put("name", protectedData.decryptField("members", "name", profile.get("name")));
+        profile.put("avatarId", protectedData.decryptField("members", "avatar_id", profile.get("avatarId")));
+        profile.put("birthday", protectedData.decryptField("members", "birthday", profile.get("birthday")));
+        profile.put("gender", protectedData.decryptField("members", "gender", profile.get("gender")));
         long memberId = number(profile.get("id"));
         long total = value(jdbc.queryForObject("""
             SELECT COALESCE(SUM(points_awarded), 0)
@@ -92,7 +101,8 @@ public class PlayerInfoService {
              WHERE b.member_id=? AND b.status IN ('READY', 'ACTIVE')
              ORDER BY b.id DESC
             """, memberId).stream()
-            .map(row -> accessService.getWristbandReadOnly(String.valueOf(row.get("uid"))))
+            .map(row -> accessService.getWristbandReadOnly(
+                    protectedData.decryptField("wristbands", "card_uid", row.get("uid"))))
             .toList();
 
         List<Map<String, Object>> recentPlays = jdbc.queryForList("""

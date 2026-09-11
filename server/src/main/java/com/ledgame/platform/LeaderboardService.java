@@ -25,11 +25,14 @@ public class LeaderboardService {
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final ZoneId zoneId;
+    private final ProtectedDataService protectedData;
 
-    public LeaderboardService(JdbcTemplate jdbc, Clock clock, ZoneId zoneId) {
+    public LeaderboardService(JdbcTemplate jdbc, Clock clock, ZoneId zoneId,
+            ProtectedDataService protectedData) {
         this.jdbc = jdbc;
         this.clock = clock;
         this.zoneId = zoneId;
+        this.protectedData = protectedData;
     }
 
     @Transactional(readOnly = true)
@@ -64,8 +67,8 @@ public class LeaderboardService {
             LinkedHashMap<String, Object> entry = new LinkedHashMap<>();
             entry.put("rank", rank);
             entry.put("memberId", number(row.get("memberId")));
-            entry.put("memberName", String.valueOf(row.get("memberName")));
-            entry.put("avatarId", row.get("avatarId"));
+            entry.put("memberName", protectedData.decryptField("members", "name", row.get("memberName")));
+            entry.put("avatarId", protectedData.decryptField("members", "avatar_id", row.get("avatarId")));
             entry.put("points", points);
             entry.put("completedGames", number(row.get("completedGames")));
             entries.add(entry);

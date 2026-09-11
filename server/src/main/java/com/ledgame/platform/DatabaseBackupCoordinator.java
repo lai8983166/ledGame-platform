@@ -122,6 +122,7 @@ public class DatabaseBackupCoordinator {
     }
 
     private void initialize() {
+        if (gate.status().state() == BackupLifecycleState.BLOCKED) return;
         if (!properties.isEnabled() || engine.inMemoryDatabase()) {
             DatabaseStateSnapshot source = databaseState.current();
             BackupErrorCode reason = properties.isEnabled()
@@ -154,6 +155,7 @@ public class DatabaseBackupCoordinator {
         }
         target = resolved.get();
         targetStateStore.write(target.volume().persistentIdentity());
+        quarantineLegacyHistory();
         inspectOrCreateLatest(source);
     }
 
@@ -207,8 +209,11 @@ public class DatabaseBackupCoordinator {
         try {
             InspectedDatabase backup = inspector.inspect(latest);
             DatabaseBackupMetadata metadata = engine.readLatestMetadata(target.root());
-            if (!engine.acceptsMetadata(metadata)) {
-                if (quarantineLatest("environment-mismatch")) backupNow(source);
+            if (!engine.acceptsMetadata(metadata)
+                    || !engine.acceptsKeyEnvelope(target.root().resolve("latest/data-key.dpapi"), metadata)) {
+                String reason = metadata == null || metadata.encryptionVersion() == null
+                        ? "plaintext-legacy-backup" : "environment-or-key-mismatch";
+                if (quarantineLatest(reason)) backupNow(source);
                 else gate.update(StartupGate.degraded(BackupErrorCode.BACKUP_PUBLISH_FAILED,
                         targetVolume(), lastSuccessfulBackupAt, source.revision(), null));
                 return;
@@ -369,12 +374,14 @@ public class DatabaseBackupCoordinator {
         Path latestDirectory = target.root().resolve("latest");
         Path latestDatabase = latestDirectory.resolve("platform.db");
         Path latestMetadata = latestDirectory.resolve("metadata.json");
+        Path latestKey = latestDirectory.resolve("data-key.dpapi");
         if (!Files.exists(latestDatabase) && !Files.exists(latestMetadata)) return true;
         Path archive = target.root().resolve("quarantine").resolve(
                 reason + "-" + DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
                         .withZone(java.time.ZoneOffset.UTC).format(clock.instant()));
         Path archivedDatabase = archive.resolve("platform.db");
         Path archivedMetadata = archive.resolve("metadata.json");
+        Path archivedKey = archive.resolve("data-key.dpapi");
         try {
             Files.createDirectories(archive);
             if (Files.exists(latestDatabase)) {
@@ -384,9 +391,18 @@ public class DatabaseBackupCoordinator {
                 if (Files.exists(latestMetadata)) {
                     Files.move(latestMetadata, archivedMetadata, StandardCopyOption.REPLACE_EXISTING);
                 }
+                if (Files.exists(latestKey)) {
+                    Files.move(latestKey, archivedKey, StandardCopyOption.REPLACE_EXISTING);
+                }
             } catch (Exception metadataFailure) {
                 if (Files.exists(archivedDatabase)) {
                     Files.move(archivedDatabase, latestDatabase, StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (Files.exists(archivedMetadata)) {
+                    Files.move(archivedMetadata, latestMetadata, StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (Files.exists(archivedKey)) {
+                    Files.move(archivedKey, latestKey, StandardCopyOption.REPLACE_EXISTING);
                 }
                 throw metadataFailure;
             }
@@ -395,6 +411,43 @@ public class DatabaseBackupCoordinator {
         } catch (Exception exception) {
             LOG.warn("database_backup_quarantine_failed reason={} message={}", reason, exception.getMessage());
             return false;
+        }
+    }
+
+    private void quarantineLegacyHistory() {
+        if (target == null) return;
+        Path history = target.root().resolve("history");
+        if (!Files.isDirectory(history)) return;
+        try (var databases = Files.newDirectoryStream(history, "*-platform.db")) {
+            for (Path database : databases) {
+                Path metadata = Path.of(database.toString().replace("-platform.db", "-platform.json"));
+                boolean legacy = !Files.isRegularFile(metadata);
+                if (!legacy) {
+                    try {
+                        DatabaseBackupMetadata value = objectMapper.readValue(metadata.toFile(), DatabaseBackupMetadata.class);
+                        legacy = value.encryptionVersion() == null || value.keyId() == null;
+                    } catch (Exception exception) {
+                        legacy = true;
+                    }
+                }
+                if (!legacy) continue;
+                String prefix = database.getFileName().toString().replace("-platform.db", "");
+                Path archive = target.root().resolve("quarantine")
+                        .resolve("plaintext-legacy-backup-" + prefix);
+                Files.createDirectories(archive);
+                Files.move(database, archive.resolve("platform.db"), StandardCopyOption.REPLACE_EXISTING);
+                if (Files.exists(metadata)) {
+                    Files.move(metadata, archive.resolve("metadata.json"), StandardCopyOption.REPLACE_EXISTING);
+                }
+                Path key = history.resolve(prefix + "-data-key.dpapi");
+                if (Files.exists(key)) {
+                    Files.move(key, archive.resolve("data-key.dpapi"), StandardCopyOption.REPLACE_EXISTING);
+                }
+                Files.writeString(archive.resolve("reason.txt"), "PLAINTEXT_LEGACY_BACKUP");
+                LOG.warn("database_backup_quarantined reason=PLAINTEXT_LEGACY_BACKUP archive={}", archive);
+            }
+        } catch (Exception exception) {
+            LOG.warn("database_backup_legacy_scan_failed message={}", exception.getMessage());
         }
     }
 

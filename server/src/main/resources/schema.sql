@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     phone TEXT NOT NULL,
+    phone_lookup_hash TEXT,
     name TEXT NOT NULL,
     avatar_id TEXT,
     birthday TEXT,
@@ -12,18 +13,18 @@ CREATE TABLE IF NOT EXISTS members (
     created_by TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_members_active_phone
-    ON members(phone) WHERE status = 'ACTIVE';
 
 CREATE TABLE IF NOT EXISTS wristbands (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_uid TEXT NOT NULL UNIQUE,
+    card_uid TEXT NOT NULL,
+    card_uid_lookup_hash TEXT,
     status TEXT NOT NULL DEFAULT 'IN_STOCK' CHECK (status IN ('IN_STOCK', 'CHARGED', 'READY', 'ACTIVE', 'EXPIRED')),
     duration_minutes INTEGER,
     charged_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
 
 CREATE TABLE IF NOT EXISTS wristband_charge_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,8 +105,9 @@ CREATE TABLE IF NOT EXISTS operator_accounts (
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
-    account_type TEXT NOT NULL CHECK (account_type IN ('FACTORY_ADMIN', 'OPERATOR')),
+    account_type TEXT NOT NULL CHECK (account_type IN ('FACTORY_ADMIN', 'STORE_MANAGER', 'CLERK')),
     enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    deleted_at TEXT,
     created_by_operator_id INTEGER REFERENCES operator_accounts(id),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -141,4 +143,12 @@ INSERT OR IGNORE INTO database_state(
 VALUES (
     1, lower(hex(randomblob(16))), 0,
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL, NULL
+);
+
+CREATE TABLE IF NOT EXISTS data_protection_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    format_version INTEGER NOT NULL,
+    key_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('MIGRATING', 'COMPLETE')),
+    completed_at TEXT
 );
