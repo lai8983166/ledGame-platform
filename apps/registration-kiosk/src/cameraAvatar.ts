@@ -19,13 +19,25 @@ export interface CapturedAvatar {
   bytes: number;
 }
 
-export function cameraErrorCode(error: unknown): CameraErrorCode {
+export interface CameraErrorContext {
+  /** Number of video inputs visible after the open attempt, when known. */
+  availableDeviceCount?: number;
+}
+
+export function cameraErrorCode(error: unknown, context: CameraErrorContext = {}): CameraErrorCode {
+  const explicitCode = String((error as { code?: unknown })?.code ?? "").toUpperCase();
   const name = String((error as { name?: unknown })?.name ?? "").toLowerCase();
   const message = String((error as { message?: unknown })?.message ?? "");
+  if (explicitCode === "NO_CAMERA") return "NO_CAMERA";
+  if (explicitCode === "UNSUPPORTED") return "UNSUPPORTED";
   if (message === "CAPTURE_FAILED") return "CAPTURE_FAILED";
   if (name === "notallowederror" || name === "securityerror") return "PERMISSION_DENIED";
   if (name === "notfounderror" || name === "overconstrainederror") return "NO_CAMERA";
-  if (name === "notreadableerror" || name === "aborterror") return "BUSY";
+  // Chromium reports NotReadableError both for an occupied/broken device and
+  // for machines without a camera. Enumerating after the failed open lets the
+  // UI avoid claiming that a nonexistent camera is occupied.
+  if (name === "notreadableerror") return context.availableDeviceCount === 0 ? "NO_CAMERA" : "BUSY";
+  if (name === "aborterror") return "BUSY";
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return "UNSUPPORTED";
   return "DISCONNECTED";
 }

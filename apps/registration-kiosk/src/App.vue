@@ -458,8 +458,8 @@ const startCamera = async (deviceId = "") => {
   } catch (error) {
     stopCamera();
     cameraStatus.value = "error";
-    cameraError.value = cameraErrorMessage(cameraErrorCode(error));
     cameraDevices.value = await enumerateCameras().catch(() => []);
+    cameraError.value = cameraErrorMessage(cameraErrorCode(error, { availableDeviceCount: cameraDevices.value.length }));
   }
 };
 

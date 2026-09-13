@@ -17,7 +17,8 @@ describe("registration camera avatar capture", () => {
   it("maps common Windows media failures to recoverable user-facing categories", () => {
     expect(cameraErrorCode({ name: "NotAllowedError" })).toBe("PERMISSION_DENIED");
     expect(cameraErrorCode({ name: "NotFoundError" })).toBe("NO_CAMERA");
-    expect(cameraErrorCode({ name: "NotReadableError" })).toBe("BUSY");
+    expect(cameraErrorCode({ name: "NotReadableError" }, { availableDeviceCount: 0 })).toBe("NO_CAMERA");
+    expect(cameraErrorCode({ name: "NotReadableError" }, { availableDeviceCount: 1 })).toBe("BUSY");
     expect(cameraErrorCode({ name: "AbortError" })).toBe("BUSY");
     expect(cameraErrorCode({ name: "OverconstrainedError" })).toBe("NO_CAMERA");
     expect(cameraErrorCode({ message: "CAPTURE_FAILED" })).toBe("CAPTURE_FAILED");
