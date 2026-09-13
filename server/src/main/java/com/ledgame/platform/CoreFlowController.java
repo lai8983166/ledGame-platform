@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -31,10 +33,11 @@ public class CoreFlowController {
     private final StartupGate startupGate;
     private final ProtectedDataService protectedData;
     private final OperatorAuthorizationService authorization;
+    private final AvatarStorageService avatars;
 
     public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService, Clock clock,
             ActivationService activation, StartupGate startupGate, ProtectedDataService protectedData,
-            OperatorAuthorizationService authorization) {
+            OperatorAuthorizationService authorization, AvatarStorageService avatars) {
         this.jdbc = jdbc;
         this.gameAccessService = gameAccessService;
         this.clock = clock;
@@ -42,6 +45,7 @@ public class CoreFlowController {
         this.startupGate = startupGate;
         this.protectedData = protectedData;
         this.authorization = authorization;
+        this.avatars = avatars;
     }
 
     @GetMapping("/health")
@@ -75,6 +79,7 @@ public class CoreFlowController {
     }
 
     @PostMapping("/members")
+    @Transactional
     public Map<String, Object> createMember(
             @RequestBody MemberRequest request,
             @RequestAttribute(value = OperatorAuditInterceptor.OPERATOR_ATTRIBUTE, required = false)
@@ -88,13 +93,32 @@ public class CoreFlowController {
         String createdBy = operator == null
                 ? (request.createdBy() == null ? "kiosk" : request.createdBy())
                 : "operator:" + operator.username();
-        jdbc.update("INSERT INTO members(phone, phone_lookup_hash, name, avatar_id, birthday, gender, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)",
-                protectedData.encryptField("members", "phone", phone), phoneHash,
-                protectedData.encryptField("members", "name", request.name().trim()),
-                protectedData.encryptField("members", "avatar_id", request.avatarId()),
-                protectedData.encryptField("members", "birthday", request.birthday()),
-                protectedData.encryptField("members", "gender", request.gender()), now, now, createdBy);
-        return findMembers(phone).get(0);
+        String storedAvatarId = request.avatarImageBase64() == null || request.avatarImageBase64().isBlank()
+                ? request.avatarId() : avatars.store(request.avatarImageBase64(), request.avatarImageMimeType());
+        try {
+            jdbc.update("INSERT INTO members(phone, phone_lookup_hash, name, avatar_id, birthday, gender, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)",
+                    protectedData.encryptField("members", "phone", phone), phoneHash,
+                    protectedData.encryptField("members", "name", request.name().trim()),
+                    protectedData.encryptField("members", "avatar_id", storedAvatarId),
+                    protectedData.encryptField("members", "birthday", request.birthday()),
+                    protectedData.encryptField("members", "gender", request.gender()), now, now, createdBy);
+            return findMembers(phone).get(0);
+        } catch (RuntimeException exception) {
+            if (avatars.isUploaded(storedAvatarId)) avatars.delete(storedAvatarId);
+            throw exception;
+        }
+    }
+
+    @GetMapping("/members/{id}/avatar")
+    public ResponseEntity<byte[]> readMemberAvatar(@PathVariable Long id) {
+        List<Map<String, Object>> rows = jdbc.queryForList("SELECT avatar_id FROM members WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL", id);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "会员不存在");
+        String avatarId = protectedData.decryptField("members", "avatar_id", rows.get(0).get("avatar_id"));
+        byte[] payload = avatars.read(avatarId);
+        if (payload == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "会员没有已上传头像");
+        MediaType type = payload.length >= 2 && (payload[0] & 0xff) == 0xff && (payload[1] & 0xff) == 0xd8
+                ? MediaType.IMAGE_JPEG : MediaType.IMAGE_PNG;
+        return ResponseEntity.ok().contentType(type).cacheControl(org.springframework.http.CacheControl.noCache()).body(payload);
     }
 
     @DeleteMapping("/members/{id}")
@@ -304,6 +328,9 @@ public class CoreFlowController {
         decryptInto(row, "phone", "members", "phone");
         decryptInto(row, "name", "members", "name");
         decryptInto(row, "avatarId", "members", "avatar_id");
+        if (row.get("id") != null && avatars.isUploaded(String.valueOf(row.get("avatarId")))) {
+            row.put("avatarUrl", "/api/members/" + row.get("id") + "/avatar");
+        }
         decryptInto(row, "birthday", "members", "birthday");
         decryptInto(row, "gender", "members", "gender");
         return row;
@@ -358,5 +385,6 @@ public class CoreFlowController {
     public record ChargeRequest(String uid, Integer durationMinutes) {}
     public record BindRequest(String uid, Long memberId) {}
     public record UidRequest(String uid) {}
-    public record MemberRequest(String phone, String name, String avatarId, String birthday, String gender, String createdBy) {}
+    public record MemberRequest(String phone, String name, String avatarId, String birthday, String gender, String createdBy,
+            String avatarImageBase64, String avatarImageMimeType) {}
 }

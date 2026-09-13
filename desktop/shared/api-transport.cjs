@@ -1,7 +1,9 @@
 const { buildHttpBaseUrl } = require("./network.cjs");
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "DELETE"]);
-const MAX_REQUEST_BYTES = 256 * 1024;
+// A captured avatar is capped at 256 KiB decoded. Base64 plus the JSON
+// envelope is roughly 342 KiB, so the transport must allow that overhead.
+const MAX_REQUEST_BYTES = 384 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 function validateApiRequest(request) {

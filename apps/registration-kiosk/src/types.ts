@@ -1,5 +1,5 @@
 export type KioskScreen = "home" | "phone" | "confirm" | "register" | "swipe" | "success" | "info-phone" | "info-result";
-export type KioskOverlay = "none" | "avatar-source" | "avatar-library";
+export type KioskOverlay = "none" | "avatar-source" | "avatar-library" | "avatar-camera";
 export type KeyboardLayout = "numeric" | "alphabetic";
 export type InputTarget = "phone" | "infoPhone" | "infoWristbandUid" | "name" | "birthYear" | "birthMonth" | "birthDay" | "staffExitPassword";
 export type Gender = "male" | "female" | "secret" | "";
@@ -15,6 +15,7 @@ export interface KioskSession {
   birthDay: string;
   gender: Gender;
   avatarId: string;
+  avatarPhotoDataUrl: string | null;
   memberId: number | null;
   wristbandUid: string;
   durationMinutes: number | null;
@@ -26,6 +27,7 @@ export interface DemoMember {
   phone: string;
   name: string;
   avatarId: string;
+  avatarUrl?: string | null;
 }
 
 export interface AvatarSpec {

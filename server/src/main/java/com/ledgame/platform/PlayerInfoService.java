@@ -14,11 +14,14 @@ public class PlayerInfoService {
     private final JdbcTemplate jdbc;
     private final GameAccessService accessService;
     private final ProtectedDataService protectedData;
+    private final AvatarStorageService avatars;
 
-    public PlayerInfoService(JdbcTemplate jdbc, GameAccessService accessService, ProtectedDataService protectedData) {
+    public PlayerInfoService(JdbcTemplate jdbc, GameAccessService accessService, ProtectedDataService protectedData,
+            AvatarStorageService avatars) {
         this.jdbc = jdbc;
         this.accessService = accessService;
         this.protectedData = protectedData;
+        this.avatars = avatars;
     }
 
     @Transactional(readOnly = true)
@@ -75,6 +78,9 @@ public class PlayerInfoService {
         profile.put("phone", protectedData.decryptField("members", "phone", profile.get("phone")));
         profile.put("name", protectedData.decryptField("members", "name", profile.get("name")));
         profile.put("avatarId", protectedData.decryptField("members", "avatar_id", profile.get("avatarId")));
+        if (profile.get("avatarId") != null && avatars.isUploaded(String.valueOf(profile.get("avatarId")))) {
+            profile.put("avatarUrl", "/api/members/" + profile.get("id") + "/avatar");
+        }
         profile.put("birthday", protectedData.decryptField("members", "birthday", profile.get("birthday")));
         profile.put("gender", protectedData.decryptField("members", "gender", profile.get("gender")));
         long memberId = number(profile.get("id"));

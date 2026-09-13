@@ -12,6 +12,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 import javax.sql.DataSource;
 
@@ -33,6 +34,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -69,6 +71,9 @@ class CoreFlowApiIntegrationTest {
     private DataSource dataSource;
 
     @Autowired
+    private AvatarStorageService avatarStorage;
+
+    @Autowired
     private MutableClock clock;
     private long factoryOperatorId;
 
@@ -82,6 +87,10 @@ class CoreFlowApiIntegrationTest {
         jdbc.update("DELETE FROM wristband_bindings");
         jdbc.update("DELETE FROM wristbands");
         jdbc.update("DELETE FROM members");
+        avatarStorage.storedFiles().forEach(path -> {
+            String fileName = path.getFileName().toString();
+            avatarStorage.delete("uploaded:" + fileName.substring(0, fileName.length() - 4));
+        });
     }
 
     @Test
@@ -112,6 +121,42 @@ class CoreFlowApiIntegrationTest {
         assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(duplicate.getBody()).containsEntry("message", "该手机号已经注册");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM members", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void createsMemberWithCapturedAvatarAndServesItWithoutExposingStoragePath() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("phone", "13800138001");
+        request.put("name", "摄像头头像会员");
+        request.put("avatarId", null);
+        request.put("avatarImageMimeType", "image/png");
+        request.put("avatarImageBase64",
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+
+        ResponseEntity<Map<String, Object>> created = post("/api/members", request);
+
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String avatarId = String.valueOf(created.getBody().get("avatarId"));
+        assertThat(avatarId).startsWith("uploaded:");
+        assertThat(created.getBody().get("avatarUrl")).isEqualTo(
+                "/api/members/" + created.getBody().get("id") + "/avatar");
+        assertThat(jdbc.queryForObject("SELECT avatar_id FROM members WHERE id=?", String.class,
+                number(created.getBody().get("id")))).startsWith("enc:v1:");
+        assertThat(avatarStorage.storedFiles()).hasSize(1);
+
+        ResponseEntity<byte[]> avatar = http.exchange(
+                String.valueOf(created.getBody().get("avatarUrl")),
+                HttpMethod.GET,
+                new HttpEntity<>(operatorHeaders()),
+                byte[].class);
+        assertThat(avatar.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(avatar.getHeaders().getContentType()).isEqualTo(MediaType.IMAGE_PNG);
+        assertThat(avatar.getBody()).startsWith((byte) 0x89, (byte) 0x50, (byte) 0x4e, (byte) 0x47);
+
+        ResponseEntity<Map<String, Object>> playerInfo = get("/api/player-info?phone=13800138001");
+        assertThat(playerInfo.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(map(playerInfo.getBody().get("profile"))).containsEntry("avatarUrl",
+                created.getBody().get("avatarUrl"));
     }
 
     @Test

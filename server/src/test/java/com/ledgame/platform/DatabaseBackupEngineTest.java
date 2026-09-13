@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.nio.file.attribute.FileTime;
+import java.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,6 +34,7 @@ class DatabaseBackupEngineTest {
     private Clock clock;
     private DataProtectionKeyManager keyManager;
     private ProtectedDataService protectedData;
+    private AvatarStorageService avatarStorage;
 
     @BeforeEach
     void setup() throws Exception {
@@ -58,6 +60,7 @@ class DatabaseBackupEngineTest {
         protectedData = new ProtectedDataService(keyManager);
         new DataProtectionMigration(jdbc, keyManager, protectedData, clock)
                 .run(new DefaultApplicationArguments());
+        avatarStorage = new AvatarStorageService(protectedData, "jdbc:sqlite:" + source.toAbsolutePath());
     }
 
     @Test
@@ -93,6 +96,26 @@ class DatabaseBackupEngineTest {
         String historyKey = historyDatabase.getFileName().toString()
                 .replace("-platform.db", "-data-key.dpapi");
         assertThat(historyDatabase.resolveSibling(historyKey)).hasContent("dpapi-test-envelope");
+    }
+
+    @Test
+    void onlineBackupPublishesEncryptedAvatarBundleAndManifestAlongsideDatabase() throws Exception {
+        String avatarId = avatarStorage.store(Base64.getEncoder().encodeToString(tinyPng()), "image/png");
+        insertMember("13800138001", "带头像玩家", avatarId);
+
+        engine(new SqliteOnlineBackup(dataSource)).backup(backupRoot, "uid:disk-b");
+
+        Path avatarDirectory = backupRoot.resolve("latest/avatars");
+        assertThat(avatarDirectory).isDirectory();
+        Path stored;
+        try (var files = Files.list(avatarDirectory)) {
+            var entries = files.toList();
+            assertThat(entries).hasSize(1);
+            stored = entries.get(0);
+        }
+        Path avatarManifest = backupRoot.resolve("latest/avatar-manifest.json");
+        assertThat(Files.readString(avatarManifest)).contains("ledgame-avatar-backup-v1");
+        assertThat(Files.readAllBytes(stored)[0]).isZero();
     }
 
     @Test
@@ -180,15 +203,25 @@ class DatabaseBackupEngineTest {
     private DatabaseBackupEngine engine(SqliteOnlineBackup onlineBackup) {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         return new DatabaseBackupEngine(onlineBackup, inspector, mapper, properties, clock,
-                "Asia/Shanghai", "jdbc:sqlite:" + source.toAbsolutePath(), keyManager, protectedData);
+                "Asia/Shanghai", "jdbc:sqlite:" + source.toAbsolutePath(), keyManager, protectedData, avatarStorage);
     }
 
     private void insertMember(String phone, String name) {
+        insertMember(phone, name, null);
+    }
+
+    private void insertMember(String phone, String name, String avatarId) {
         jdbc.update("""
-            INSERT INTO members(phone, phone_lookup_hash, name, status, created_at, updated_at, created_by)
-            VALUES (?, ?, ?, 'ACTIVE', 'now', 'now', 'test')
+            INSERT INTO members(phone, phone_lookup_hash, name, avatar_id, status, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, 'ACTIVE', 'now', 'now', 'test')
             """, protectedData.encryptField("members", "phone", phone), protectedData.phoneLookupHash(phone),
-                protectedData.encryptField("members", "name", name));
+                protectedData.encryptField("members", "name", name),
+                protectedData.encryptField("members", "avatar_id", avatarId));
+    }
+
+    private static byte[] tinyPng() {
+        return Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
     }
 
     private static final class MutableClock extends Clock {

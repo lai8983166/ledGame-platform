@@ -19,4 +19,11 @@ describe("member admin deletion UI", () => {
     expect(source).toContain("platformApi.deleteMember");
     expect(source).toContain("await loadMembers()");
   });
+
+  it("renders an uploaded avatar URL and falls back to initials when it cannot be read", () => {
+    expect(source).toContain("avatarUrl: item.avatarUrl");
+    expect(source).toContain('v-if="member.avatarUrl"');
+    expect(source).toContain('class="avatar__image"');
+    expect(source).toContain("member.avatarUrl = null");
+  });
 });

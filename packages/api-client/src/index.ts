@@ -81,6 +81,18 @@ export interface DeletedMember {
   deletedAt: string;
 }
 
+export interface CreateMemberInput {
+  phone: string;
+  name: string;
+  avatarId?: string | null;
+  birthday?: string | null;
+  gender?: string | null;
+  createdBy?: string | null;
+  /** Optional base64 payload produced by the kiosk camera flow. */
+  avatarImageBase64?: string | null;
+  avatarImageMimeType?: "image/jpeg" | "image/png" | string | null;
+}
+
 interface ErrorResponse {
   code?: string;
   message?: string;
@@ -91,6 +103,7 @@ export interface PlayerProfile {
   phone: string;
   name: string;
   avatarId?: string | null;
+  avatarUrl?: string | null;
   birthday?: string | null;
   gender?: string | null;
   status: "ACTIVE" | "FROZEN";

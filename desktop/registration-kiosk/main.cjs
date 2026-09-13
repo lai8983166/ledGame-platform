@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, session } = require("electron");
 const { createProductConfigStore } = require("../shared/config-store.cjs");
 const { createApiTransport } = require("../shared/api-transport.cjs");
 const { buildHttpBaseUrl, checkHealth, validateHost, validatePort } = require("../shared/network.cjs");
@@ -165,6 +165,13 @@ function registerIpc() {
 app.setName("LED Game Registration Kiosk");
 if (process.env.LEDGAME_USER_DATA) app.setPath("userData", path.resolve(process.env.LEDGAME_USER_DATA));
 app.whenReady().then(async () => {
+  // Camera capture is opt-in from the registration flow. Allow only the
+  // renderer's standard media permission; no filesystem or device-specific
+  // access is exposed to the kiosk page.
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "media");
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === "media");
   store = createProductConfigStore(app.getPath("userData"), "registration-kiosk", { host: "127.0.0.1", port: 8090 });
   settings = await store.read();
   registerIpc();

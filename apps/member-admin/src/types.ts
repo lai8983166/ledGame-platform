@@ -50,6 +50,7 @@ export interface Member {
   status: "active" | "inactive";
   joinedAt: string;
   color: string;
+  avatarUrl?: string | null;
   pointsTotal?: number;
   rank?: number;
 }

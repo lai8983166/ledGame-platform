@@ -84,7 +84,8 @@ public class DatabaseImportService {
         String id = UUID.randomUUID().toString();
         DatabaseBackupMetadata metadata = readAdjacentMetadata(path);
         Path keyEnvelope = adjacentKeyEnvelope(path, metadata);
-        RegisteredCandidate registered = new RegisteredCandidate(path, "EXTERNAL", metadata, keyEnvelope);
+        RegisteredCandidate registered = new RegisteredCandidate(path, "EXTERNAL", metadata, keyEnvelope,
+                avatarDirectory(path, "EXTERNAL"), avatarManifest(path, "EXTERNAL"));
         if (metadata != null) verifyMetadata(registered, inspected);
         candidates.put(id, registered);
         return toCandidate(id, registered, inspected, summary);
@@ -109,12 +110,15 @@ public class DatabaseImportService {
         Path stagingDirectory = engine.sourceDatabase().getParent().resolve("import-staging");
         Path prepared = stagingDirectory.resolve("prepared-" + UUID.randomUUID() + ".db");
         Path preparedKey = stagingDirectory.resolve(prepared.getFileName() + ".data-key.dpapi");
+        Path preparedAvatars = stagingDirectory.resolve(prepared.getFileName() + ".avatars");
+        Path preparedAvatarManifest = stagingDirectory.resolve(prepared.getFileName() + ".avatar-manifest.json");
         try {
             Files.createDirectories(stagingDirectory);
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(stagingDirectory, "prepared-*")) {
-                for (Path stale : stream) Files.deleteIfExists(stale);
+                for (Path stale : stream) deleteTree(stale);
             }
             Files.copy(registered.path(), prepared, StandardCopyOption.REPLACE_EXISTING);
+            copyAvatarBundle(registered.avatarDirectory(), registered.avatarManifest(), preparedAvatars, preparedAvatarManifest);
             String keyEnvelopeSha256 = null;
             if (registered.keyEnvelope() != null && Files.isRegularFile(registered.keyEnvelope())) {
                 Files.copy(registered.keyEnvelope(), preparedKey, StandardCopyOption.REPLACE_EXISTING);
@@ -135,14 +139,21 @@ public class DatabaseImportService {
             coordinator.beginImport();
             return new DatabaseImportManifest(prepared.toString(),
                     Files.isRegularFile(preparedKey) ? preparedKey.toString() : null,
-                    keyEnvelopeSha256, preparedInspection.sha256());
+                    keyEnvelopeSha256, preparedInspection.sha256(),
+                    Files.isDirectory(preparedAvatars) ? preparedAvatars.toString() : null,
+                    Files.isRegularFile(preparedAvatarManifest) ? preparedAvatarManifest.toString() : null,
+                    Files.isRegularFile(preparedAvatarManifest) ? inspector.sha256(preparedAvatarManifest) : null);
         } catch (PlatformApiException exception) {
             deleteQuietly(prepared);
             deleteQuietly(preparedKey);
+            deleteTree(preparedAvatars);
+            deleteQuietly(preparedAvatarManifest);
             throw exception;
         } catch (Exception exception) {
             deleteQuietly(prepared);
             deleteQuietly(preparedKey);
+            deleteTree(preparedAvatars);
+            deleteQuietly(preparedAvatarManifest);
             throw new PlatformApiException(HttpStatus.INTERNAL_SERVER_ERROR, BackupErrorCode.IMPORT_FAILED.name(),
                     BackupErrorCode.IMPORT_FAILED.defaultMessage());
         }
@@ -163,7 +174,8 @@ public class DatabaseImportService {
             Path keyEnvelope = "LATEST".equals(sourceType)
                     ? database.getParent().resolve("data-key.dpapi")
                     : Path.of(database.toString().replace("-platform.db", "-data-key.dpapi"));
-            RegisteredCandidate registered = new RegisteredCandidate(database, sourceType, metadata, keyEnvelope);
+            RegisteredCandidate registered = new RegisteredCandidate(database, sourceType, metadata, keyEnvelope,
+                    avatarDirectory(database, sourceType), avatarManifest(database, sourceType));
             verifyMetadata(registered, inspected);
             String id = UUID.randomUUID().toString();
             candidates.put(id, registered);
@@ -305,6 +317,42 @@ public class DatabaseImportService {
                 : Path.of(database.toString().replace("-platform.db", "-data-key.dpapi"));
     }
 
+    private Path avatarDirectory(Path database, String sourceType) {
+        if ("LATEST".equals(sourceType) || "EXTERNAL".equals(sourceType)) return database.getParent().resolve("avatars");
+        return Path.of(database.toString().replace("-platform.db", "-avatars"));
+    }
+
+    private Path avatarManifest(Path database, String sourceType) {
+        if ("LATEST".equals(sourceType) || "EXTERNAL".equals(sourceType)) return database.getParent().resolve("avatar-manifest.json");
+        return Path.of(database.toString().replace("-platform.db", "-avatar-manifest.json"));
+    }
+
+    private void copyAvatarBundle(Path sourceDirectory, Path sourceManifest, Path targetDirectory, Path targetManifest)
+            throws Exception {
+        if (!Files.isDirectory(sourceDirectory)) return;
+        Files.createDirectories(targetDirectory);
+        try (var stream = Files.list(sourceDirectory)) {
+            for (Path source : stream.toList()) {
+                if (!Files.isRegularFile(source) || !source.getFileName().toString().matches("[0-9a-fA-F-]{36}\\.bin")) invalid();
+                Files.copy(source, targetDirectory.resolve(source.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        if (Files.isRegularFile(sourceManifest)) {
+            Files.copy(sourceManifest, targetManifest, StandardCopyOption.REPLACE_EXISTING);
+            if (!objectMapper.readTree(targetManifest.toFile()).path("format").asText().equals(AvatarBackupManifest.FORMAT)) invalid();
+            verifyAvatarManifest(targetDirectory, targetManifest);
+        }
+    }
+
+    private void verifyAvatarManifest(Path directory, Path manifestPath) throws Exception {
+        AvatarBackupManifest manifest = objectMapper.readValue(manifestPath.toFile(), AvatarBackupManifest.class);
+        for (AvatarBackupManifest.Entry entry : manifest.files()) {
+            Path file = directory.resolve(entry.name()).normalize();
+            if (!file.getParent().equals(directory.toAbsolutePath().normalize()) || !Files.isRegularFile(file)
+                    || Files.size(file) != entry.size() || !inspector.sha256(file).equalsIgnoreCase(entry.sha256())) invalid();
+        }
+    }
+
     private ImportSummary requireImportSummary(Path path) {
         try {
             org.sqlite.SQLiteConfig config = new org.sqlite.SQLiteConfig();
@@ -353,7 +401,15 @@ public class DatabaseImportService {
         try { Files.deleteIfExists(path); } catch (Exception ignored) {}
     }
 
+    private static void deleteTree(Path root) {
+        if (root == null || !Files.exists(root)) return;
+        try (var stream = Files.walk(root)) {
+            stream.sorted(Comparator.reverseOrder()).forEach(path -> { try { Files.deleteIfExists(path); } catch (Exception ignored) {} });
+        } catch (Exception ignored) { }
+    }
+
     private record RegisteredCandidate(
-            Path path, String sourceType, DatabaseBackupMetadata metadata, Path keyEnvelope) {}
+            Path path, String sourceType, DatabaseBackupMetadata metadata, Path keyEnvelope,
+            Path avatarDirectory, Path avatarManifest) {}
     private record ImportSummary(String factoryAdminUsername, long memberCount) {}
 }

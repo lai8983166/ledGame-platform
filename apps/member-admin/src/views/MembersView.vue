@@ -5,7 +5,7 @@ import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import type { Member } from "../types";
-import { platformApi } from "../platformApi";
+import { platformApi, platformBaseUrl } from "../platformApi";
 import { memberAdminCatalogs, type MemberAdminMessageKey } from "../localization";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 import {
@@ -39,18 +39,23 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
 };
 
-type BackendMember = { id: number; phone: string; name: string; avatarId?: string; status: string; createdAt?: string; pointsTotal: number; rank: number };
+type BackendMember = { id: number; phone: string; name: string; avatarId?: string; avatarUrl?: string | null; status: string; createdAt?: string; pointsTotal: number; rank: number };
 const mapMember = (item: BackendMember): Member => {
   const id = String(item.id);
   const initials = item.name.trim().slice(-2).toUpperCase();
   return { id, account: `DB-${id}`, name: item.name, initials, phone: item.phone, identityId: "未设置", status: item.status === "ACTIVE" ? "active" : "inactive", joinedAt: (item.createdAt ?? "").slice(0, 10) || "—", color: palette[item.id % palette.length], pointsTotal: Number(item.pointsTotal ?? 0), rank: Number(item.rank ?? 1) };
 };
 
+const mapMemberWithAvatar = (item: BackendMember): Member => ({
+  ...mapMember(item),
+  avatarUrl: item.avatarUrl ? `${platformBaseUrl}${item.avatarUrl}` : null,
+});
+
 const loadMembers = async () => {
   refreshing.value = true;
   try {
     const rows = await request<BackendMember[]>("/members");
-    members.value = rows.map(mapMember);
+    members.value = rows.map(mapMemberWithAvatar);
     connectionError.value = "";
   } catch (error) {
     connectionError.value = error instanceof Error ? error.message : "无法连接本机服务";
@@ -122,12 +127,12 @@ onMounted(loadMembers);
   <section v-if="connectionError" class="notice-bar" data-testid="admin-members-error"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
 
   <section class="table-card glass-panel">
-    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>数据库 ID</th><th>{{ text("points") }}</th><th>{{ text("rank") }}</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="selectedMember = member"><span class="avatar" :style="{ background: member.color }">{{ member.initials }}</span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td><code>{{ member.id }}</code></td><td data-testid="admin-member-points">{{ member.pointsTotal }}</td><td data-testid="admin-member-rank">#{{ member.rank }}</td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="icon-button" type="button" aria-label="查看会员" @click="selectedMember = member"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
+    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>数据库 ID</th><th>{{ text("points") }}</th><th>{{ text("rank") }}</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="selectedMember = member"><span class="avatar" :style="{ background: member.color }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" class="avatar__image" @error="member.avatarUrl = null" /><span v-else>{{ member.initials }}</span></span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td><code>{{ member.id }}</code></td><td data-testid="admin-member-points">{{ member.pointsTotal }}</td><td data-testid="admin-member-rank">#{{ member.rank }}</td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="icon-button" type="button" aria-label="查看会员" @click="selectedMember = member"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
     <div v-else class="empty-state empty-state--flat"><span><AppIcon name="search" :size="28" /></span><h2>没有找到会员</h2><p>当前列表来自本机 SQLite 数据库。</p><button class="secondary-button" type="button" @click="search = ''; statusFilter = 'all'">清除筛选</button></div>
     <footer class="table-footer"><span>当前显示数据库中的会员</span><strong>共 {{ filteredMembers.length }} 位</strong></footer>
   </section>
 
-  <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="selectedMember = null"><div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }">{{ selectedMember.initials }}</span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div><section class="drawer-section"><div class="drawer-section__title"><h3>数据库资料</h3></div><dl class="detail-grid"><div><dt>数据库 ID</dt><dd>{{ selectedMember.id }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div><div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>身份 ID</dt><dd>未设置</dd></div></dl></section><div class="notice-bar"><AppIcon name="card" :size="18" /><div><strong>会员与手环分离</strong><p>请在“手环办理”查看具体手环的可用分钟数和绑定状态。</p></div></div><section v-if="canDeleteMembers" class="drawer-section member-danger-zone"><div class="drawer-section__title"><h3>{{ text("memberDeleteDangerTitle") }}</h3></div><p>{{ text("memberDeleteDangerBody") }}</p><button class="danger-button" data-testid="admin-member-delete" type="button" @click="askToDeleteMember(selectedMember)"><AppIcon name="trash" :size="17" />{{ text("memberDeleteAction") }}</button></section></SideDrawer>
+  <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="selectedMember = null"><div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }"><img v-if="selectedMember.avatarUrl" :src="selectedMember.avatarUrl" alt="" class="avatar__image" @error="selectedMember.avatarUrl = null" /><span v-else>{{ selectedMember.initials }}</span></span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div><section class="drawer-section"><div class="drawer-section__title"><h3>数据库资料</h3></div><dl class="detail-grid"><div><dt>数据库 ID</dt><dd>{{ selectedMember.id }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div><div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>身份 ID</dt><dd>未设置</dd></div></dl></section><div class="notice-bar"><AppIcon name="card" :size="18" /><div><strong>会员与手环分离</strong><p>请在“手环办理”查看具体手环的可用分钟数和绑定状态。</p></div></div><section v-if="canDeleteMembers" class="drawer-section member-danger-zone"><div class="drawer-section__title"><h3>{{ text("memberDeleteDangerTitle") }}</h3></div><p>{{ text("memberDeleteDangerBody") }}</p><button class="danger-button" data-testid="admin-member-delete" type="button" @click="askToDeleteMember(selectedMember)"><AppIcon name="trash" :size="17" />{{ text("memberDeleteAction") }}</button></section></SideDrawer>
 
   <BaseModal v-if="deletion.target" :title="text('memberDeleteConfirmTitle')" :description="text('memberDeleteModalDescription')" size="small" @close="closeMemberDeletion"><div data-testid="admin-member-delete-dialog" class="danger-confirm"><span><AppIcon name="alert" :size="22" /></span><div><strong>{{ deletion.target.name }} · {{ deletion.target.phone }}</strong><p>{{ text("memberDeleteConsequences") }}</p></div></div><p v-if="deletion.error" class="form-error"><AppIcon name="alert" :size="16" />{{ deletion.error }}</p><template #footer><button class="ghost-button" data-testid="admin-member-delete-cancel" type="button" :disabled="deletion.status === 'submitting'" @click="closeMemberDeletion">取消</button><button class="danger-button danger-button--solid" data-testid="admin-member-delete-confirm" type="button" :disabled="deletion.status === 'submitting'" @click="confirmMemberDeletion">{{ deletion.status === "submitting" ? "删除中…" : text("memberDeleteAction") }}</button></template></BaseModal>
 

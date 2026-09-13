@@ -53,9 +53,17 @@ function restoreRollback(databasePath, state) {
     fs.rmSync(keyPath, { force: true });
     moveIfExists(path.join(rollbackDirectory, "data-key.dpapi"), keyPath);
   }
+  if (state.replaceAvatars && state.avatarsBackedUp) {
+    const avatarPath = path.join(dataDirectory, "avatars");
+    fs.rmSync(avatarPath, { recursive: true, force: true });
+    moveIfExists(path.join(rollbackDirectory, "avatars"), avatarPath);
+    fs.rmSync(path.join(dataDirectory, "avatar-manifest.json"), { force: true });
+    moveIfExists(path.join(rollbackDirectory, "avatar-manifest.json"), path.join(dataDirectory, "avatar-manifest.json"));
+  }
   if (state.staging) fs.rmSync(state.staging, { force: true });
   if (state.stagingKey) fs.rmSync(state.stagingKey, { force: true });
   fs.rmSync(statePath(databasePath), { force: true });
+  fs.rmSync(path.join(dataDirectory, "avatar-manifest.json.importing"), { force: true });
   return true;
 }
 
@@ -90,14 +98,29 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
       || sha256(sourceKeyEnvelope) !== expectedKeyHash)) {
     throw new Error("IMPORT_PREPARED_KEY_HASH_MISMATCH");
   }
+  const sourceAvatars = manifest?.preparedAvatarDirectoryPath
+    ? path.resolve(String(manifest.preparedAvatarDirectoryPath)) : null;
+  const sourceAvatarManifest = manifest?.preparedAvatarManifestPath
+    ? path.resolve(String(manifest.preparedAvatarManifestPath)) : null;
+  const expectedAvatarManifestHash = String(manifest?.avatarManifestSha256 || "").toLowerCase();
+  if (sourceAvatars && (!fs.existsSync(sourceAvatars) || !fs.statSync(sourceAvatars).isDirectory())) {
+    throw new Error("IMPORT_PREPARED_AVATAR_DIRECTORY_MISSING");
+  }
+  if (sourceAvatarManifest && (!fs.existsSync(sourceAvatarManifest)
+      || !/^[a-f0-9]{64}$/.test(expectedAvatarManifestHash)
+      || sha256(sourceAvatarManifest) !== expectedAvatarManifestHash)) {
+    throw new Error("IMPORT_PREPARED_AVATAR_MANIFEST_MISMATCH");
+  }
   const dataDirectory = path.dirname(path.resolve(databasePath));
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const rollbackDirectory = path.join(dataDirectory, "pre-import", stamp);
   const staging = path.join(dataDirectory, `platform.db.importing-${process.pid}-${Date.now()}`);
   const keyPath = path.join(dataDirectory, "security", "data-key.dpapi");
   const stagingKey = path.join(dataDirectory, `data-key.dpapi.importing-${process.pid}-${Date.now()}`);
+  const stagingAvatars = path.join(dataDirectory, `avatars.importing-${process.pid}-${Date.now()}`);
   const state = { phase: "PREPARED", rollbackDirectory, staging,
-    preparedDatabasePath: source, expectedHash, replaceKeyEnvelope: Boolean(sourceKeyEnvelope), stagingKey };
+    preparedDatabasePath: source, expectedHash, replaceKeyEnvelope: Boolean(sourceKeyEnvelope), stagingKey,
+    replaceAvatars: Boolean(sourceAvatars), sourceAvatars, sourceAvatarManifest, expectedAvatarManifestHash, stagingAvatars };
   fs.mkdirSync(rollbackDirectory, { recursive: true });
   writeState(databasePath, state);
   try {
@@ -105,6 +128,11 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
       moveIfExists(`${databasePath}${suffix}`, path.join(rollbackDirectory, `platform.db${suffix}`));
     }
     if (sourceKeyEnvelope) moveIfExists(keyPath, path.join(rollbackDirectory, "data-key.dpapi"));
+    if (sourceAvatars) {
+      moveIfExists(path.join(dataDirectory, "avatars"), path.join(rollbackDirectory, "avatars"));
+      moveIfExists(path.join(dataDirectory, "avatar-manifest.json"), path.join(rollbackDirectory, "avatar-manifest.json"));
+      state.avatarsBackedUp = true;
+    }
     state.phase = "BACKED_UP";
     writeState(databasePath, state);
     fs.copyFileSync(source, staging);
@@ -116,14 +144,33 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
       if (sha256(stagingKey) !== expectedKeyHash) throw new Error("IMPORT_STAGING_KEY_HASH_MISMATCH");
       fs.renameSync(stagingKey, keyPath);
     }
+    if (sourceAvatars) {
+      copyDirectory(sourceAvatars, stagingAvatars);
+      if (sourceAvatarManifest) fs.copyFileSync(sourceAvatarManifest, path.join(dataDirectory, "avatar-manifest.json.importing"));
+      fs.renameSync(stagingAvatars, path.join(dataDirectory, "avatars"));
+      if (sourceAvatarManifest) fs.renameSync(path.join(dataDirectory, "avatar-manifest.json.importing"), path.join(dataDirectory, "avatar-manifest.json"));
+    }
     state.phase = "REPLACED";
     writeState(databasePath, state);
     return state;
   } catch (error) {
     fs.rmSync(staging, { force: true });
     fs.rmSync(stagingKey, { force: true });
+    fs.rmSync(stagingAvatars, { recursive: true, force: true });
+    fs.rmSync(path.join(dataDirectory, "avatar-manifest.json.importing"), { force: true });
     restoreRollback(databasePath, state);
     throw error;
+  }
+}
+
+function copyDirectory(source, target) {
+  fs.mkdirSync(target, { recursive: true });
+  for (const name of fs.readdirSync(source)) {
+    if (!/^[0-9a-fA-F-]{36}\.bin$/.test(name)) throw new Error("IMPORT_INVALID_AVATAR_FILE");
+    const sourceFile = path.join(source, name);
+    const targetFile = path.join(target, name);
+    if (!fs.statSync(sourceFile).isFile()) throw new Error("IMPORT_INVALID_AVATAR_FILE");
+    fs.copyFileSync(sourceFile, targetFile);
   }
 }
 

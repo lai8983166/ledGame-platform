@@ -35,6 +35,7 @@ public class DatabaseBackupEngine {
     private final boolean inMemoryDatabase;
     private final DataProtectionKeyManager dataKeys;
     private final ProtectedDataService protectedData;
+    private final AvatarStorageService avatarStorage;
 
     @Autowired
     public DatabaseBackupEngine(
@@ -46,7 +47,8 @@ public class DatabaseBackupEngine {
             @Value("${ledgame.time-zone:Asia/Shanghai}") String timeZone,
             @Value("${spring.datasource.url}") String datasourceUrl,
             DataProtectionKeyManager dataKeys,
-            ProtectedDataService protectedData) {
+            ProtectedDataService protectedData,
+            AvatarStorageService avatarStorage) {
         this.onlineBackup = onlineBackup;
         this.inspector = inspector;
         this.objectMapper = objectMapper;
@@ -57,6 +59,22 @@ public class DatabaseBackupEngine {
         this.sourceDatabase = databasePath(datasourceUrl);
         this.dataKeys = dataKeys;
         this.protectedData = protectedData;
+        this.avatarStorage = avatarStorage;
+    }
+
+    /** Compatibility constructor retained for focused backup-engine tests. */
+    DatabaseBackupEngine(
+            SqliteOnlineBackup onlineBackup,
+            DatabaseFileInspector inspector,
+            ObjectMapper objectMapper,
+            DatabaseBackupProperties properties,
+            Clock clock,
+            String timeZone,
+            String datasourceUrl,
+            DataProtectionKeyManager dataKeys,
+            ProtectedDataService protectedData) {
+        this(onlineBackup, inspector, objectMapper, properties, clock, timeZone, datasourceUrl,
+                dataKeys, protectedData, null);
     }
 
     DatabaseBackupEngine(
@@ -72,6 +90,7 @@ public class DatabaseBackupEngine {
         this.sourceDatabase = databasePath(datasourceUrl);
         this.dataKeys = null;
         this.protectedData = null;
+        this.avatarStorage = null;
     }
 
     public Path sourceDatabase() { return sourceDatabase; }
@@ -102,6 +121,8 @@ public class DatabaseBackupEngine {
         Path latestDirectory = normalizedRoot.resolve("latest");
         Path historyDirectory = normalizedRoot.resolve("history");
         Path candidate = stagingDirectory.resolve("platform-" + UUID.randomUUID() + ".db.tmp");
+        Path candidateAvatars = stagingDirectory.resolve("avatars-" + UUID.randomUUID());
+        Path candidateAvatarManifest = stagingDirectory.resolve(candidateAvatars.getFileName() + ".json");
         try {
             Files.createDirectories(stagingDirectory);
             Files.createDirectories(latestDirectory);
@@ -111,6 +132,7 @@ public class DatabaseBackupEngine {
             InspectedDatabase inspected = inspector.inspect(candidate);
             if (!inspected.valid()) throw new IllegalStateException(BackupErrorCode.BACKUP_INTEGRITY_FAILED.name());
             verifyProtectedDatabase(candidate);
+            stageAvatars(candidateAvatars, candidateAvatarManifest);
             Instant generatedAt = clock.instant();
             DatabaseStateSnapshot state = inspected.state();
             DatabaseBackupMetadata metadata = new DatabaseBackupMetadata(
@@ -123,6 +145,7 @@ public class DatabaseBackupEngine {
             Path candidateMetadata = stagingDirectory.resolve(candidate.getFileName() + ".json");
             writeJson(candidateMetadata, metadata);
             publishKeyEnvelope(latestDirectory);
+            publishAvatars(candidateAvatars, candidateAvatarManifest, latestDirectory);
             publishPair(candidate, candidateMetadata,
                     latestDirectory.resolve("platform.db"), latestDirectory.resolve("metadata.json"));
             createDailyHistory(latestDirectory, historyDirectory, metadata);
@@ -131,6 +154,8 @@ public class DatabaseBackupEngine {
         } catch (Exception exception) {
             try { Files.deleteIfExists(candidate); } catch (IOException ignored) {}
             try { Files.deleteIfExists(stagingDirectory.resolve(candidate.getFileName() + ".json")); } catch (IOException ignored) {}
+            deleteTree(candidateAvatars);
+            try { Files.deleteIfExists(candidateAvatarManifest); } catch (IOException ignored) {}
             if (exception instanceof IllegalStateException stateException) throw stateException;
             throw new IllegalStateException(BackupErrorCode.BACKUP_PUBLISH_FAILED.name(), exception);
         }
@@ -161,6 +186,10 @@ public class DatabaseBackupEngine {
         Path historyMetadata = historyDirectory.resolve(prefix + "-platform.json");
         Files.copy(latestDirectory.resolve("platform.db"), historyDatabase, StandardCopyOption.COPY_ATTRIBUTES);
         Files.copy(latestDirectory.resolve("metadata.json"), historyMetadata, StandardCopyOption.COPY_ATTRIBUTES);
+        copyTree(latestDirectory.resolve("avatars"), historyDirectory.resolve(prefix + "-avatars"));
+        if (Files.isRegularFile(latestDirectory.resolve("avatar-manifest.json"))) {
+            Files.copy(latestDirectory.resolve("avatar-manifest.json"), historyDirectory.resolve(prefix + "-avatar-manifest.json"), StandardCopyOption.COPY_ATTRIBUTES);
+        }
         Path latestKey = latestDirectory.resolve("data-key.dpapi");
         if (Files.isRegularFile(latestKey)) {
             Files.copy(latestKey, historyDirectory.resolve(prefix + "-data-key.dpapi"),
@@ -181,6 +210,8 @@ public class DatabaseBackupEngine {
                 Files.deleteIfExists(database);
                 Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-platform.json")));
                 Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-data-key.dpapi")));
+                deleteTree(Path.of(database.toString().replace("-platform.db", "-avatars")));
+                Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-avatar-manifest.json")));
             }
         }
     }
@@ -259,8 +290,58 @@ public class DatabaseBackupEngine {
 
     private void cleanupStaging(Path stagingDirectory) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(stagingDirectory)) {
-            for (Path item : stream) Files.deleteIfExists(item);
+            for (Path item : stream) deleteTree(item);
         }
+    }
+
+    private void stageAvatars(Path targetDirectory, Path manifestPath) throws IOException {
+        Files.createDirectories(targetDirectory);
+        List<AvatarBackupManifest.Entry> entries = new ArrayList<>();
+        if (avatarStorage != null) {
+            for (Path source : avatarStorage.storedFiles()) {
+                Path target = targetDirectory.resolve(source.getFileName().toString());
+                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+                entries.add(new AvatarBackupManifest.Entry(target.getFileName().toString(), Files.size(target), inspector.sha256(target)));
+            }
+        }
+        writeJson(manifestPath, new AvatarBackupManifest(AvatarBackupManifest.FORMAT, entries));
+    }
+
+    private void publishAvatars(Path stagedDirectory, Path stagedManifest, Path latestDirectory) throws IOException {
+        Path target = latestDirectory.resolve("avatars");
+        Path previous = latestDirectory.resolve("avatars.previous");
+        deleteTree(previous);
+        if (Files.exists(target)) move(target, previous, false);
+        try {
+            move(stagedDirectory, target, true);
+            move(stagedManifest, latestDirectory.resolve("avatar-manifest.json"), true);
+            deleteTree(previous);
+        } catch (IOException exception) {
+            deleteTree(target);
+            if (Files.exists(previous)) move(previous, target, true);
+            throw exception;
+        }
+    }
+
+    private static void copyTree(Path source, Path target) throws IOException {
+        if (!Files.isDirectory(source)) return;
+        Files.walk(source).forEach(path -> {
+            try {
+                Path relative = source.relativize(path);
+                Path destination = target.resolve(relative);
+                if (Files.isDirectory(path)) Files.createDirectories(destination);
+                else Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+            } catch (IOException exception) { throw new IllegalStateException(exception); }
+        });
+    }
+
+    private static void deleteTree(Path root) {
+        if (root == null || !Files.exists(root)) return;
+        try (var stream = Files.walk(root)) {
+            stream.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+            });
+        } catch (IOException ignored) { }
     }
 
     private void publishPair(Path candidateDatabase, Path candidateMetadata, Path latestDatabase, Path latestMetadata)

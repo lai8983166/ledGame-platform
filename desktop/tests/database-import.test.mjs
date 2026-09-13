@@ -95,6 +95,32 @@ describe("member admin atomic database import", () => {
     expect(fs.readFileSync(keyPath, "utf8")).toBe("old-protected-key");
   });
 
+  it("replaces and rolls back the encrypted avatar bundle with the database", () => {
+    const files = fixture();
+    const dataDirectory = path.dirname(files.databasePath);
+    const oldAvatars = path.join(dataDirectory, "avatars");
+    const preparedAvatars = path.join(path.dirname(files.preparedDatabasePath), "candidate.avatars");
+    const avatarName = "11111111-1111-1111-1111-111111111111.bin";
+    fs.mkdirSync(oldAvatars, { recursive: true });
+    fs.writeFileSync(path.join(oldAvatars, avatarName), "old-avatar");
+    fs.mkdirSync(preparedAvatars, { recursive: true });
+    fs.writeFileSync(path.join(preparedAvatars, avatarName), "new-avatar");
+    const preparedManifest = path.join(path.dirname(files.preparedDatabasePath), "candidate-avatar-manifest.json");
+    fs.writeFileSync(preparedManifest, JSON.stringify({ format: "ledgame-avatar-backup-v1", files: [{ name: avatarName, size: 10, sha256: sha256(path.join(preparedAvatars, avatarName)) }] }));
+
+    const state = replaceDatabase(files.databasePath, {
+      preparedDatabasePath: files.preparedDatabasePath,
+      sha256: sha256(files.preparedDatabasePath),
+      preparedAvatarDirectoryPath: preparedAvatars,
+      preparedAvatarManifestPath: preparedManifest,
+      avatarManifestSha256: sha256(preparedManifest),
+    });
+    expect(fs.readFileSync(path.join(oldAvatars, avatarName), "utf8")).toBe("new-avatar");
+    expect(fs.readFileSync(path.join(state.rollbackDirectory, "avatars", avatarName), "utf8")).toBe("old-avatar");
+    expect(restoreRollback(files.databasePath, state)).toBe(true);
+    expect(fs.readFileSync(path.join(oldAvatars, avatarName), "utf8")).toBe("old-avatar");
+  });
+
   it("rejects an invalid prepared key envelope hash before touching current data", () => {
     const files = fixture();
     const keyPath = path.join(path.dirname(files.databasePath), "security", "data-key.dpapi");

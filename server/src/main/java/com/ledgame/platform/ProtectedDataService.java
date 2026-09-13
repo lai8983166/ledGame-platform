@@ -1,6 +1,10 @@
 package com.ledgame.platform;
 
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -78,6 +82,58 @@ public class ProtectedDataService {
 
     public String decryptField(String table, String column, Object storedValue) {
         return decrypt(table + "." + column, storedValue);
+    }
+
+    /** Encrypts binary payloads (such as uploaded avatars) with the same key
+     * material and authenticated context used for protected database fields. */
+    public byte[] encryptBytes(String context, byte[] plaintext) {
+        if (plaintext == null) return null;
+        DataKeyMaterial material = key(true);
+        try {
+            byte[] nonce = new byte[12];
+            random.nextBytes(nonce);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(material.key(), "AES"), new GCMParameterSpec(128, nonce));
+            cipher.updateAAD(context.getBytes(StandardCharsets.UTF_8));
+            byte[] ciphertext = cipher.doFinal(plaintext);
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            try (DataOutputStream output = new DataOutputStream(bytes)) {
+                output.writeUTF("ledgame-bytes-" + ENCRYPTION_VERSION);
+                output.writeUTF(material.keyId());
+                output.writeInt(nonce.length);
+                output.write(nonce);
+                output.writeInt(ciphertext.length);
+                output.write(ciphertext);
+            }
+            return bytes.toByteArray();
+        } catch (GeneralSecurityException | java.io.IOException exception) {
+            throw new IllegalStateException("DATA_PROTECTION_ENCRYPT_FAILED", exception);
+        }
+    }
+
+    public byte[] decryptBytes(String context, byte[] envelope) {
+        if (envelope == null) return null;
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(envelope))) {
+            if (!("ledgame-bytes-" + ENCRYPTION_VERSION).equals(input.readUTF())) throw invalid();
+            String envelopeKeyId = input.readUTF();
+            DataKeyMaterial material = key(false);
+            if (!material.keyId().equals(envelopeKeyId)) throw new IllegalStateException("DATA_PROTECTION_KEY_ID_MISMATCH");
+            int nonceLength = input.readInt();
+            if (nonceLength != 12) throw invalid();
+            byte[] nonce = input.readNBytes(nonceLength);
+            int ciphertextLength = input.readInt();
+            if (ciphertextLength < 16 || ciphertextLength > 16 * 1024 * 1024) throw invalid();
+            byte[] ciphertext = input.readNBytes(ciphertextLength);
+            if (nonce.length != nonceLength || ciphertext.length != ciphertextLength || input.read() != -1) throw invalid();
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(material.key(), "AES"), new GCMParameterSpec(128, nonce));
+            cipher.updateAAD(context.getBytes(StandardCharsets.UTF_8));
+            return cipher.doFinal(ciphertext);
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw invalid();
+        }
     }
 
     public String lookupHash(String context, String normalizedValue) {

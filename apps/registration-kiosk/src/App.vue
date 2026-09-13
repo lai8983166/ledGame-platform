@@ -5,7 +5,7 @@ import KioskIcon from "./components/KioskIcon.vue";
 import SoftKeyboard from "./components/SoftKeyboard.vue";
 import WristbandArt from "./components/WristbandArt.vue";
 import { avatars } from "./avatars";
-import { platformApi } from "./platformApi";
+import { platformApi, platformBaseUrl } from "./platformApi";
 import { createPlayerInfoFlow } from "./playerInfoFlow";
 import {
   avatarOptionsForGender,
@@ -37,6 +37,7 @@ import {
 } from "./localization";
 import { localeFlagUrls } from "./localeFlags";
 import { blurActiveEditableElement, isEditableEventTarget } from "./focusContinuity";
+import { cameraErrorCode, captureAvatar, dataUrlToBase64, type CapturedAvatar } from "./cameraAvatar";
 import {
   createFlowTimeoutController,
   flowForScreen,
@@ -48,7 +49,7 @@ import {
 
 type ApiMember = DemoMember & { id: number };
 
-const createSession = (): KioskSession => ({ phone: "", infoPhone: "", infoWristbandUid: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: createDefaultAvatarId(), memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
+const createSession = (): KioskSession => ({ phone: "", infoPhone: "", infoWristbandUid: "", name: "", birthYear: "", birthMonth: "", birthDay: "", gender: "", avatarId: createDefaultAvatarId(), avatarPhotoDataUrl: null, memberId: null, wristbandUid: "", durationMinutes: null, wristbandStatus: "idle" });
 const screen = ref<KioskScreen>("home");
 const overlay = ref<KioskOverlay>("none");
 const languageOpen = ref(false);
@@ -64,6 +65,13 @@ const staffExitPassword = ref("");
 const staffExitError = ref("");
 const staffExitInput = ref<HTMLInputElement | null>(null);
 const pendingAvatarId = ref("");
+const cameraDevices = ref<MediaDeviceInfo[]>([]);
+const cameraSelectedId = ref("");
+const cameraVideo = ref<HTMLVideoElement | null>(null);
+const cameraStream = ref<MediaStream | null>(null);
+const cameraStatus = ref<"idle" | "loading" | "ready" | "captured" | "error">("idle");
+const cameraError = ref("");
+const cameraDraft = ref<CapturedAvatar | null>(null);
 const errors = reactive<Record<string, string>>({});
 const foundMember = ref<ApiMember | null>(null);
 const activationError = ref("");
@@ -84,6 +92,7 @@ const playerInfoFlow = createPlayerInfoFlow(platformApi);
 const playerInfoState = playerInfoFlow.state;
 
 const selectedAvatar = computed(() => avatars.find((avatar) => avatar.id === session.avatarId) ?? avatars[0]);
+const selectedAvatarIsPhoto = computed(() => Boolean(session.avatarPhotoDataUrl));
 const pendingAvatar = computed(() => avatars.find((avatar) => avatar.id === pendingAvatarId.value) ?? avatars[0]);
 const availableAvatars = computed(() => avatarOptionsForGender(session.gender));
 const scanDialogOpen = computed(() => wristbandScan.state !== "idle");
@@ -134,6 +143,25 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
 };
 
+const loadAvatarPreview = async (url?: string | null) => {
+  if (!url) return null;
+  try {
+    const response = await fetch(url.startsWith("http") ? url : `${platformBaseUrl}${url}`);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+};
+const absoluteAvatarUrl = (url?: string | null) => {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${platformBaseUrl}${url}`;
+};
+
 const showToast = (message: string) => {
   toast.value = message;
   if (toastTimer) window.clearTimeout(toastTimer);
@@ -162,6 +190,8 @@ const resetSession = () => {
   Object.assign(session, createSession());
   Object.keys(errors).forEach((key) => delete errors[key]);
   pendingAvatarId.value = "";
+  stopCamera();
+  cameraDraft.value = null;
   foundMember.value = null;
   playerInfoFlow.reset();
   activationError.value = "";
@@ -320,10 +350,12 @@ const submitPhone = async () => {
     session.memberId = foundMember.value.id;
     session.name = foundMember.value.name;
     session.avatarId = foundMember.value.avatarId || createDefaultAvatarId();
+    session.avatarPhotoDataUrl = await loadAvatarPreview(foundMember.value.avatarUrl);
     screen.value = "confirm";
   } else {
     session.name = "";
     session.avatarId = createDefaultAvatarId();
+    session.avatarPhotoDataUrl = null;
     screen.value = "register";
   }
 };
@@ -357,7 +389,8 @@ const submitRegistration = async () => {
   }
   const requestRevision = ++sessionRequestRevision;
   try {
-    const member = await request<ApiMember>("/members", { method: "POST", body: JSON.stringify({ phone: session.phone, name: session.name.trim(), avatarId: session.avatarId, birthday: `${session.birthYear}-${session.birthMonth.padStart(2, "0")}-${session.birthDay.padStart(2, "0")}`, gender: session.gender, createdBy: "registration-kiosk" }) });
+    const photo = session.avatarPhotoDataUrl ? dataUrlToBase64(session.avatarPhotoDataUrl) : null;
+    const member = await request<ApiMember>("/members", { method: "POST", body: JSON.stringify({ phone: session.phone, name: session.name.trim(), avatarId: session.avatarPhotoDataUrl ? null : session.avatarId, ...(photo ? { avatarImageBase64: photo.base64, avatarImageMimeType: photo.mimeType } : {}), birthday: `${session.birthYear}-${session.birthMonth.padStart(2, "0")}-${session.birthDay.padStart(2, "0")}`, gender: session.gender, createdBy: "registration-kiosk" }) });
     if (requestRevision !== sessionRequestRevision) return;
     foundMember.value = member;
     session.memberId = member.id;
@@ -377,8 +410,88 @@ const openAvatarSource = () => {
   overlay.value = "avatar-source";
 };
 const openAvatarLibrary = () => { pendingAvatarId.value = reconcileAvatarForGender(session.avatarId, session.gender); overlay.value = "avatar-library"; };
-const confirmAvatar = () => { session.avatarId = pendingAvatarId.value; delete errors.avatar; overlay.value = "none"; showToast(`${pendingAvatar.value.label} is now your avatar.`); };
-const takePhoto = () => { overlay.value = "none"; showToast("Camera is not connected in this UI demo."); };
+const confirmAvatar = () => { stopCamera(); session.avatarPhotoDataUrl = null; session.avatarId = pendingAvatarId.value; delete errors.avatar; overlay.value = "none"; showToast(`${pendingAvatar.value.label} is now your avatar.`); };
+
+const stopCamera = () => {
+  cameraStream.value?.getTracks().forEach((track) => track.stop());
+  cameraStream.value = null;
+  if (cameraVideo.value) cameraVideo.value.srcObject = null;
+};
+
+const cameraErrorMessage = (code: ReturnType<typeof cameraErrorCode>) => ({
+  UNSUPPORTED: text("avatarCameraUnsupported"),
+  PERMISSION_DENIED: text("avatarCameraPermissionDenied"),
+  NO_CAMERA: text("avatarCameraNoCamera"),
+  BUSY: text("avatarCameraBusy"),
+  DISCONNECTED: text("avatarCameraDisconnected"),
+  CAPTURE_FAILED: text("avatarCameraCaptureFailed"),
+}[code]);
+
+const enumerateCameras = async () => {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices.filter((device) => device.kind === "videoinput");
+};
+
+const startCamera = async (deviceId = "") => {
+  stopCamera();
+  cameraStatus.value = "loading";
+  cameraError.value = "";
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("UNSUPPORTED");
+    const video = deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1280 }, height: { ideal: 720 } };
+    cameraStream.value = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    const activeStream = cameraStream.value;
+    activeStream.getVideoTracks().forEach((track) => track.addEventListener("ended", () => {
+      if (cameraStream.value !== activeStream || cameraStatus.value !== "ready") return;
+      cameraStatus.value = "error";
+      cameraError.value = text("avatarCameraDisconnected");
+      stopCamera();
+    }, { once: true }));
+    cameraDevices.value = await enumerateCameras();
+    cameraSelectedId.value = deviceId || cameraStream.value.getVideoTracks()[0]?.getSettings().deviceId || cameraDevices.value[0]?.deviceId || "";
+    await nextTick();
+    if (!cameraVideo.value) throw new Error("CAPTURE_FAILED");
+    cameraVideo.value.srcObject = cameraStream.value;
+    await cameraVideo.value.play();
+    cameraStatus.value = "ready";
+  } catch (error) {
+    stopCamera();
+    cameraStatus.value = "error";
+    cameraError.value = cameraErrorMessage(cameraErrorCode(error));
+    cameraDevices.value = await enumerateCameras().catch(() => []);
+  }
+};
+
+const takePhoto = () => {
+  cameraDraft.value = null;
+  overlay.value = "avatar-camera";
+  void startCamera();
+};
+const switchCamera = () => { if (cameraSelectedId.value) void startCamera(cameraSelectedId.value); };
+const capturePhoto = async () => {
+  if (!cameraVideo.value || cameraStatus.value !== "ready") return;
+  try {
+    cameraDraft.value = await captureAvatar(cameraVideo.value);
+    cameraStatus.value = "captured";
+    stopCamera();
+  } catch (error) {
+    cameraStatus.value = "error";
+    cameraError.value = cameraErrorMessage(cameraErrorCode(error));
+  }
+};
+const retakePhoto = () => { cameraDraft.value = null; void startCamera(cameraSelectedId.value); };
+const confirmPhoto = () => {
+  if (!cameraDraft.value) return;
+  session.avatarPhotoDataUrl = cameraDraft.value.dataUrl;
+  stopCamera();
+  cameraDraft.value = null;
+  cameraStatus.value = "idle";
+  overlay.value = "none";
+  delete errors.avatar;
+  showToast("已使用拍摄的照片作为头像。");
+};
+const cancelPhoto = () => { stopCamera(); cameraDraft.value = null; cameraStatus.value = "idle"; cameraError.value = ""; overlay.value = "avatar-source"; };
 
 const selectGender = (gender: Gender) => {
   session.gender = gender;
@@ -472,6 +585,7 @@ const onGlobalKeydown = (event: KeyboardEvent) => {
     else if (staffExitOpen.value) closeStaffExitDialog();
     else if (languageOpen.value) languageOpen.value = false;
     else if (settingsOpen.value) settingsOpen.value = false;
+    else if (overlay.value === "avatar-camera") cancelPhoto();
     else if (overlay.value !== "none") overlay.value = "none";
     else closeKeyboard();
   }
@@ -503,6 +617,7 @@ onBeforeUnmount(() => {
   removeStaffExitListener?.();
   if (toastTimer) window.clearTimeout(toastTimer);
   if (scanTimer) window.clearTimeout(scanTimer);
+  stopCamera();
 });
 </script>
 
@@ -602,7 +717,7 @@ onBeforeUnmount(() => {
     <section v-else-if="screen === 'info-result' && playerInfoState.info" class="screen screen--player-info" data-testid="kiosk-info-result">
       <header class="player-info-heading"><div><p class="eyebrow">{{ text('playerInfoRecordEyebrow') }}</p><h1>Welcome back, <em>{{ playerInfoState.info.profile.name }}</em></h1><p>{{ playerInfoState.info.profile.phone }} · Registered {{ playerInfoState.info.profile.createdAt.slice(0, 10) }}</p></div><button class="kiosk-button kiosk-button--secondary" type="button" @click="openPlayerInfo">Query another</button></header>
       <div class="player-info-grid">
-        <section class="tech-panel player-info-profile"><AvatarArt :avatar="avatars.find(item => item.id === playerInfoState.info?.profile.avatarId) ?? avatars[0]" size="large" /><div><small>MEMBER PROFILE</small><h2>{{ playerInfoState.info.profile.name }}</h2><p v-if="playerInfoState.info.profile.birthday">Birthday · {{ playerInfoState.info.profile.birthday }}</p><p v-if="playerInfoState.info.profile.gender">Gender · {{ playerInfoState.info.profile.gender }}</p><span><KioskIcon name="check" :size="16" /> {{ playerInfoState.info.profile.status }}</span></div></section>
+        <section class="tech-panel player-info-profile"><img v-if="playerInfoState.info.profile.avatarUrl" class="avatar-photo" :src="absoluteAvatarUrl(playerInfoState.info.profile.avatarUrl)" alt="Member avatar" @error="playerInfoState.info.profile.avatarUrl = null" /><AvatarArt v-else :avatar="avatars.find(item => item.id === playerInfoState.info?.profile.avatarId) ?? avatars[0]" size="large" /><div><small>MEMBER PROFILE</small><h2>{{ playerInfoState.info.profile.name }}</h2><p v-if="playerInfoState.info.profile.birthday">Birthday · {{ playerInfoState.info.profile.birthday }}</p><p v-if="playerInfoState.info.profile.gender">Gender · {{ playerInfoState.info.profile.gender }}</p><span><KioskIcon name="check" :size="16" /> {{ playerInfoState.info.profile.status }}</span></div></section>
         <section class="tech-panel player-info-points" data-testid="kiosk-info-points"><small>TOTAL POINTS</small><strong data-testid="kiosk-info-points-total">{{ playerInfoState.info.points.total }}</strong><p>Current rank <b data-testid="kiosk-info-rank">#{{ playerInfoState.info.points.rank }}</b></p></section>
         <section class="tech-panel player-info-list" data-testid="kiosk-info-wristbands"><header><small>WRISTBAND & BALANCE</small><b>{{ playerInfoState.info.wristbands.length }}</b></header><div v-if="playerInfoState.info.wristbands.length"><article v-for="band in playerInfoState.info.wristbands" :key="band.uid" :data-testid="`kiosk-info-wristband-${band.uid}`" :data-status="band.status"><WristbandArt :size="44" /><span><strong>{{ band.uid }}</strong><small>{{ band.status }} · {{ band.durationMinutes }} min purchased</small></span><b data-testid="kiosk-info-remaining">{{ formatRemaining(band.remainingSeconds) }}</b></article></div><p v-else>No active wristband is currently bound.</p></section>
         <section class="tech-panel player-info-list player-info-plays" data-testid="kiosk-info-plays"><header><small>RECENT GAMES</small><b>{{ playerInfoState.info.recentPlays.length }}</b></header><div v-if="playerInfoState.info.recentPlays.length"><article v-for="play in playerInfoState.info.recentPlays" :key="play.id" :data-testid="`kiosk-info-play-${play.id}`" :data-status="play.status"><span><strong>{{ play.gameName }}</strong><small>{{ play.status }} · {{ play.terminationReason }} · raw <b data-testid="kiosk-info-play-raw-score">{{ play.rawScore ?? 0 }}</b></small></span><b data-testid="kiosk-info-play-points">+{{ play.pointsAwarded }}</b></article></div><p v-else>No game records yet.</p></section>
@@ -624,14 +739,14 @@ onBeforeUnmount(() => {
     <section v-else-if="screen === 'confirm'" class="screen screen--center">
       <div class="phone-layout member-confirm-layout">
         <div class="screen-copy"><span class="screen-copy__icon"><KioskIcon name="user" :size="34" /></span><p class="eyebrow">STEP 02 · MEMBER FOUND</p><h1>Welcome back,<br /><em>{{ session.name }}</em></h1><p>Confirm this is your player profile, then pair the wristband that was charged at the counter.</p></div>
-        <div class="tech-panel member-confirm-card" data-testid="kiosk-existing-member"><div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div><AvatarArt :avatar="selectedAvatar" size="large" /><div><small>EXISTING MEMBER</small><h2>{{ session.name }}</h2><p>{{ session.phone }}</p><span><KioskIcon name="check" :size="16" /> Profile found</span></div><div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="goTo('phone')"><KioskIcon name="back" :size="20" /> Not me</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-existing-continue" type="button" @click="confirmExistingMember">Continue <KioskIcon name="arrow" :size="20" /></button></div></div>
+        <div class="tech-panel member-confirm-card" data-testid="kiosk-existing-member"><div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div><img v-if="session.avatarPhotoDataUrl" class="avatar-photo" :src="session.avatarPhotoDataUrl" alt="Member avatar" /><AvatarArt v-else :avatar="selectedAvatar" size="large" /><div><small>EXISTING MEMBER</small><h2>{{ session.name }}</h2><p>{{ session.phone }}</p><span><KioskIcon name="check" :size="16" /> Profile found</span></div><div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="goTo('phone')"><KioskIcon name="back" :size="20" /> Not me</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-existing-continue" type="button" @click="confirmExistingMember">Continue <KioskIcon name="arrow" :size="20" /></button></div></div>
       </div>
     </section>
 
     <section v-else-if="screen === 'register'" class="screen screen--register" :class="{ 'screen--with-keyboard': keyboardOpen }">
       <div class="register-heading"><div><p class="eyebrow">STEP 02 · PLAYER PROFILE</p><h1>Tell us about <em>your player</em></h1></div><p>All fields are used only in this UI session.</p></div>
       <div class="tech-panel register-panel">
-        <div class="avatar-field" :class="{ invalid: errors.avatar }" data-field="avatar"><span class="field-label">AVATAR</span><div class="avatar-field__content"><AvatarArt :avatar="selectedAvatar" size="medium" /><div><strong>{{ session.avatarId ? selectedAvatar.label : 'Choose your look' }}</strong><small>{{ session.avatarId ? 'Avatar selected' : 'Required before continuing' }}</small></div><button type="button" data-testid="kiosk-registration-avatar" aria-label="Choose avatar" @click="openAvatarSource"><KioskIcon name="edit" :size="20" /></button></div><b v-if="errors.avatar" class="field-error">{{ errors.avatar }}</b></div>
+        <div class="avatar-field" :class="{ invalid: errors.avatar }" data-field="avatar"><span class="field-label">AVATAR</span><div class="avatar-field__content"><img v-if="selectedAvatarIsPhoto" class="avatar-photo avatar-photo--small" :src="session.avatarPhotoDataUrl || ''" alt="Captured player avatar" /><AvatarArt v-else :avatar="selectedAvatar" size="medium" /><div><strong>{{ selectedAvatarIsPhoto ? text('avatarCameraPhotoReady') : (session.avatarId ? selectedAvatar.label : 'Choose your look') }}</strong><small>{{ selectedAvatarIsPhoto ? text('avatarCameraPhotoDescription') : (session.avatarId ? 'Avatar selected' : 'Required before continuing') }}</small></div><button type="button" data-testid="kiosk-registration-avatar" aria-label="Choose avatar" @click="openAvatarSource"><KioskIcon name="edit" :size="20" /></button></div><b v-if="errors.avatar" class="field-error">{{ errors.avatar }}</b></div>
         <label class="kiosk-field" :class="{ focused: activeInput === 'name', invalid: errors.name }" data-field="name"><span>PLAYER NAME</span><div><KioskIcon name="user" :size="21" /><input data-input="name" data-testid="kiosk-registration-name" :value="session.name" inputmode="none" autocomplete="off" placeholder="Tap to enter name" aria-label="Player name" @pointerdown="openInput('name','alphabetic')" @focus="openInput('name','alphabetic')" @input="handleNativeInput('name',$event)" @keydown.enter.prevent="closeKeyboard" /></div><b v-if="errors.name" class="field-error">{{ errors.name }}</b></label>
         <label class="kiosk-field" :class="{ focused: activeInput === 'phone', invalid: errors.phone }" data-field="phone"><span>PHONE NUMBER</span><div><KioskIcon name="phone" :size="21" /><input data-input="phone" :value="session.phone" inputmode="none" autocomplete="off" aria-label="Phone number" @pointerdown="openInput('phone','numeric')" @focus="openInput('phone','numeric')" @input="handleNativeInput('phone',$event)" /></div><b v-if="errors.phone" class="field-error">{{ errors.phone }}</b></label>
         <div class="birthday-field" :class="{ invalid: errors.birthday }" data-field="birthday"><span class="field-label">DATE OF BIRTH</span><div class="birthday-inputs"><label :class="{ focused: activeInput === 'birthYear' }"><input data-input="birthYear" data-testid="kiosk-registration-birth-year" :value="session.birthYear" inputmode="none" placeholder="YYYY" aria-label="Birth year" @pointerdown="openInput('birthYear','numeric')" @focus="openInput('birthYear','numeric')" @input="handleNativeInput('birthYear',$event)" /><small>YEAR</small></label><i>/</i><label :class="{ focused: activeInput === 'birthMonth' }"><input data-input="birthMonth" data-testid="kiosk-registration-birth-month" :value="session.birthMonth" inputmode="none" placeholder="MM" aria-label="Birth month" @pointerdown="openInput('birthMonth','numeric')" @focus="openInput('birthMonth','numeric')" @input="handleNativeInput('birthMonth',$event)" /><small>MONTH</small></label><i>/</i><label :class="{ focused: activeInput === 'birthDay' }"><input data-input="birthDay" data-testid="kiosk-registration-birth-day" :value="session.birthDay" inputmode="none" placeholder="DD" aria-label="Birth day" @pointerdown="openInput('birthDay','numeric')" @focus="openInput('birthDay','numeric')" @input="handleNativeInput('birthDay',$event)" /><small>DAY</small></label></div><b v-if="errors.birthday" class="field-error">{{ errors.birthday }}</b></div>
@@ -641,7 +756,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else-if="screen === 'swipe'" class="screen screen--swipe">
-      <div class="player-chip"><AvatarArt :avatar="selectedAvatar" size="small" /><span><small>PLAYER</small><strong>{{ session.name }}</strong></span></div>
+      <div class="player-chip"><img v-if="session.avatarPhotoDataUrl" class="avatar-photo avatar-photo--mini" :src="session.avatarPhotoDataUrl" alt="Member avatar" /><AvatarArt v-else :avatar="selectedAvatar" size="small" /><span><small>PLAYER</small><strong>{{ session.name }}</strong></span></div>
       <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? 'Wristband bound' : 'Scan your charged wristband' }}</h1><p>{{ session.wristbandStatus === 'detected' ? 'Member and wristband are now linked.' : '点击下方按钮后，再把柜台已充时的手环放到读卡器上。' }}</p><div class="waiting-status" data-testid="kiosk-bind-status" :data-status="session.wristbandStatus" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? 'Wristband bound · READY' : 'Reader is idle' }}</div></div></div>
       <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo(profileScreen)"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-scan-start" type="button" :disabled="session.wristbandStatus === 'detected'" @click="openScanDialog"><KioskIcon name="signal" :size="19" /> {{ text('scanStart') }}</button></div>
       <p class="demo-note"><KioskIcon name="info" :size="15" /> UID comes from the keyboard-wedge reader. Timing starts only at the first game-system swipe.</p>
@@ -649,7 +764,7 @@ onBeforeUnmount(() => {
 
     <section v-else class="screen screen--success" data-testid="kiosk-bind-success">
       <div class="success-burst" aria-hidden="true"><i v-for="n in 12" :key="n" :style="{ '--i': n }"></i></div>
-      <div class="success-layout"><div class="success-mark"><span class="success-ring"></span><span><KioskIcon name="check" :size="70" /></span></div><div class="success-copy"><p class="eyebrow"><KioskIcon name="spark" :size="16" /> WRISTBAND READY</p><h1>Binding<br /><em>Successful!</em></h1><p>Your member and wristband are linked. Game time begins only after the first swipe at a game system.</p><div class="success-summary"><AvatarArt :avatar="selectedAvatar" size="small" /><div><small>PLAYER</small><strong>{{ session.name }}</strong><b>{{ session.wristbandUid }}</b></div><i></i><div><small>PURCHASED PLAY TIME</small><strong>{{ session.durationMinutes }} <b>min</b></strong></div></div><div class="simulation-label"><KioskIcon name="info" :size="15" /> Saved by local member-admin backend and SQLite</div><button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button></div></div>
+      <div class="success-layout"><div class="success-mark"><span class="success-ring"></span><span><KioskIcon name="check" :size="70" /></span></div><div class="success-copy"><p class="eyebrow"><KioskIcon name="spark" :size="16" /> WRISTBAND READY</p><h1>Binding<br /><em>Successful!</em></h1><p>Your member and wristband are linked. Game time begins only after the first swipe at a game system.</p><div class="success-summary"><img v-if="session.avatarPhotoDataUrl" class="avatar-photo avatar-photo--mini" :src="session.avatarPhotoDataUrl" alt="Member avatar" /><AvatarArt v-else :avatar="selectedAvatar" size="small" /><div><small>PLAYER</small><strong>{{ session.name }}</strong><b>{{ session.wristbandUid }}</b></div><i></i><div><small>PURCHASED PLAY TIME</small><strong>{{ session.durationMinutes }} <b>min</b></strong></div></div><div class="simulation-label"><KioskIcon name="info" :size="15" /> Saved by local member-admin backend and SQLite</div><button class="kiosk-button kiosk-button--primary kiosk-button--return" type="button" @click="resetSession">Return Home <KioskIcon name="arrow" :size="20" /></button></div></div>
     </section>
 
     <SoftKeyboard v-if="keyboardOpen" :layout="keyboardLayout" :field-label="activeFieldLabel" @key="handleKeyboardKey" @backspace="backspace" @clear="clearInput" @done="handleKeyboardDone" @close="closeKeyboard" />
@@ -675,7 +790,17 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="overlay === 'avatar-source'" class="modal-backdrop" @mousedown.self="overlay = 'none'">
-      <section class="source-modal tech-panel" role="dialog" aria-modal="true" aria-label="Choose avatar source"><header><div><p class="eyebrow">AVATAR SOURCE</p><h2>How would you like to set your avatar?</h2></div><button type="button" aria-label="Close avatar options" @click="overlay = 'none'"><KioskIcon name="close" :size="22" /></button></header><div class="source-options"><button type="button" data-testid="kiosk-avatar-library-open" @click="openAvatarLibrary"><span><KioskIcon name="library" :size="32" /></span><div><small>OFFLINE COLLECTION</small><strong>Set from Library</strong><p>Choose from 20 built-in player avatars.</p></div><KioskIcon name="arrow" :size="21" /></button><button type="button" @click="takePhoto"><span><KioskIcon name="camera" :size="32" /></span><div><small>DEVICE CAMERA</small><strong>Take Photo</strong><p>Camera is not connected in this UI demo.</p></div><KioskIcon name="arrow" :size="21" /></button></div></section>
+      <section class="source-modal tech-panel" role="dialog" aria-modal="true" aria-label="Choose avatar source"><header><div><p class="eyebrow">AVATAR SOURCE</p><h2>How would you like to set your avatar?</h2></div><button type="button" aria-label="Close avatar options" @click="overlay = 'none'"><KioskIcon name="close" :size="22" /></button></header><div class="source-options"><button type="button" data-testid="kiosk-avatar-library-open" @click="openAvatarLibrary"><span><KioskIcon name="library" :size="32" /></span><div><small>OFFLINE COLLECTION</small><strong>Set from Library</strong><p>Choose from 20 built-in player avatars.</p></div><KioskIcon name="arrow" :size="21" /></button><button type="button" data-testid="kiosk-avatar-camera-open" @click="takePhoto"><span><KioskIcon name="camera" :size="32" /></span><div><small>{{ text('avatarCameraLabel') }}</small><strong>{{ text('avatarCameraTitle') }}</strong><p>{{ text('avatarCameraOptional') }}</p></div><KioskIcon name="arrow" :size="21" /></button></div></section>
+    </div>
+
+    <div v-if="overlay === 'avatar-camera'" class="modal-backdrop modal-backdrop--camera" @mousedown.self="cancelPhoto">
+      <section class="camera-modal tech-panel" role="dialog" aria-modal="true" aria-labelledby="camera-dialog-title">
+        <header><div><p class="eyebrow">{{ text('avatarCameraEyebrow') }}</p><h2 id="camera-dialog-title">{{ text('avatarCameraTitle') }}</h2><p>{{ text('avatarCameraDescription') }}</p></div><button type="button" :aria-label="text('close')" @click="cancelPhoto"><KioskIcon name="close" :size="22" /></button></header>
+        <div class="camera-picker" v-if="cameraDevices.length > 1"><label><span>{{ text('avatarCameraSelect') }}</span><select v-model="cameraSelectedId" @change="switchCamera"><option v-for="device in cameraDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || `${text('avatarCameraSelect')} ${cameraDevices.indexOf(device) + 1}` }}</option></select></label></div>
+        <div class="camera-preview" :class="{ 'camera-preview--captured': cameraDraft, 'camera-preview--error': cameraStatus === 'error' }"><video v-if="!cameraDraft" ref="cameraVideo" autoplay playsinline muted data-testid="kiosk-camera-video"></video><img v-else :src="cameraDraft.dataUrl" alt="Captured player avatar" data-testid="kiosk-camera-draft" /><span v-if="cameraStatus === 'loading'" class="camera-state">{{ text('avatarCameraLoading') }}</span><span v-else-if="cameraStatus === 'error'" class="camera-state">{{ cameraError }}</span><span v-else-if="!cameraDraft && cameraStatus === 'ready'" class="camera-guide">{{ text('avatarCameraGuide') }}</span></div>
+        <p v-if="cameraError && cameraStatus !== 'error'" class="camera-error">{{ cameraError }}</p>
+        <footer><button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-camera-cancel" type="button" @click="cancelPhoto"><KioskIcon name="close" :size="18" /> {{ text('avatarCameraCancel') }}</button><button v-if="cameraDraft" class="kiosk-button kiosk-button--secondary" data-testid="kiosk-camera-retake" type="button" @click="retakePhoto">{{ text('avatarCameraRetake') }}</button><button v-if="cameraStatus === 'error'" class="kiosk-button kiosk-button--secondary" data-testid="kiosk-camera-retry" type="button" @click="retakePhoto">{{ text('avatarCameraRetry') }}</button><button v-if="!cameraDraft" class="kiosk-button kiosk-button--primary" data-testid="kiosk-camera-capture" type="button" :disabled="cameraStatus !== 'ready'" @click="capturePhoto"><KioskIcon name="camera" :size="18" /> {{ text('avatarCameraCapture') }}</button><button v-else class="kiosk-button kiosk-button--primary" data-testid="kiosk-camera-confirm" type="button" @click="confirmPhoto"><KioskIcon name="check" :size="18" /> {{ text('avatarCameraConfirm') }}</button></footer>
+      </section>
     </div>
 
     <div v-if="overlay === 'avatar-library'" class="modal-backdrop modal-backdrop--library">

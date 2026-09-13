@@ -54,6 +54,20 @@ class ProtectedDataServiceTest {
         assertThat(service.wristbandLookupHash("13800138000")).isNotEqualTo(phoneHash);
     }
 
+    @Test
+    void encryptsAndAuthenticatesBinaryAvatarPayloads() {
+        ProtectedDataService service = service(key);
+        byte[] payload = new byte[] { 0, 1, 2, 3, (byte) 0xff };
+        byte[] envelope = service.encryptBytes("members.avatar", payload);
+        assertThat(envelope).isNotEqualTo(payload);
+        assertThat(service.decryptBytes("members.avatar", envelope)).containsExactly(payload);
+        assertThatThrownBy(() -> service.decryptBytes("members.other", envelope))
+                .hasMessage("DATA_PROTECTION_INTEGRITY_FAILED");
+        envelope[envelope.length - 1] ^= 1;
+        assertThatThrownBy(() -> service.decryptBytes("members.avatar", envelope))
+                .hasMessage("DATA_PROTECTION_INTEGRITY_FAILED");
+    }
+
     private static ProtectedDataService service(byte[] rawKey) {
         DataKeyMaterial material = DataProtectionKeyManager.material(rawKey);
         DataProtectionKeyManager keyManager = mock(DataProtectionKeyManager.class);
