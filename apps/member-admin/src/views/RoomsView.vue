@@ -48,8 +48,8 @@ const roomConnectionLabel = (room: Room) => {
   return Number.isFinite(timestamp) && Date.now() - timestamp > 60_000 ? "STALE" : "ONLINE";
 };
 const roomConnectionTone = (room: Room) => roomConnectionLabel(room) === "STALE" ? "warning" : room.online ? "success" : "danger";
-const hardwareTone = (status: string) => status === "online" ? "success" : status === "warning" ? "warning" : "danger";
-const hardwareLabel = (status: string) => status === "online" ? "在线" : status === "warning" ? "异常" : "离线";
+const hardwareTone = (status: string) => status === "online" ? "success" : status === "warning" || status === "unknown" ? "warning" : "danger";
+const hardwareLabel = (status: string) => status === "online" ? "在线" : status === "warning" ? "异常" : status === "unknown" ? "未检测" : "离线";
 
 const loadRooms = async () => {
   loading.value = true;

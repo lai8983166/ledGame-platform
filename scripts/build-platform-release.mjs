@@ -14,6 +14,7 @@ const steps = [
   { name: "会员管理端（win-unpacked + ZIP）", script: "portable:member-admin" },
   { name: "自助注册端（win-unpacked + ZIP）", script: "portable:registration" },
   { name: "离线激活签发工具（win-unpacked + ZIP + 单文件 EXE）", script: "portable:activation-signer" },
+  { name: "厂家数据库恢复工具（受控目录）", script: "database-recovery:package" },
   { name: "多点并发测试工具", script: "portable:multipoint-concurrency" },
   { name: "游戏端烤机工具", script: "portable:game-soak:release" },
 ];
@@ -79,6 +80,12 @@ async function writeManifest() {
       describeArtifact(`release/activation-signer/LEDGame-Activation-Signer-${version}-x64.zip`),
       describeArtifact(`release/activation-signer/LEDGame-Activation-Signer-${version}-x64.exe`),
     ]),
+    databaseRecovery: await Promise.all([
+      describeArtifact("release/database-recovery-tool/database-recovery-tool.mjs"),
+      describeArtifact("release/database-recovery-tool/database-recovery-tool.cmd"),
+      describeArtifact("release/database-recovery-tool/runtime/node.exe"),
+      describeArtifact("release/database-recovery-tool/使用说明.md"),
+    ]),
     multipointConcurrency: await Promise.all([
       describeArtifact("release/multipoint-concurrency/runtime/node.exe"),
       describeArtifact("release/multipoint-concurrency/center.cmd"),
@@ -113,6 +120,7 @@ async function writeManifest() {
     "- `release/member-admin`：会员管理端目录包和 ZIP",
     "- `release/registration-kiosk`：自助注册端目录包和 ZIP",
     "- `release/activation-signer`：厂家离线激活签发工具",
+    "- `release/database-recovery-tool`：厂家专用离线数据库恢复工具（不含私钥）",
     "- `release/multipoint-concurrency`：打包版多点并发测试工具",
     "- `release/game-soak`：打包版游戏端烤机工具",
     "", "详细文件大小和 SHA-256 校验值见 `打包清单.json`。授权文件、厂家私钥、业务数据库和测试结果不会打进交付目录。", "",

@@ -50,6 +50,24 @@ class RoomConnectionRegistryTest {
     }
 
     @Test
+    void acceptsHardwareStatusEventsAndStoresTheReportedState() throws Exception {
+        WebSocketSession session = session("session-hardware", "192.168.1.29");
+        registry.register(session, objectMapper.readTree("{\"type\":\"HELLO\"}"));
+
+        registry.accept(session, objectMapper.readTree("""
+                {"type":"HARDWARE_STATUS_CHANGED","sequence":1,"state":{
+                  "engineState":"IDLE",
+                  "hardware":[{"id":"elc408-controller","status":"online","foundControllers":1}]
+                }}
+                """));
+
+        assertThat(registry.find("192.168.1.29")).satisfies(room -> {
+            assertThat(room).containsEntry("lastEventType", "HARDWARE_STATUS_CHANGED");
+            assertThat(((Map<?, ?>) room.get("state")).containsKey("hardware")).isTrue();
+        });
+    }
+
+    @Test
     void acceptsCredentialFreeHelloAndRejectsUnsupportedEvents() throws Exception {
         WebSocketSession session = session("session-b", "192.168.1.26");
         registry.register(session, objectMapper.readTree(

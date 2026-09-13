@@ -36,6 +36,7 @@ public class DatabaseBackupEngine {
     private final DataProtectionKeyManager dataKeys;
     private final ProtectedDataService protectedData;
     private final AvatarStorageService avatarStorage;
+    private final DatabaseRecoveryKeyService recoveryKeys;
 
     @Autowired
     public DatabaseBackupEngine(
@@ -48,7 +49,8 @@ public class DatabaseBackupEngine {
             @Value("${spring.datasource.url}") String datasourceUrl,
             DataProtectionKeyManager dataKeys,
             ProtectedDataService protectedData,
-            AvatarStorageService avatarStorage) {
+            AvatarStorageService avatarStorage,
+            DatabaseRecoveryKeyService recoveryKeys) {
         this.onlineBackup = onlineBackup;
         this.inspector = inspector;
         this.objectMapper = objectMapper;
@@ -60,6 +62,23 @@ public class DatabaseBackupEngine {
         this.dataKeys = dataKeys;
         this.protectedData = protectedData;
         this.avatarStorage = avatarStorage;
+        this.recoveryKeys = recoveryKeys;
+    }
+
+    /** Compatibility constructor retained for focused backup-engine tests. */
+    DatabaseBackupEngine(
+            SqliteOnlineBackup onlineBackup,
+            DatabaseFileInspector inspector,
+            ObjectMapper objectMapper,
+            DatabaseBackupProperties properties,
+            Clock clock,
+            String timeZone,
+            String datasourceUrl,
+            DataProtectionKeyManager dataKeys,
+            ProtectedDataService protectedData,
+            AvatarStorageService avatarStorage) {
+        this(onlineBackup, inspector, objectMapper, properties, clock, timeZone, datasourceUrl,
+                dataKeys, protectedData, avatarStorage, null);
     }
 
     /** Compatibility constructor retained for focused backup-engine tests. */
@@ -74,7 +93,7 @@ public class DatabaseBackupEngine {
             DataProtectionKeyManager dataKeys,
             ProtectedDataService protectedData) {
         this(onlineBackup, inspector, objectMapper, properties, clock, timeZone, datasourceUrl,
-                dataKeys, protectedData, null);
+                dataKeys, protectedData, null, null);
     }
 
     DatabaseBackupEngine(
@@ -91,6 +110,7 @@ public class DatabaseBackupEngine {
         this.dataKeys = null;
         this.protectedData = null;
         this.avatarStorage = null;
+        this.recoveryKeys = null;
     }
 
     public Path sourceDatabase() { return sourceDatabase; }
@@ -123,6 +143,7 @@ public class DatabaseBackupEngine {
         Path candidate = stagingDirectory.resolve("platform-" + UUID.randomUUID() + ".db.tmp");
         Path candidateAvatars = stagingDirectory.resolve("avatars-" + UUID.randomUUID());
         Path candidateAvatarManifest = stagingDirectory.resolve(candidateAvatars.getFileName() + ".json");
+        Path candidateRecovery = stagingDirectory.resolve(candidate.getFileName() + ".factory-key-envelope.json");
         try {
             Files.createDirectories(stagingDirectory);
             Files.createDirectories(latestDirectory);
@@ -133,6 +154,11 @@ public class DatabaseBackupEngine {
             if (!inspected.valid()) throw new IllegalStateException(BackupErrorCode.BACKUP_INTEGRITY_FAILED.name());
             verifyProtectedDatabase(candidate);
             stageAvatars(candidateAvatars, candidateAvatarManifest);
+            DatabaseRecoveryEnvelope recoveryEnvelope = null;
+            if (recoveryKeys != null && recoveryKeys.enabled() && dataKeys != null) {
+                recoveryEnvelope = recoveryKeys.wrap(dataKeys.loadExisting());
+                Files.write(candidateRecovery, recoveryKeys.serialize(recoveryEnvelope));
+            }
             Instant generatedAt = clock.instant();
             DatabaseStateSnapshot state = inspected.state();
             DatabaseBackupMetadata metadata = new DatabaseBackupMetadata(
@@ -141,19 +167,25 @@ public class DatabaseBackupEngine {
                     state.lastBusinessModifiedAt(), state.importedFromRevision(), state.importedAt(), generatedAt,
                     sourceDatabase.toString(), targetDiskIdentity, inspected.fileSize(), inspected.sha256(),
                     inspected.integrityResult(), ProtectedDataService.ENCRYPTION_VERSION,
-                    protectedData == null ? "test-key" : protectedData.keyId());
+                    protectedData == null ? "test-key" : protectedData.keyId(),
+                    recoveryEnvelope == null ? null : recoveryEnvelope.recoveryKeyId(),
+                    recoveryEnvelope == null ? null : recoveryEnvelope.format(),
+                    recoveryEnvelope == null ? null : inspector.sha256(candidateRecovery));
             Path candidateMetadata = stagingDirectory.resolve(candidate.getFileName() + ".json");
             writeJson(candidateMetadata, metadata);
             publishKeyEnvelope(latestDirectory);
             publishAvatars(candidateAvatars, candidateAvatarManifest, latestDirectory);
             publishPair(candidate, candidateMetadata,
-                    latestDirectory.resolve("platform.db"), latestDirectory.resolve("metadata.json"));
+                    latestDirectory.resolve("platform.db"), latestDirectory.resolve("metadata.json"),
+                    recoveryEnvelope == null ? null : candidateRecovery,
+                    recoveryEnvelope == null ? null : latestDirectory.resolve("factory-key-envelope.json"));
             createDailyHistory(latestDirectory, historyDirectory, metadata);
             cleanupHistory(historyDirectory);
             return metadata;
         } catch (Exception exception) {
             try { Files.deleteIfExists(candidate); } catch (IOException ignored) {}
             try { Files.deleteIfExists(stagingDirectory.resolve(candidate.getFileName() + ".json")); } catch (IOException ignored) {}
+            try { Files.deleteIfExists(candidateRecovery); } catch (IOException ignored) {}
             deleteTree(candidateAvatars);
             try { Files.deleteIfExists(candidateAvatarManifest); } catch (IOException ignored) {}
             if (exception instanceof IllegalStateException stateException) throw stateException;
@@ -195,6 +227,11 @@ public class DatabaseBackupEngine {
             Files.copy(latestKey, historyDirectory.resolve(prefix + "-data-key.dpapi"),
                     StandardCopyOption.COPY_ATTRIBUTES);
         }
+        Path latestRecovery = latestDirectory.resolve("factory-key-envelope.json");
+        if (Files.isRegularFile(latestRecovery)) {
+            Files.copy(latestRecovery, historyDirectory.resolve(prefix + "-factory-key-envelope.json"),
+                    StandardCopyOption.COPY_ATTRIBUTES);
+        }
     }
 
     private void cleanupHistory(Path historyDirectory) throws IOException {
@@ -210,6 +247,7 @@ public class DatabaseBackupEngine {
                 Files.deleteIfExists(database);
                 Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-platform.json")));
                 Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-data-key.dpapi")));
+                Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-factory-key-envelope.json")));
                 deleteTree(Path.of(database.toString().replace("-platform.db", "-avatars")));
                 Files.deleteIfExists(Path.of(database.toString().replace("-platform.db", "-avatar-manifest.json")));
             }
@@ -346,22 +384,34 @@ public class DatabaseBackupEngine {
 
     private void publishPair(Path candidateDatabase, Path candidateMetadata, Path latestDatabase, Path latestMetadata)
             throws IOException {
+        publishPair(candidateDatabase, candidateMetadata, latestDatabase, latestMetadata, null, null);
+    }
+
+    private void publishPair(Path candidateDatabase, Path candidateMetadata, Path latestDatabase, Path latestMetadata,
+            Path candidateRecovery, Path latestRecovery) throws IOException {
         Path previousDatabase = latestDatabase.resolveSibling("platform.db.previous");
         Path previousMetadata = latestMetadata.resolveSibling("metadata.json.previous");
+        Path previousRecovery = latestRecovery == null ? null : latestRecovery.resolveSibling("factory-key-envelope.json.previous");
         Files.deleteIfExists(previousDatabase);
         Files.deleteIfExists(previousMetadata);
+        if (previousRecovery != null) Files.deleteIfExists(previousRecovery);
         if (Files.exists(latestDatabase)) move(latestDatabase, previousDatabase, false);
         if (Files.exists(latestMetadata)) move(latestMetadata, previousMetadata, false);
+        if (latestRecovery != null && Files.exists(latestRecovery)) move(latestRecovery, previousRecovery, false);
         try {
             move(candidateDatabase, latestDatabase, true);
             move(candidateMetadata, latestMetadata, true);
+            if (candidateRecovery != null) move(candidateRecovery, latestRecovery, true);
             Files.deleteIfExists(previousDatabase);
             Files.deleteIfExists(previousMetadata);
+            if (previousRecovery != null) Files.deleteIfExists(previousRecovery);
         } catch (IOException exception) {
             Files.deleteIfExists(latestDatabase);
             Files.deleteIfExists(latestMetadata);
+            if (latestRecovery != null) Files.deleteIfExists(latestRecovery);
             if (Files.exists(previousDatabase)) move(previousDatabase, latestDatabase, true);
             if (Files.exists(previousMetadata)) move(previousMetadata, latestMetadata, true);
+            if (previousRecovery != null && Files.exists(previousRecovery)) move(previousRecovery, latestRecovery, true);
             throw exception;
         }
     }

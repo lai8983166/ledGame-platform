@@ -13,6 +13,9 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.nio.file.attribute.FileTime;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,6 +99,35 @@ class DatabaseBackupEngineTest {
         String historyKey = historyDatabase.getFileName().toString()
                 .replace("-platform.db", "-data-key.dpapi");
         assertThat(historyDatabase.resolveSibling(historyKey)).hasContent("dpapi-test-envelope");
+    }
+
+    @Test
+    void onlineBackupPublishesVendorRecoveryEnvelopeWithoutChangingDatabaseCiphertext() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair pair = generator.generateKeyPair();
+        Path publicKey = root.resolve("factory-recovery-public.pem");
+        Files.writeString(publicKey, pem(pair.getPublic().getEncoded()), StandardCharsets.US_ASCII);
+        DatabaseRecoveryProperties recoveryProperties = new DatabaseRecoveryProperties();
+        recoveryProperties.setPublicKeyPath(publicKey.toString());
+        DatabaseRecoveryKeyService recovery = new DatabaseRecoveryKeyService(recoveryProperties, new ObjectMapper());
+        insertMember("13800138009", "恢复测试");
+
+        DatabaseBackupMetadata metadata = engine(new SqliteOnlineBackup(dataSource), recovery)
+                .backup(backupRoot, "uid:disk-b");
+
+        Path envelopePath = backupRoot.resolve("latest/factory-key-envelope.json");
+        assertThat(envelopePath).isRegularFile();
+        DatabaseRecoveryEnvelope envelope = new ObjectMapper().readValue(envelopePath.toFile(), DatabaseRecoveryEnvelope.class);
+        assertThat(envelope.keyId()).isEqualTo(protectedData.keyId());
+        assertThat(metadata.recoveryKeyId()).isEqualTo(envelope.recoveryKeyId());
+        assertThat(metadata.recoveryEnvelopeFormat()).isEqualTo(envelope.format());
+        assertThat(metadata.recoveryEnvelopeSha256()).isEqualTo(inspector.sha256(envelopePath));
+        assertThat(backupRoot.resolve("history")).isDirectory();
+        try (var files = Files.list(backupRoot.resolve("history"))) {
+            assertThat(files.anyMatch(path -> path.getFileName().toString().endsWith("-factory-key-envelope.json"))).isTrue();
+        }
+        // The existing backup verifier already decrypts protected columns and rejects plaintext.
     }
 
     @Test
@@ -206,6 +238,13 @@ class DatabaseBackupEngineTest {
                 "Asia/Shanghai", "jdbc:sqlite:" + source.toAbsolutePath(), keyManager, protectedData, avatarStorage);
     }
 
+    private DatabaseBackupEngine engine(SqliteOnlineBackup onlineBackup, DatabaseRecoveryKeyService recovery) {
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        return new DatabaseBackupEngine(onlineBackup, inspector, mapper, properties, clock,
+                "Asia/Shanghai", "jdbc:sqlite:" + source.toAbsolutePath(), keyManager, protectedData,
+                avatarStorage, recovery);
+    }
+
     private void insertMember(String phone, String name) {
         insertMember(phone, name, null);
     }
@@ -222,6 +261,12 @@ class DatabaseBackupEngineTest {
     private static byte[] tinyPng() {
         return Base64.getDecoder().decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+    }
+
+    private static String pem(byte[] encoded) {
+        return "-----BEGIN PUBLIC KEY-----\n"
+                + Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII)).encodeToString(encoded)
+                + "\n-----END PUBLIC KEY-----\n";
     }
 
     private static final class MutableClock extends Clock {

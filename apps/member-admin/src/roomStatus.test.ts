@@ -33,6 +33,37 @@ describe("mapRoomStatus", () => {
     });
   });
 
+  it("maps controller discovery health instead of inventing a healthy device", () => {
+    const room = mapRoomStatus({
+      ip: "192.168.1.25", deviceId: "game-01", roomId: "room-01", roomName: "Room 01",
+      connectionId: "connection-1", online: true,
+      state: {
+        engineState: "IDLE",
+        hardware: [{
+          id: "elc408-controller", name: "ELC-408 controller", location: "192.168.1.10",
+          status: "warning", detail: "Only 1/2 configured controllers replied",
+        }],
+      },
+      lastSequence: 9, lastEventType: "HARDWARE_STATUS_CHANGED",
+      lastEventAt: "2026-08-09T12:00:00Z", queueLength: 0,
+    });
+
+    expect(room.hardware).toEqual([expect.objectContaining({
+      id: "elc408-controller", status: "warning", detail: "Only 1/2 configured controllers replied",
+    })]);
+  });
+
+  it("marks legacy rooms as unknown until a controller search is reported", () => {
+    const room = mapRoomStatus({
+      ip: "192.168.1.25", deviceId: "game-01", roomId: "room-01", roomName: "Room 01",
+      connectionId: "connection-1", online: true, state: { engineState: "IDLE" },
+      lastSequence: 1, lastEventType: "ROOM_SNAPSHOT",
+      lastEventAt: "2026-08-09T12:00:00Z", queueLength: 0,
+    });
+
+    expect(room.hardware[0]).toMatchObject({ status: "unknown" });
+  });
+
   it("maps a disconnected room without inventing gameplay data", () => {
     const room = mapRoomStatus({
       ip: "192.168.1.26",

@@ -18,6 +18,7 @@ public enum BackupErrorCode {
     DATA_PROTECTION_MIGRATION_FAILED("数据库加密迁移未完成，已安全回滚并禁止业务写入，请查看本机服务日志"),
     DATABASE_VERSION_CONFLICT("备份版本高于主数据库，已停止自动覆盖"),
     DATABASE_IDENTITY_CONFLICT("发现另一份门店数据库备份，必须由出厂账号处理"),
+    DATABASE_RECOVERY_AVAILABLE("检测到可跨 Windows 恢复的备份，请先用出厂账号生成恢复请求"),
     IMPORT_FORBIDDEN("只有出厂账号可以导入数据库"),
     IMPORT_FACTORY_ACCOUNT_INVALID("候选数据库必须包含唯一且已启用的出厂账号"),
     IMPORT_CANDIDATE_INVALID("所选备份数据库无效或不兼容"),

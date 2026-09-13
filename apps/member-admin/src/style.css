@@ -72,6 +72,9 @@ h1, h2, h3, p { margin-top: 0; }
 .topbar h1 { margin: 0; color: var(--ink); font-size: clamp(23px, 2.2vw, 30px); font-weight: 760; letter-spacing: -.035em; }
 .topbar p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
 .topbar__actions { display: flex; align-items: center; gap: 12px; }
+.disk-space-indicator { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 10px; border: 1px solid rgba(93,119,146,.14); border-radius: 11px; color: var(--muted); background: rgba(255,255,255,.68); font-size: 9px; font-weight: 700; white-space: nowrap; }
+.disk-space-indicator strong { color: var(--ink); font-size: 11px; }
+.disk-space-indicator__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aqua); box-shadow: 0 0 0 4px rgba(18,174,170,.1); }
 .language-switcher { position: relative; }
 .language-button { display: grid; grid-template-columns: 24px auto; grid-template-rows: auto auto; align-items: center; column-gap: 7px; min-height: 42px; padding: 5px 11px; border: 1px solid rgba(93,119,146,.14); border-radius: 12px; color: #5f7287; background: rgba(255,255,255,.68); cursor: pointer; text-align: start; }
 .language-button > span { grid-row: 1 / span 2; font-size: 20px; }.language-button strong,.language-button small { display: block; }.language-button strong { font-size: 10px; }.language-button small { color: var(--subtle); font-size: 8px; }
@@ -276,6 +279,17 @@ html[data-language-direction="rtl"] :is(input, textarea) { direction: rtl; text-
 .backup-detail-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 18px 0; }.backup-detail-grid > div { padding: 13px; border-radius: 14px; background: rgba(239,244,251,.75); }.backup-detail-grid small,.backup-detail-grid strong { display: block; }.backup-detail-grid small { color: var(--muted); font-size: 8px; }.backup-detail-grid strong { margin-top: 5px; color: var(--ink); font-size: 10px; }
 .backup-candidates { margin-top: 18px; }.backup-candidates > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; }.backup-candidates > header strong { font-size: 11px; }.backup-candidates > header p { margin: 4px 0 0; color: var(--muted); font-size: 8px; }.backup-candidates > header > div:last-child { display: flex; gap: 7px; }
 .backup-candidate-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 56px; padding: 10px 3px; border-top: 1px solid var(--line); }.backup-candidate-row strong,.backup-candidate-row small { display: block; }.backup-candidate-row strong { font-size: 10px; }.backup-candidate-row small { margin-top: 4px; color: var(--muted); font-size: 8px; }.empty-copy { padding: 18px 0; color: var(--muted); font-size: 9px; text-align: center; }
+.recovery-request-summary { display: grid; gap: 8px; }
+.recovery-request-summary .backup-detail-grid { padding: 4px 0 8px; }
+.recovery-digest { display: grid; grid-template-columns: 86px 1fr; align-items: center; gap: 8px; margin: 0; padding: 8px 10px; border-radius: 10px; background: rgba(239,244,251,.75); color: var(--muted); font-size: 8px; }
+.recovery-digest code { overflow: hidden; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.recovery-file-list { display: grid; gap: 4px; padding: 9px 10px; border-radius: 10px; color: var(--muted); background: rgba(232,249,243,.65); font-size: 8px; }
+.recovery-file-list strong { color: var(--ink); font-size: 9px; }
+.recovery-file-path { margin: 2px 0 0; color: var(--success); font-size: 8px; word-break: break-all; }
+.recovery-progress { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--primary); font-size: 9px; }
+.recovery-selection { display: grid; gap: 6px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(77,114,246,.16); border-radius: 12px; background: rgba(239,244,255,.72); }
+.recovery-selection p { display: flex; justify-content: space-between; gap: 8px; margin: 0; color: var(--muted); font-size: 8px; }
+.recovery-selection strong { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 8px; text-align: right; word-break: break-all; }
 /* This fixed marker prevents isolated test data from being mistaken for store data. */
 .concurrency-test-banner {
   position: fixed;

@@ -49,15 +49,37 @@ function setStatus(next) {
   startupWindow?.webContents.send("member-admin:startup-status", status);
 }
 
+function refocusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.focus();
+}
+
+function readDiskFreePercent(targetPath) {
+  try {
+    if (typeof fs.statfsSync !== "function") return null;
+    const stats = fs.statfsSync(targetPath);
+    const totalBytes = Number(stats.blocks) * Number(stats.bsize);
+    const freeBytes = Number(stats.bavail ?? stats.bfree) * Number(stats.bsize);
+    if (!Number.isFinite(totalBytes) || totalBytes <= 0 || !Number.isFinite(freeBytes)) return null;
+    return Math.max(0, Math.min(100, Math.round((freeBytes / totalBytes) * 100)));
+  } catch {
+    return null;
+  }
+}
+
 function diagnostics() {
   const port = settings.port;
+  const dataPath = store.dataPath("platform.db");
   return {
     ...status,
     port,
-    dataPath: store.dataPath("platform.db"),
+    dataPath,
     logPath: store.logPath("server.log"),
     lanUrls: listLanIpv4().map((ip) => `http://${ip}:${port}`),
     recentLogs: backend.tail(),
+    diskFreePercent: readDiskFreePercent(path.dirname(dataPath)),
     concurrencyTestRunId,
     concurrencyTestMode: Boolean(concurrencyTestRunId),
   };
@@ -182,14 +204,26 @@ function parseApiResponse(response) {
 }
 
 async function importBackupDatabase(candidateId, operatorId) {
-  let replacement;
-  const databasePath = store.dataPath("platform.db");
   try {
     const prepared = parseApiResponse(await transport({
       path: `/api/database-backup/candidates/${encodeURIComponent(String(candidateId || ""))}/prepare`,
       method: "POST",
       headers: { "X-Operator-Id": operatorId },
     }));
+    return applyPreparedImport(prepared, operatorId);
+  } catch (error) {
+    if (transport && operatorId) {
+      transport({ path: "/api/database-backup/import/cancel", method: "POST",
+        headers: { "X-Operator-Id": operatorId } }).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+async function applyPreparedImport(prepared) {
+  let replacement;
+  const databasePath = store.dataPath("platform.db");
+  try {
     await ensureStartupWindow();
     startupWindow.show();
     mainWindow.hide();
@@ -213,13 +247,9 @@ async function importBackupDatabase(candidateId, operatorId) {
       } catch (rollbackError) {
         error.message = `${error.message}；自动回滚失败：${rollbackError.message}`;
       }
-    } else if (transport && operatorId) {
-      transport({ path: "/api/database-backup/import/cancel", method: "POST",
-        headers: { "X-Operator-Id": operatorId } }).catch(() => {});
-      if (!backend.running) {
-        backendReady = startBackend(settings.port).catch(() => {});
-        await backendReady;
-      }
+    } else if (!backend.running) {
+      backendReady = startBackend(settings.port).catch(() => {});
+      await backendReady;
     }
     destroyStartupWindow();
     mainWindow?.show();
@@ -311,6 +341,108 @@ function registerIpc() {
   ipcMain.handle("member-admin:import-backup-database", async (event, input) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
     return importBackupDatabase(input?.candidateId, input?.operatorId);
+  });
+  ipcMain.handle("member-admin:create-database-recovery-request", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    const selected = await dialog.showOpenDialog(mainWindow, {
+      title: "选择包含 factory-key-envelope.json 的备份目录",
+      properties: ["openDirectory"],
+    });
+    if (selected.canceled || selected.filePaths.length === 0) { refocusMainWindow(); return null; }
+    const request = parseApiResponse(await transport({
+      path: "/api/database-recovery/request", method: "POST",
+      headers: { "X-Operator-Id": input?.operatorId },
+      body: JSON.stringify({ path: selected.filePaths[0] }),
+    }));
+    const destination = await dialog.showSaveDialog(mainWindow, {
+      title: "保存数据库恢复请求",
+      defaultPath: path.join(selected.filePaths[0], "recovery-request.json"),
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (destination.canceled || !destination.filePath) {
+      refocusMainWindow();
+      await transport({
+        path: "/api/database-recovery/request/cancel", method: "POST",
+        headers: { "X-Operator-Id": input?.operatorId },
+        body: JSON.stringify({ requestId: request.requestId }),
+      }).catch(() => {});
+      return { request, path: null };
+    }
+    try {
+      fs.writeFileSync(destination.filePath, `${JSON.stringify(request, null, 2)}\n`, "utf8");
+    } catch (error) {
+      await transport({
+        path: "/api/database-recovery/request/cancel", method: "POST",
+        headers: { "X-Operator-Id": input?.operatorId },
+        body: JSON.stringify({ requestId: request.requestId }),
+      }).catch(() => {});
+      throw Object.assign(new Error("恢复请求文件保存失败，请检查目标目录权限和磁盘空间"), { code: "DATABASE_RECOVERY_FILE_WRITE_FAILED", cause: error });
+    }
+    refocusMainWindow();
+    return { request, path: destination.filePath };
+  });
+  ipcMain.handle("member-admin:cancel-database-recovery-request", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    await transport({
+      path: "/api/database-recovery/request/cancel", method: "POST",
+      headers: { "X-Operator-Id": input?.operatorId },
+      body: JSON.stringify({ requestId: input?.requestId }),
+    });
+  });
+  ipcMain.handle("member-admin:select-database-recovery-response", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    const backup = await dialog.showOpenDialog(mainWindow, {
+      title: "选择原恢复备份目录",
+      properties: ["openDirectory"],
+    });
+    if (backup.canceled || backup.filePaths.length === 0) { refocusMainWindow(); return null; }
+    const response = await dialog.showOpenDialog(mainWindow, {
+      title: "选择厂家恢复响应文件",
+      properties: ["openFile"], filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (response.canceled || response.filePaths.length === 0) { refocusMainWindow(); return null; }
+    let summary;
+    try {
+      const value = JSON.parse(fs.readFileSync(response.filePaths[0], "utf8"));
+      const metadataPath = path.join(backup.filePaths[0], "metadata.json");
+      let metadata = {};
+      try { metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8")); } catch { /* 后端会给出最终校验错误 */ }
+      summary = { requestId: String(value.requestId || ""), revision: Number(metadata.revision || 0), instanceId: String(metadata.instanceId || "") };
+    } catch { throw Object.assign(new Error("厂家恢复响应文件无法读取"), { code: "DATABASE_RECOVERY_RESPONSE_INVALID" }); }
+    if (!summary.requestId) {
+      throw Object.assign(new Error("厂家恢复响应缺少请求编号或实例身份"), { code: "DATABASE_RECOVERY_RESPONSE_INVALID" });
+    }
+    refocusMainWindow();
+    return { backupPath: backup.filePaths[0], responsePath: response.filePaths[0], ...summary };
+  });
+  ipcMain.handle("member-admin:import-database-recovery-response", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    let backupPath = input?.backupPath;
+    let responsePath = input?.responsePath;
+    if (!backupPath || !responsePath) {
+      const selection = await (async () => {
+        const backup = await dialog.showOpenDialog(mainWindow, {
+          title: "选择原恢复备份目录",
+          properties: ["openDirectory"],
+        });
+        if (backup.canceled || backup.filePaths.length === 0) { refocusMainWindow(); return null; }
+        const response = await dialog.showOpenDialog(mainWindow, {
+          title: "选择厂家恢复响应文件",
+          properties: ["openFile"], filters: [{ name: "JSON", extensions: ["json"] }],
+        });
+        if (response.canceled || response.filePaths.length === 0) { refocusMainWindow(); return null; }
+        return { backupPath: backup.filePaths[0], responsePath: response.filePaths[0] };
+      })();
+      if (!selection) return null;
+      ({ backupPath, responsePath } = selection);
+    }
+    refocusMainWindow();
+    const prepared = parseApiResponse(await transport({
+      path: "/api/database-recovery/response/import", method: "POST",
+      headers: { "X-Operator-Id": input?.operatorId },
+      body: JSON.stringify({ backupPath, responsePath }),
+    }));
+    return applyPreparedImport(prepared);
   });
 }
 

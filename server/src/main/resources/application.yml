@@ -35,6 +35,11 @@ ledgame:
   data-protection:
     key-path: ${PLATFORM_DATA_KEY_PATH:}
     test-key-base64: ${PLATFORM_DATA_TEST_KEY_BASE64:}
+  database-recovery:
+    enabled: ${PLATFORM_DATABASE_RECOVERY_ENABLED:true}
+    recovery-key-id: ${PLATFORM_DATABASE_RECOVERY_KEY_ID:factory-recovery-v1}
+    public-key-path: ${PLATFORM_DATABASE_RECOVERY_PUBLIC_KEY_PATH:}
+    public-key-resource: ${PLATFORM_DATABASE_RECOVERY_PUBLIC_KEY_RESOURCE:database-recovery-public.pem}
   operator-accounts:
     factory:
       username: ${PLATFORM_FACTORY_ADMIN_USERNAME:admin}

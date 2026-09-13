@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Arrays;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -80,6 +81,41 @@ public class DataProtectionKeyManager {
         if (!Files.isRegularFile(keyPath)) return new byte[0];
         try { return Files.readAllBytes(keyPath); }
         catch (Exception exception) { throw new IllegalStateException("DATA_PROTECTION_KEY_READ_FAILED", exception); }
+    }
+
+    /** Installs a recovered store key under the current Windows user. */
+    public synchronized void install(DataKeyMaterial material) {
+        if (material == null || material.key().length != 32) {
+            throw new IllegalArgumentException("DATA_PROTECTION_KEY_INVALID");
+        }
+        String configured = properties.getTestKeyBase64().trim();
+        if (!configured.isEmpty() && !Arrays.equals(Base64.getDecoder().decode(configured), material.key())) {
+            throw new IllegalStateException("DATA_PROTECTION_KEY_TEST_MISMATCH");
+        }
+        writeEnvelope(keyPath, material);
+        current = material;
+    }
+
+    /** Writes a DPAPI envelope to a staging path without changing the active key. */
+    public void writeEnvelope(Path target, DataKeyMaterial material) {
+        if (material == null || material.key().length != 32) {
+            throw new IllegalArgumentException("DATA_PROTECTION_KEY_INVALID");
+        }
+        try {
+            Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+            Path temporary = target.resolveSibling(target.getFileName() + ".writing");
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(temporary.toFile(),
+                    new KeyEnvelope(ENVELOPE_FORMAT, material.keyId(),
+                            Base64.getEncoder().encodeToString(protector.protect(material.key()))));
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException("DATA_PROTECTION_KEY_WRITE_FAILED", exception);
+        }
     }
 
     private DataKeyMaterial readEnvelope(Path path) {

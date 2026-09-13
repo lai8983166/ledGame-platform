@@ -211,6 +211,14 @@ public class DatabaseBackupCoordinator {
             DatabaseBackupMetadata metadata = engine.readLatestMetadata(target.root());
             if (!engine.acceptsMetadata(metadata)
                     || !engine.acceptsKeyEnvelope(target.root().resolve("latest/data-key.dpapi"), metadata)) {
+                Path recoveryEnvelope = target.root().resolve("latest/factory-key-envelope.json");
+                if (metadata != null && properties.getEnvironment().equals(metadata.environment())
+                        && backup.valid() && Files.isRegularFile(recoveryEnvelope)
+                        && metadata.recoveryKeyId() != null && metadata.recoveryEnvelopeFormat() != null) {
+                    gate.update(StartupGate.maintenance(BackupErrorCode.DATABASE_RECOVERY_AVAILABLE,
+                            targetVolume(), source.revision(), backup.state().revision()));
+                    return;
+                }
                 String reason = metadata == null || metadata.encryptionVersion() == null
                         ? "plaintext-legacy-backup" : "environment-or-key-mismatch";
                 if (quarantineLatest(reason)) backupNow(source);
@@ -375,6 +383,7 @@ public class DatabaseBackupCoordinator {
         Path latestDatabase = latestDirectory.resolve("platform.db");
         Path latestMetadata = latestDirectory.resolve("metadata.json");
         Path latestKey = latestDirectory.resolve("data-key.dpapi");
+        Path latestRecovery = latestDirectory.resolve("factory-key-envelope.json");
         if (!Files.exists(latestDatabase) && !Files.exists(latestMetadata)) return true;
         Path archive = target.root().resolve("quarantine").resolve(
                 reason + "-" + DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
@@ -382,6 +391,7 @@ public class DatabaseBackupCoordinator {
         Path archivedDatabase = archive.resolve("platform.db");
         Path archivedMetadata = archive.resolve("metadata.json");
         Path archivedKey = archive.resolve("data-key.dpapi");
+        Path archivedRecovery = archive.resolve("factory-key-envelope.json");
         try {
             Files.createDirectories(archive);
             if (Files.exists(latestDatabase)) {
@@ -394,6 +404,9 @@ public class DatabaseBackupCoordinator {
                 if (Files.exists(latestKey)) {
                     Files.move(latestKey, archivedKey, StandardCopyOption.REPLACE_EXISTING);
                 }
+                if (Files.exists(latestRecovery)) {
+                    Files.move(latestRecovery, archivedRecovery, StandardCopyOption.REPLACE_EXISTING);
+                }
             } catch (Exception metadataFailure) {
                 if (Files.exists(archivedDatabase)) {
                     Files.move(archivedDatabase, latestDatabase, StandardCopyOption.REPLACE_EXISTING);
@@ -403,6 +416,9 @@ public class DatabaseBackupCoordinator {
                 }
                 if (Files.exists(archivedKey)) {
                     Files.move(archivedKey, latestKey, StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (Files.exists(archivedRecovery)) {
+                    Files.move(archivedRecovery, latestRecovery, StandardCopyOption.REPLACE_EXISTING);
                 }
                 throw metadataFailure;
             }
@@ -442,6 +458,10 @@ public class DatabaseBackupCoordinator {
                 Path key = history.resolve(prefix + "-data-key.dpapi");
                 if (Files.exists(key)) {
                     Files.move(key, archive.resolve("data-key.dpapi"), StandardCopyOption.REPLACE_EXISTING);
+                }
+                Path recovery = history.resolve(prefix + "-factory-key-envelope.json");
+                if (Files.exists(recovery)) {
+                    Files.move(recovery, archive.resolve("factory-key-envelope.json"), StandardCopyOption.REPLACE_EXISTING);
                 }
                 Files.writeString(archive.resolve("reason.txt"), "PLAINTEXT_LEGACY_BACKUP");
                 LOG.warn("database_backup_quarantined reason=PLAINTEXT_LEGACY_BACKUP archive={}", archive);

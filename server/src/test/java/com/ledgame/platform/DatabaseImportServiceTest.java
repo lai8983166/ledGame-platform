@@ -194,13 +194,18 @@ class DatabaseImportServiceTest {
         InspectedDatabase inspected = inspector.inspect(latest);
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         Instant generatedAt = Instant.parse("2026-09-02T02:03:04Z");
+        Path recoveryEnvelope = backupRoot.resolve("latest/factory-key-envelope.json");
+        Files.writeString(recoveryEnvelope, mapper.writeValueAsString(new DatabaseRecoveryEnvelope(
+                DatabaseRecoveryEnvelope.FORMAT, DatabaseRecoveryEnvelope.ALGORITHM,
+                "factory-recovery-v1", protectedData.keyId(), "A".repeat(256))));
         DatabaseBackupMetadata testMetadata = new DatabaseBackupMetadata(
                 DatabaseBackupEngine.METADATA_FORMAT, "TEST", inspected.schemaVersion(),
                 inspected.state().instanceId(), inspected.state().revision(),
                 inspected.state().lastBusinessModifiedAt(), inspected.state().importedFromRevision(),
                 inspected.state().importedAt(), generatedAt, candidateDatabase.toString(), "test-disk",
                 inspected.fileSize(), inspected.sha256(), inspected.integrityResult(),
-                ProtectedDataService.ENCRYPTION_VERSION, protectedData.keyId());
+                ProtectedDataService.ENCRYPTION_VERSION, protectedData.keyId(), "factory-recovery-v1",
+                DatabaseRecoveryEnvelope.FORMAT, inspector.sha256(recoveryEnvelope));
         mapper.writeValue(backupRoot.resolve("latest/metadata.json").toFile(), testMetadata);
         when(coordinator.backupRoot()).thenReturn(backupRoot);
 
@@ -212,7 +217,8 @@ class DatabaseImportServiceTest {
                 inspected.state().lastBusinessModifiedAt(), inspected.state().importedFromRevision(),
                 inspected.state().importedAt(), generatedAt, candidateDatabase.toString(), "production-disk",
                 inspected.fileSize(), inspected.sha256(), inspected.integrityResult(),
-                ProtectedDataService.ENCRYPTION_VERSION, protectedData.keyId());
+                ProtectedDataService.ENCRYPTION_VERSION, protectedData.keyId(), "factory-recovery-v1",
+                DatabaseRecoveryEnvelope.FORMAT, inspector.sha256(recoveryEnvelope));
         mapper.writeValue(backupRoot.resolve("latest/metadata.json").toFile(), productionMetadata);
 
         assertThat(service.discoverFixedCandidates()).singleElement().satisfies(candidate -> {

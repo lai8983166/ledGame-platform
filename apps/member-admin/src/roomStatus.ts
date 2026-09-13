@@ -1,5 +1,5 @@
 import type { RoomStatus } from "@ledgame/platform-api-client";
-import type { Room } from "./types";
+import type { HardwareDevice, Room } from "./types";
 
 type NormalizedGameTime = {
   mode: "LIMITED" | "UNLIMITED";
@@ -21,6 +21,35 @@ function normalizeGameTime(value: unknown): NormalizedGameTime | null {
     remainingMillis: Math.max(0, remainingMillis),
     running: candidate.running === true,
   };
+}
+
+function normalizeHardware(value: unknown, online: boolean): HardwareDevice[] {
+  if (Array.isArray(value)) {
+    const devices = value
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      .map((item, index) => {
+        const rawStatus = String(item.status || "unknown").toLowerCase();
+        const status: HardwareDevice["status"] = rawStatus === "online"
+          || rawStatus === "warning" || rawStatus === "offline" || rawStatus === "unknown"
+          ? rawStatus
+          : "unknown";
+        return {
+          id: String(item.id || `hardware-${index + 1}`),
+          name: String(item.name || "ELC-408 controller"),
+          location: String(item.location || "Game terminal"),
+          status,
+          detail: String(item.detail || "No hardware status reported"),
+        };
+      });
+    if (devices.length) return devices;
+  }
+  return [{
+    id: "elc408-controller",
+    name: "ELC-408 controller",
+    location: "Game terminal",
+    status: online === false ? "offline" : "unknown",
+    detail: online === false ? "Game terminal is offline" : "Waiting for the first controller search",
+  }];
 }
 
 export function formatGameTime(remainingMillis: number): string {
@@ -70,6 +99,6 @@ export function mapRoomStatus(source: RoomStatus): Room {
     gameTimeRemainingMillis: gameTime?.remainingMillis,
     gameTimeRunning: gameTime?.running,
     players: [],
-    hardware: [],
+    hardware: normalizeHardware(state.hardware, source.online),
   };
 }

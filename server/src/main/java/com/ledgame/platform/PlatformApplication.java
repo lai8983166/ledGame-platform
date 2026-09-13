@@ -5,7 +5,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({DatabaseBackupProperties.class, DataProtectionProperties.class})
+@EnableConfigurationProperties({DatabaseBackupProperties.class, DataProtectionProperties.class,
+        DatabaseRecoveryProperties.class})
 public class PlatformApplication {
 
     public static void main(String[] args) {

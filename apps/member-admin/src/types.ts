@@ -6,7 +6,7 @@ export interface HardwareDevice {
   id: string;
   name: string;
   location: string;
-  status: "online" | "warning" | "offline";
+  status: "online" | "warning" | "offline" | "unknown";
   detail: string;
 }
 

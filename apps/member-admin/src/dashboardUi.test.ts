@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./views/DashboardView.vue", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("./App.vue", import.meta.url), "utf8");
+const desktopSource = readFileSync(new URL("../../../desktop/member-admin/main.cjs", import.meta.url), "utf8");
 
 describe("real member admin dashboard", () => {
   it("loads real overview metrics and rooms with refresh, error and empty states", () => {
@@ -34,5 +35,13 @@ describe("real member admin dashboard", () => {
     expect(appSource).not.toContain("demoData");
     expect(appSource).not.toContain("08月02日");
     expect(appSource).not.toContain("notification-button");
+  });
+
+  it("shows the remaining percentage of the member-admin data disk", () => {
+    expect(appSource).toContain('data-testid="disk-space-indicator"');
+    expect(appSource).toContain("diskFreePercent");
+    expect(appSource).toContain("diskPollTimer");
+    expect(desktopSource).toContain("fs.statfsSync");
+    expect(desktopSource).toContain("diskFreePercent");
   });
 });

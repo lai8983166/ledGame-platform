@@ -37,8 +37,10 @@ const toastMessage = ref("");
 const currentOperator = operatorSession.current;
 let toastTimer: number | undefined;
 let backupPollTimer: number | undefined;
+let diskPollTimer: number | undefined;
 const backupStatus = ref<DatabaseBackupStatus | null>(null);
 const concurrencyTestRunId = ref<string | null>(null);
+const diskFreePercent = ref<number | null>(null);
 
 const copy = computed(() => memberAdminCatalogs[locale.value]);
 const text = (key: MemberAdminMessageKey) => copy.value[key];
@@ -100,6 +102,19 @@ const refreshBackupStatus = async () => {
   catch { /* The runtime card and backend errors provide the retry path. */ }
 };
 
+const refreshDesktopDiagnostics = async () => {
+  try {
+    const value = await window.memberAdminDesktop?.diagnostics();
+    if (!value) return;
+    diskFreePercent.value = typeof value.diskFreePercent === "number"
+      ? Math.max(0, Math.min(100, Math.round(value.diskFreePercent)))
+      : null;
+    concurrencyTestRunId.value = value.concurrencyTestMode ? value.concurrencyTestRunId ?? null : null;
+  } catch {
+    diskFreePercent.value = null;
+  }
+};
+
 const completeLogin = async (profile: OperatorProfile) => {
   operatorSession.login(profile);
   await refreshBackupStatus();
@@ -115,6 +130,7 @@ const logout = () => {
   toastMessage.value = "";
   operatorSession.logout();
   backupStatus.value = null;
+  diskFreePercent.value = null;
 };
 
 const onKeydown = (event: KeyboardEvent) => {
@@ -128,14 +144,14 @@ onMounted(() => {
   applyDocumentLocale(document.documentElement, locale.value);
   window.addEventListener("keydown", onKeydown);
   backupPollTimer = window.setInterval(() => void refreshBackupStatus(), 5000);
-  void window.memberAdminDesktop?.diagnostics().then((value) => {
-    concurrencyTestRunId.value = value.concurrencyTestMode ? value.concurrencyTestRunId ?? null : null;
-  });
+  void refreshDesktopDiagnostics();
+  diskPollTimer = window.setInterval(() => void refreshDesktopDiagnostics(), 5000);
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeydown);
   if (toastTimer) window.clearTimeout(toastTimer);
   if (backupPollTimer) window.clearInterval(backupPollTimer);
+  if (diskPollTimer) window.clearInterval(diskPollTimer);
 });
 </script>
 
@@ -203,6 +219,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="topbar__actions">
+          <div class="disk-space-indicator" data-testid="disk-space-indicator" :title="diskFreePercent === null ? text('diskUnavailable') : `${text('diskFree')} ${diskFreePercent}%`">
+            <span class="disk-space-indicator__dot" aria-hidden="true"></span>
+            <span>{{ text('diskFree') }}</span>
+            <strong v-if="diskFreePercent !== null">{{ diskFreePercent }}%</strong>
+            <strong v-else>—</strong>
+          </div>
           <div class="language-switcher">
             <button
               class="language-button"

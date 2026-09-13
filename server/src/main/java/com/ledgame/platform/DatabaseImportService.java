@@ -78,12 +78,18 @@ public class DatabaseImportService {
     }
 
     public DatabaseBackupCandidate registerExternal(Path rawPath) {
+        return registerExternal(rawPath, null);
+    }
+
+    /** Registers an external backup using a caller-provided key envelope (used by recovery responses). */
+    public DatabaseBackupCandidate registerExternal(Path rawPath, Path keyEnvelopeOverride) {
         Path path = rawPath.toAbsolutePath().normalize();
         InspectedDatabase inspected = requireValid(path);
         ImportSummary summary = requireImportSummary(path);
         String id = UUID.randomUUID().toString();
         DatabaseBackupMetadata metadata = readAdjacentMetadata(path);
-        Path keyEnvelope = adjacentKeyEnvelope(path, metadata);
+        Path keyEnvelope = keyEnvelopeOverride == null ? adjacentKeyEnvelope(path, metadata)
+                : keyEnvelopeOverride.toAbsolutePath().normalize();
         RegisteredCandidate registered = new RegisteredCandidate(path, "EXTERNAL", metadata, keyEnvelope,
                 avatarDirectory(path, "EXTERNAL"), avatarManifest(path, "EXTERNAL"));
         if (metadata != null) verifyMetadata(registered, inspected);

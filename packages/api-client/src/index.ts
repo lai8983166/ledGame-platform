@@ -44,6 +44,8 @@ export interface PlatformApiClient {
   getDatabaseBackupStatus(): Promise<DatabaseBackupStatus>;
   listDatabaseBackupCandidates(): Promise<DatabaseBackupCandidate[]>;
   keepCurrentDatabase(): Promise<DatabaseBackupStatus>;
+  createDatabaseRecoveryRequest(backupPath: string): Promise<DatabaseRecoveryRequest>;
+  importDatabaseRecoveryResponse(backupPath: string, responsePath: string): Promise<DatabaseImportManifest>;
 }
 
 export type OperatorAccountType = "FACTORY_ADMIN" | "STORE_MANAGER" | "CLERK";
@@ -220,6 +222,31 @@ export interface DatabaseBackupCandidate {
   valid: boolean;
 }
 
+export interface DatabaseRecoveryRequest {
+  format: "ledgame-database-recovery-request-v1";
+  requestId: string;
+  recoveryKeyId: string;
+  instanceId: string;
+  revision: number;
+  keyId: string;
+  databaseSha256: string;
+  metadataSha256: string;
+  recoveryEnvelopeSha256: string;
+  temporaryPublicKey: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface DatabaseImportManifest {
+  preparedDatabasePath: string;
+  preparedKeyEnvelopePath: string | null;
+  keyEnvelopeSha256: string | null;
+  sha256: string;
+  preparedAvatarDirectoryPath: string | null;
+  preparedAvatarManifestPath: string | null;
+  avatarManifestSha256: string | null;
+}
+
 export interface GameTimeState {
   mode: "LIMITED" | "UNLIMITED";
   remainingMillis: number | null;
@@ -230,6 +257,16 @@ export interface RoomRuntimeState extends Record<string, unknown> {
   engineState?: string;
   gameName?: string;
   gameTime?: GameTimeState | null;
+  hardware?: HardwareRuntimeDevice[];
+}
+
+export interface HardwareRuntimeDevice {
+  id?: string;
+  name?: string;
+  location?: string;
+  status?: "online" | "warning" | "offline" | "unknown" | string;
+  detail?: string;
+  [key: string]: unknown;
 }
 
 export interface RoomStatus {
@@ -466,6 +503,20 @@ export function createPlatformApiClient({
       return requireResponse(await client.request<DatabaseBackupStatus>(
         "/api/database-backup/conflicts/use-current", { method: "POST" }),
       "保留当前数据库响应为空");
+    },
+    async createDatabaseRecoveryRequest(backupPath: string): Promise<DatabaseRecoveryRequest> {
+      return requireResponse(await client.request<DatabaseRecoveryRequest>(
+        "/api/database-recovery/request", {
+          method: "POST",
+          body: JSON.stringify({ path: String(backupPath || "") }),
+        }), "恢复请求响应为空");
+    },
+    async importDatabaseRecoveryResponse(backupPath: string, responsePath: string): Promise<DatabaseImportManifest> {
+      return requireResponse(await client.request<DatabaseImportManifest>(
+        "/api/database-recovery/response/import", {
+          method: "POST",
+          body: JSON.stringify({ backupPath: String(backupPath || ""), responsePath: String(responsePath || "") }),
+        }), "恢复响应导入结果为空");
     },
   };
   return client;

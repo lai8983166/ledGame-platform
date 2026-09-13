@@ -11,6 +11,7 @@ final class RoomConnectionProtocol {
     static final String GAME_TIMING_CHANGED = "GAME_TIMING_CHANGED";
     static final String QUEUE_CHANGED = "QUEUE_CHANGED";
     static final String GAME_ENDED = "GAME_ENDED";
+    static final String HARDWARE_STATUS_CHANGED = "HARDWARE_STATUS_CHANGED";
     static final String ACK = "ACK";
     static final String ERROR = "ERROR";
     static final Set<String> EVENT_TYPES = Set.of(
@@ -18,7 +19,8 @@ final class RoomConnectionProtocol {
             GAME_STARTED,
             GAME_TIMING_CHANGED,
             QUEUE_CHANGED,
-            GAME_ENDED
+            GAME_ENDED,
+            HARDWARE_STATUS_CHANGED
     );
 
     private RoomConnectionProtocol() {}

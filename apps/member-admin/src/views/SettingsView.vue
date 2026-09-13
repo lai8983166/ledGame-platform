@@ -57,6 +57,11 @@ const settingsTabs = computed(() => props.backupStatus?.state === "MAINTENANCE_L
 const backupCandidates = ref<DatabaseBackupCandidate[]>([]);
 const backupLoading = ref(false);
 const backupError = ref("");
+const recoveryLoading = ref(false);
+const recoveryError = ref("");
+const recoveryRequestResult = ref<{ request: import("@ledgame/platform-api-client").DatabaseRecoveryRequest; path: string | null } | null>(null);
+const pendingRecoveryResponse = ref(false);
+const recoverySelection = ref<{ backupPath: string; responsePath: string; requestId: string; revision?: number; instanceId?: string } | null>(null);
 const pendingImport = ref<DatabaseBackupCandidate | null>(null);
 const pendingKeepCurrent = ref(false);
 const canKeepCurrent = computed(() => props.backupStatus?.state === "MAINTENANCE_LOGIN_REQUIRED"
@@ -117,6 +122,85 @@ const executeKeepCurrent = async () => {
     emit("toast", "已保留当前数据库，冲突备份已移入隔离目录");
   } catch (error) { backupError.value = error instanceof Error ? error.message : "无法保留当前数据库"; }
   finally { backupLoading.value = false; }
+};
+
+const createRecoveryRequest = async () => {
+  const operator = operatorSession.current.value;
+  if (!operator || !window.memberAdminDesktop?.createDatabaseRecoveryRequest) return;
+  recoveryLoading.value = true;
+  recoveryError.value = "";
+  try {
+    const result = await window.memberAdminDesktop.createDatabaseRecoveryRequest(operator.id);
+    if (!result) return;
+    if (result.path) recoveryRequestResult.value = result;
+    else emit("toast", "已取消生成恢复请求，临时会话已清理");
+  } catch (error) {
+    recoveryError.value = formatRecoveryError(error, "无法生成恢复请求");
+  } finally { recoveryLoading.value = false; }
+};
+
+const openRecoveryResponseWizard = () => {
+  recoveryError.value = "";
+  recoverySelection.value = null;
+  pendingRecoveryResponse.value = true;
+};
+
+const importRecoveryResponse = async () => {
+  const operator = operatorSession.current.value;
+  if (!operator || !window.memberAdminDesktop?.importDatabaseRecoveryResponse) return;
+  if (!recoverySelection.value && window.memberAdminDesktop.selectDatabaseRecoveryResponse) {
+    recoveryLoading.value = true;
+    recoveryError.value = "";
+    try {
+      recoverySelection.value = await window.memberAdminDesktop.selectDatabaseRecoveryResponse(operator.id);
+    } catch (error) {
+      recoveryError.value = formatRecoveryError(error, "无法读取厂家恢复响应");
+    } finally { recoveryLoading.value = false; }
+    return;
+  }
+  recoveryLoading.value = true;
+  recoveryError.value = "";
+  try {
+    const selection = recoverySelection.value;
+    const result = await window.memberAdminDesktop.importDatabaseRecoveryResponse(operator.id, selection?.backupPath, selection?.responsePath);
+    if (result?.imported) {
+      pendingRecoveryResponse.value = false;
+      recoverySelection.value = null;
+      emit("backupChanged");
+      emit("logoutRequired");
+    } else if (!result) {
+      pendingRecoveryResponse.value = false;
+      recoverySelection.value = null;
+    }
+  } catch (error) {
+    recoveryError.value = formatRecoveryError(error, "恢复响应导入失败");
+  } finally { recoveryLoading.value = false; }
+};
+
+const formatRecoveryError = (error: unknown, fallback: string) => {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code || "") : "";
+  const messages: Record<string, string> = {
+    DATABASE_RECOVERY_BACKUP_INVALID: "备份目录不完整或不是可跨系统恢复的新格式，请选择包含恢复信封的 latest 目录。",
+    DATABASE_RECOVERY_ENVELOPE_MISSING: "备份缺少厂家恢复信封，请在原系统成功备份一次后再试。",
+    DATABASE_RECOVERY_ENVELOPE_INVALID: "厂家恢复信封格式无效，请重新复制原始备份材料。",
+    DATABASE_RECOVERY_ENVELOPE_HASH_MISMATCH: "恢复信封摘要不匹配，备份可能已被修改。请重新选择原始备份。",
+    DATABASE_RECOVERY_METADATA_INVALID: "备份元数据无法读取，请选择一份完整且未修改的备份。",
+    DATABASE_RECOVERY_REQUEST_INVALID: "恢复请求格式无效，请重新生成请求。",
+    DATABASE_RECOVERY_RESPONSE_MISSING: "未找到厂家恢复响应文件，请选择有效的 JSON 响应文件。",
+    DATABASE_RECOVERY_RESPONSE_INVALID: "厂家恢复响应格式无效，请向厂家重新申请。",
+    DATABASE_RECOVERY_SESSION_INVALID: "本机恢复会话已损坏，请重新生成恢复请求。",
+    DATABASE_RECOVERY_SESSION_CLEANUP_FAILED: "无法清理本机恢复会话，请重试或联系厂家。",
+    DATABASE_RECOVERY_FILE_WRITE_FAILED: "恢复请求文件保存失败，请检查目标目录权限和磁盘空间。",
+    DATABASE_RECOVERY_REQUEST_EXPIRED: "恢复请求已过期，请重新生成请求并联系厂家。",
+    DATABASE_RECOVERY_REQUEST_NOT_FOUND: "恢复请求不存在或已使用，请重新生成请求。",
+    DATABASE_RECOVERY_RESPONSE_MISMATCH: "厂家响应与当前备份或请求不匹配，请确认选择的是同一份材料。",
+    DATABASE_RECOVERY_BACKUP_CHANGED: "备份摘要已变化，当前文件不是生成请求时的原始备份。",
+    DATABASE_RECOVERY_KEY_ID_MISMATCH: "恢复密钥标识不匹配，不能导入这份响应。",
+    IMPORT_BUSINESS_ACTIVE: "当前有游戏或排队流程正在进行，请结束营业后再恢复。",
+    DATABASE_BUSY: "数据库正在被其他程序占用，请关闭占用程序后重试。",
+  };
+  return messages[code] || (error instanceof Error ? error.message : fallback);
 };
 
 const openCreateAccount = () => {
@@ -263,6 +347,33 @@ const testUpload = () => {
     <template #footer><button class="ghost-button" type="button" :disabled="backupLoading" @click="pendingKeepCurrent = false">取消</button><button class="primary-button" data-testid="database-keep-current-confirm" type="button" :disabled="backupLoading" @click="executeKeepCurrent">{{ backupLoading ? "处理中…" : text('keepCurrentAction') }}</button></template>
   </BaseModal>
 
+  <BaseModal v-if="recoveryRequestResult" title="恢复请求已生成" description="请把请求文件和恢复信封交给厂家，不要发送数据库文件。" size="medium" @close="recoveryRequestResult = null">
+    <div class="recovery-request-summary">
+      <div class="backup-detail-grid">
+        <div><small>请求编号</small><strong>{{ recoveryRequestResult.request.requestId }}</strong></div>
+        <div><small>备份 revision</small><strong>{{ recoveryRequestResult.request.revision }}</strong></div>
+        <div><small>数据库实例</small><strong>{{ recoveryRequestResult.request.instanceId }}</strong></div>
+        <div><small>数据密钥标识</small><strong>{{ recoveryRequestResult.request.keyId }}</strong></div>
+      </div>
+      <p class="recovery-digest"><span>数据库摘要</span><code>{{ recoveryRequestResult.request.databaseSha256 }}</code></p>
+      <p class="recovery-digest"><span>元数据摘要</span><code>{{ recoveryRequestResult.request.metadataSha256 }}</code></p>
+      <p class="recovery-digest"><span>恢复信封摘要</span><code>{{ recoveryRequestResult.request.recoveryEnvelopeSha256 }}</code></p>
+      <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>发送材料边界</strong><p>只发送 recovery-request.json 和备份目录中的 factory-key-envelope.json。无需发送 platform.db、avatars 头像目录或 CSV。</p></div></div>
+      <div class="recovery-file-list"><strong>厂家材料清单</strong><span>recovery-request.json（本次生成）</span><span>factory-key-envelope.json（备份目录原文件）</span></div>
+      <p class="modal-copy">有效期至 {{ formatBackupTime(recoveryRequestResult.request.expiresAt) }}。厂家响应只能用于本次请求和这份备份。</p>
+      <p v-if="recoveryRequestResult.path" class="recovery-file-path">请求文件：{{ recoveryRequestResult.path }}</p>
+    </div>
+    <template #footer><button class="primary-button" type="button" @click="recoveryRequestResult = null">知道了</button></template>
+  </BaseModal>
+
+  <BaseModal v-if="pendingRecoveryResponse" title="导入厂家恢复响应" description="这是覆盖当前主数据库的高风险维护操作。" size="small" @close="pendingRecoveryResponse = false; recoverySelection = null">
+    <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>请确认恢复来源</strong><p>下一步将选择生成请求时的原备份目录和厂家响应文件。系统会先校验请求绑定、摘要、密文和营业状态，校验通过后才会停止服务并覆盖当前数据库。</p></div></div>
+    <div v-if="recoverySelection" class="recovery-selection"><p><span>恢复请求编号</span><strong>{{ recoverySelection.requestId }}</strong></p><p v-if="recoverySelection.instanceId"><span>实例 / revision</span><strong>{{ recoverySelection.instanceId }} / {{ recoverySelection.revision }}</strong></p></div>
+    <p v-if="recoveryError" class="form-error"><AppIcon name="alert" :size="16" />{{ recoveryError }}</p>
+    <p class="modal-copy">导入完成后需要使用恢复数据库中的账号重新登录。取消或校验失败不会修改当前数据库和正式备份。</p>
+    <template #footer><button class="ghost-button" type="button" :disabled="recoveryLoading" @click="pendingRecoveryResponse = false; recoverySelection = null">取消</button><button class="primary-button" type="button" :disabled="recoveryLoading" @click="importRecoveryResponse">{{ recoveryLoading ? "校验并导入中…" : recoverySelection ? "确认覆盖并导入" : "选择文件并继续" }}</button></template>
+  </BaseModal>
+
   <section class="settings-layout">
     <nav class="settings-nav glass-panel" aria-label="设置分类">
       <button v-for="item in settingsTabs" :key="item.id" :data-testid="`settings-tab-${item.id}`" type="button" :class="{ active: activeTab === item.id }" @click="activeTab = item.id"><span><AppIcon :name="item.icon" /></span><div><strong>{{ item.label }}</strong><small>{{ item.desc }}</small></div><AppIcon name="chevron" :size="16" /></button>
@@ -329,6 +440,9 @@ const testUpload = () => {
         <div v-if="backupStatus?.message" class="notice-bar" :class="{ 'notice-bar--warning': !backupStatus.protectedData }"><AppIcon :name="backupStatus.protectedData ? 'check' : 'alert'" :size="18" /><div><strong>{{ backupStatus.errorCode || "自动备份" }}</strong><p>{{ backupStatus.message }}</p></div><button v-if="canKeepCurrent" class="secondary-button" data-testid="database-keep-current" type="button" :disabled="backupLoading" @click="pendingKeepCurrent = true">{{ text('keepCurrentAction') }}</button></div>
         <div class="backup-candidates">
           <header><div><strong>可导入的已验证备份</strong><p>导入会覆盖当前数据库，并保留一份导入前回滚副本。</p></div><div><button class="secondary-button" type="button" :disabled="backupLoading" @click="loadBackupCandidates"><AppIcon name="refresh" :size="16" />刷新</button><button class="secondary-button" type="button" :disabled="backupLoading || !desktopAvailable" @click="chooseExternalBackup">选择本地数据库</button></div></header>
+          <div class="settings-actions"><button class="secondary-button" type="button" :disabled="recoveryLoading || !desktopAvailable" @click="createRecoveryRequest">{{ recoveryLoading ? "处理中…" : "生成跨系统恢复请求" }}</button><button class="secondary-button" type="button" :disabled="recoveryLoading || !desktopAvailable" @click="openRecoveryResponseWizard">导入厂家恢复响应</button></div>
+          <p v-if="recoveryLoading" class="recovery-progress"><AppIcon name="refresh" :size="15" class="spinning" /> 正在预校验恢复材料，当前数据库不会被修改…</p>
+          <p v-if="recoveryError" class="form-error"><AppIcon name="alert" :size="16" />{{ recoveryError }}</p>
           <p v-if="backupError" class="form-error"><AppIcon name="alert" :size="16" />{{ backupError }}</p>
           <div v-for="candidate in backupCandidates" :key="candidate.candidateId" class="backup-candidate-row"><div><strong>版本 {{ candidate.revision }}</strong><small>{{ candidate.sourceType }} · 出厂账号 {{ candidate.factoryAdminUsername }} · 会员 {{ candidate.memberCount }} 人 · 最后业务修改 {{ formatBackupTime(candidate.lastBusinessModifiedAt) }}</small></div><button class="primary-button compact-button" type="button" :disabled="backupLoading" @click="pendingImport = candidate">导入此版本</button></div>
           <p v-if="!backupLoading && !backupCandidates.length" class="empty-copy">没有发现可导入的有效备份。</p>
