@@ -54,6 +54,22 @@ class DatabaseBackupCoordinatorStartupTest {
     }
 
     @Test
+    void unusableLatestKeyWithFactoryEnvelopeEntersRecoveryMaintenanceWithoutReplacingBackup() throws Exception {
+        Fixture fixture = fixture(state("store-a", 4), state("store-a", 4), true,
+                "ledgame-platform-backup-v2", "PRODUCTION", true);
+        when(fixture.engine.acceptsKeyEnvelope(any(), any())).thenReturn(false);
+
+        fixture.start();
+
+        assertThat(fixture.coordinator.status().state()).isEqualTo(BackupLifecycleState.MAINTENANCE_LOGIN_REQUIRED);
+        assertThat(fixture.coordinator.status().errorCode()).isEqualTo("DATABASE_RECOVERY_AVAILABLE");
+        assertThat(fixture.backupRoot.resolve("latest/platform.db")).exists();
+        assertThat(fixture.backupRoot.resolve("latest/factory-key-envelope.json")).exists();
+        verify(fixture.engine, never()).backup(any(), anyString());
+        fixture.close();
+    }
+
+    @Test
     void invalidMainDatabaseBlocksStartupWithoutOverwritingBackup() throws Exception {
         Fixture fixture = fixture(state("store-a", 4), state("store-a", 4), false);
         fixture.start();
@@ -185,6 +201,11 @@ class DatabaseBackupCoordinatorStartupTest {
 
     private Fixture fixture(DatabaseStateSnapshot mainState, DatabaseStateSnapshot backupState, boolean mainValid,
             String format, String environment) throws Exception {
+        return fixture(mainState, backupState, mainValid, format, environment, false);
+    }
+
+    private Fixture fixture(DatabaseStateSnapshot mainState, DatabaseStateSnapshot backupState, boolean mainValid,
+            String format, String environment, boolean recoveryAvailable) throws Exception {
         Path source = Files.writeString(root.resolve("source-" + System.nanoTime() + ".db"), "main");
         Path backupRoot = root.resolve("backup-" + System.nanoTime());
         Path latest = backupRoot.resolve("latest/platform.db");
@@ -205,8 +226,14 @@ class DatabaseBackupCoordinatorStartupTest {
                 backupState.instanceId(), backupState.revision(), backupState.lastBusinessModifiedAt(),
                 backupState.importedFromRevision(), backupState.importedAt(), Instant.parse("2026-09-02T00:00:01Z"),
                 source.toString(), "test", 6, "hash", "ok",
-                ProtectedDataService.ENCRYPTION_VERSION, "test-key-id");
+                ProtectedDataService.ENCRYPTION_VERSION, "test-key-id",
+                recoveryAvailable ? "factory-recovery-v1" : null,
+                recoveryAvailable ? DatabaseRecoveryEnvelope.FORMAT : null,
+                recoveryAvailable ? "recovery-envelope-hash" : null);
         when(engine.readLatestMetadata(any())).thenReturn(metadata);
+        if (recoveryAvailable) {
+            Files.writeString(backupRoot.resolve("latest/factory-key-envelope.json"), "recovery-envelope");
+        }
         when(engine.acceptsMetadata(any())).thenAnswer(invocation -> {
             DatabaseBackupMetadata value = invocation.getArgument(0);
             return DatabaseBackupEngine.METADATA_FORMAT.equals(value.format())

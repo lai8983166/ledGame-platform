@@ -22,6 +22,7 @@ import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.http.HttpStatus;
 
 class DatabaseRecoveryServiceTest {
     @TempDir Path root;
@@ -63,9 +64,10 @@ class DatabaseRecoveryServiceTest {
         when(engine.sourceDatabase()).thenReturn(root.resolve("main.db"));
         WindowsDataProtector protector = mock(WindowsDataProtector.class);
         when(protector.protect(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        OperatorActionLogService auditLogs = mock(OperatorActionLogService.class);
         DatabaseRecoveryService service = new DatabaseRecoveryService(recoveryKeys, engine, inspector,
                 mock(DatabaseImportService.class), mock(DataProtectionKeyManager.class), protector, mapper,
-                Clock.fixed(Instant.parse("2026-09-13T11:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-09-13T11:00:00Z"), ZoneOffset.UTC), auditLogs);
 
         DatabaseRecoveryRequest request = service.createRequest(backup);
 
@@ -74,6 +76,18 @@ class DatabaseRecoveryServiceTest {
         assertThat(request.temporaryPublicKey()).contains("BEGIN PUBLIC KEY");
         assertThat(mapper.writeValueAsString(request)).doesNotContain("encrypted-db-placeholder");
         assertThat(Files.list(root.resolve("security/recovery-sessions")).findAny()).isPresent();
+
+        Path malformedResponse = root.resolve("malformed-response.json");
+        Files.writeString(malformedResponse, "{}");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.importResponse(
+                backup, malformedResponse, new OperatorSnapshot(7L, "factory", "Factory")))
+                .isInstanceOfSatisfying(PlatformApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("DATABASE_RECOVERY_RESPONSE_INVALID"));
+        verify(auditLogs).record(any(), org.mockito.ArgumentMatchers.argThat(action ->
+                action.action().equals("DATABASE_RECOVERY_RESPONSE_VALIDATION_FAILED")),
+                org.mockito.ArgumentMatchers.eq("RECOVERY"),
+                org.mockito.ArgumentMatchers.eq("/api/database-recovery/response/import"),
+                org.mockito.ArgumentMatchers.eq("DATABASE_RECOVERY_RESPONSE_INVALID"));
 
         service.cancelRequest(request.requestId());
         try (var sessions = Files.list(root.resolve("security/recovery-sessions"))) {
@@ -144,6 +158,72 @@ class DatabaseRecoveryServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.importResponse(backup, responsePath))
                 .isInstanceOfSatisfying(PlatformApiException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo("DATABASE_RECOVERY_REQUEST_NOT_FOUND"));
+    }
+
+    @Test
+    void importFailureAfterStagingProducesRollbackAuditEvent() throws Exception {
+        Path backup = Files.createDirectories(root.resolve("rollback-import"));
+        Path database = Files.writeString(backup.resolve("platform.db"), "encrypted-db-placeholder");
+        byte[] rawKey = new byte[32];
+        DataKeyMaterial material = DataProtectionKeyManager.material(rawKey);
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        String databaseHash = sha(database);
+        Path envelopePath = backup.resolve("factory-key-envelope.json");
+        Files.writeString(envelopePath, mapper.writeValueAsString(new DatabaseRecoveryEnvelope(
+                DatabaseRecoveryEnvelope.FORMAT, DatabaseRecoveryEnvelope.ALGORITHM,
+                "factory-recovery-v1", material.keyId(), "A".repeat(256))));
+        Files.writeString(backup.resolve("metadata.json"), mapper.writeValueAsString(new DatabaseBackupMetadata(
+                DatabaseBackupEngine.METADATA_FORMAT, "PRODUCTION", 1, "instance", 9,
+                Instant.parse("2026-09-13T10:00:00Z"), null, null, Instant.parse("2026-09-13T10:01:00Z"),
+                "source", "disk", Files.size(database), databaseHash, "ok",
+                ProtectedDataService.ENCRYPTION_VERSION, material.keyId(), "factory-recovery-v1",
+                DatabaseRecoveryEnvelope.FORMAT, sha(envelopePath))));
+
+        var generator = java.security.KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        var keyPair = generator.generateKeyPair();
+        Path publicKey = root.resolve("rollback-public.pem");
+        Files.writeString(publicKey, pem(keyPair.getPublic().getEncoded()));
+        DatabaseRecoveryProperties properties = new DatabaseRecoveryProperties();
+        properties.setPublicKeyPath(publicKey.toString());
+        DatabaseRecoveryKeyService recoveryKeys = new DatabaseRecoveryKeyService(properties, mapper);
+        DatabaseFileInspector inspector = mock(DatabaseFileInspector.class);
+        when(inspector.sha256(any(Path.class))).thenAnswer(invocation -> sha(invocation.getArgument(0)));
+        when(inspector.inspect(database)).thenReturn(new InspectedDatabase(database,
+                new DatabaseStateSnapshot("instance", 9, null, null, null), Files.size(database), databaseHash, 1, true, "ok"));
+        DatabaseBackupEngine engine = mock(DatabaseBackupEngine.class);
+        when(engine.acceptsMetadata(any())).thenReturn(true);
+        when(engine.sourceDatabase()).thenReturn(root.resolve("rollback-main.db"));
+        WindowsDataProtector protector = mock(WindowsDataProtector.class);
+        when(protector.protect(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(protector.unprotect(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        DataProtectionKeyManager keyManager = mock(DataProtectionKeyManager.class);
+        DatabaseImportService imports = mock(DatabaseImportService.class);
+        when(imports.registerExternal(any(Path.class), any(Path.class))).thenReturn(
+                new DatabaseBackupCandidate("candidate", "EXTERNAL", 9, null, null,
+                        Files.size(database), "PRODUCTION", "admin", 0, true));
+        when(imports.prepare("candidate")).thenThrow(new PlatformApiException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "IMPORT_FAILED", "IMPORT_FAILED"));
+        OperatorActionLogService auditLogs = mock(OperatorActionLogService.class);
+        DatabaseRecoveryService service = new DatabaseRecoveryService(recoveryKeys, engine, inspector, imports,
+                keyManager, protector, mapper,
+                Clock.fixed(Instant.parse("2026-09-13T11:00:00Z"), ZoneOffset.UTC), auditLogs);
+        DatabaseRecoveryRequest request = service.createRequest(backup);
+        byte[] wrapped = encrypt(request.temporaryPublicKey(), rawKey);
+        Path responsePath = root.resolve("rollback-response.json");
+        Files.writeString(responsePath, mapper.writeValueAsString(new DatabaseRecoveryResponse(
+                DatabaseRecoveryResponse.FORMAT, request.requestId(),
+                Base64.getUrlEncoder().withoutPadding().encodeToString(wrapped), request.expiresAt())));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.importResponse(
+                backup, responsePath, new OperatorSnapshot(7L, "factory", "Factory")))
+                .isInstanceOfSatisfying(PlatformApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("IMPORT_FAILED"));
+        verify(auditLogs).record(any(), org.mockito.ArgumentMatchers.argThat(action ->
+                action.action().equals("DATABASE_RECOVERY_ROLLED_BACK")),
+                org.mockito.ArgumentMatchers.eq("RECOVERY"),
+                org.mockito.ArgumentMatchers.eq("/api/database-recovery/response/import"),
+                org.mockito.ArgumentMatchers.eq("IMPORT_FAILED"));
     }
 
     private static String sha(Path path) throws Exception {

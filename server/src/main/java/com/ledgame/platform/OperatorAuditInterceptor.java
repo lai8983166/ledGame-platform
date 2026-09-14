@@ -12,6 +12,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class OperatorAuditInterceptor implements HandlerInterceptor {
     public static final String OPERATOR_ATTRIBUTE = "ledgame.operator.snapshot";
+    /** Optional request attribute used by controllers to attach a resource id to the audit row. */
+    public static final String TARGET_ID_ATTRIBUTE = OperatorAuditInterceptor.class.getName() + ".targetId";
+    /** Set by recovery controllers when the service already persisted a stage-specific failure event. */
+    public static final String FAILURE_RECORDED_ATTRIBUTE = OperatorAuditInterceptor.class.getName() + ".failureRecorded";
     private static final String ACTION_ATTRIBUTE = OperatorAuditInterceptor.class.getName() + ".action";
 
     private final OperatorActionLogService logs;
@@ -48,11 +52,21 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         Object operator = request.getAttribute(OPERATOR_ATTRIBUTE);
         Object action = request.getAttribute(ACTION_ATTRIBUTE);
         if (operator instanceof OperatorSnapshot snapshot && action instanceof OperatorAuditAction auditAction) {
+            Object targetId = request.getAttribute(TARGET_ID_ATTRIBUTE);
+            if (targetId instanceof String value && !value.isBlank()) {
+                auditAction = new OperatorAuditAction(auditAction.action(), auditAction.targetType(), value);
+            }
             if (exception == null && response.getStatus() >= 200 && response.getStatus() < 300) {
                 logs.record(snapshot, auditAction, request.getMethod(), request.getRequestURI());
             } else if (response.getStatus() == HttpStatus.FORBIDDEN.value()) {
                 logs.record(snapshot,
                         new OperatorAuditAction(auditAction.action() + "_DENIED",
+                                auditAction.targetType(), auditAction.targetId()),
+                        request.getMethod(), request.getRequestURI());
+            } else if (auditAction.action().startsWith("DATABASE_RECOVERY_")
+                    && !Boolean.TRUE.equals(request.getAttribute(FAILURE_RECORDED_ATTRIBUTE))) {
+                logs.record(snapshot,
+                        new OperatorAuditAction(auditAction.action() + "_FAILED",
                                 auditAction.targetType(), auditAction.targetId()),
                         request.getMethod(), request.getRequestURI());
             }
@@ -72,6 +86,15 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         if (method.equals("POST") && path.equals("/api/wristbands/clear")) return action("WRISTBAND_BALANCE_CLEARED", "WRISTBAND", null);
         if (method.equals("POST") && path.equals("/api/wristbands/unbind")) return action("WRISTBAND_UNBOUND", "WRISTBAND", null);
         if (method.equals("POST") && path.equals("/api/wristbands/reclaim")) return action("WRISTBAND_RECLAIMED", "WRISTBAND", null);
+        if (method.equals("POST") && path.equals("/api/database-recovery/request")) {
+            return action("DATABASE_RECOVERY_REQUEST_CREATED", "DATABASE_RECOVERY", null);
+        }
+        if (method.equals("POST") && path.equals("/api/database-recovery/response/import")) {
+            return action("DATABASE_RECOVERY_RESPONSE_IMPORTED", "DATABASE_RECOVERY", null);
+        }
+        if (method.equals("POST") && path.equals("/api/database-recovery/request/cancel")) {
+            return action("DATABASE_RECOVERY_REQUEST_CANCELLED", "DATABASE_RECOVERY", null);
+        }
         if (method.equals("PUT") && path.startsWith("/api/rooms/")) return action("ROOM_RENAMED", "ROOM", path.substring("/api/rooms/".length()));
         if (method.equals("PUT") && path.equals("/api/feature-settings/child-mode")) return action("SYSTEM_SETTINGS_UPDATED", "SYSTEM_SETTINGS", "child-mode");
         if (method.equals("POST") && path.equals("/api/operator-actions/system-settings")) return action("SYSTEM_SETTINGS_UPDATED", "SYSTEM_SETTINGS", null);

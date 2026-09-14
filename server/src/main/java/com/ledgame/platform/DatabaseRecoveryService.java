@@ -22,6 +22,7 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /** Coordinates the customer-side request/session and one-time vendor response import. */
@@ -36,6 +37,7 @@ public class DatabaseRecoveryService {
     private final WindowsDataProtector protector;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final OperatorActionLogService auditLogs;
     private final Path sessionsDirectory;
     private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
 
@@ -47,6 +49,19 @@ public class DatabaseRecoveryService {
             WindowsDataProtector protector,
             ObjectMapper objectMapper,
             Clock clock) {
+        this(recoveryKeys, engine, inspector, imports, dataKeys, protector, objectMapper, clock, null);
+    }
+
+    @Autowired
+    public DatabaseRecoveryService(DatabaseRecoveryKeyService recoveryKeys,
+            DatabaseBackupEngine engine,
+            DatabaseFileInspector inspector,
+            DatabaseImportService imports,
+            DataProtectionKeyManager dataKeys,
+            WindowsDataProtector protector,
+            ObjectMapper objectMapper,
+            Clock clock,
+            OperatorActionLogService auditLogs) {
         this.recoveryKeys = recoveryKeys;
         this.engine = engine;
         this.inspector = inspector;
@@ -55,6 +70,7 @@ public class DatabaseRecoveryService {
         this.protector = protector;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.auditLogs = auditLogs;
         Path parent = engine.sourceDatabase().getParent();
         this.sessionsDirectory = (parent == null ? Path.of(".").toAbsolutePath() : parent)
                 .resolve("security").resolve("recovery-sessions");
@@ -81,6 +97,24 @@ public class DatabaseRecoveryService {
     }
 
     public DatabaseRecoveryRequest createRequest(Path rawBackupDirectory) {
+        return createRequest(rawBackupDirectory, null);
+    }
+
+    public DatabaseRecoveryRequest createRequest(Path rawBackupDirectory, OperatorSnapshot operator) {
+        try {
+            return createRequestInternal(rawBackupDirectory);
+        } catch (PlatformApiException exception) {
+            audit(operator, "DATABASE_RECOVERY_REQUEST_VALIDATION_FAILED", null,
+                    "/api/database-recovery/request", exception.getCode());
+            throw exception;
+        } catch (RuntimeException exception) {
+            audit(operator, "DATABASE_RECOVERY_REQUEST_FAILED", null,
+                    "/api/database-recovery/request", "INTERNAL_ERROR");
+            throw exception;
+        }
+    }
+
+    private DatabaseRecoveryRequest createRequestInternal(Path rawBackupDirectory) {
         requireEnabled();
         Path backup = validateBackup(rawBackupDirectory);
         DatabaseBackupMetadata metadata = readMetadata(backup);
@@ -119,14 +153,37 @@ public class DatabaseRecoveryService {
     }
 
     public DatabaseImportManifest importResponse(Path rawBackupDirectory, Path rawResponseFile) {
-        requireEnabled();
-        Path backup = validateBackup(rawBackupDirectory);
-        Path responsePath = rawResponseFile == null ? null : rawResponseFile.toAbsolutePath().normalize();
-        if (responsePath == null || !Files.isRegularFile(responsePath)) {
-            throw error(HttpStatus.UNPROCESSABLE_ENTITY, "DATABASE_RECOVERY_RESPONSE_MISSING");
-        }
+        return importResponse(rawBackupDirectory, rawResponseFile, null);
+    }
+
+    /** Returns the response request id for audit correlation without validating or importing it. */
+    public String responseRequestId(Path rawResponseFile) {
+        if (rawResponseFile == null) return null;
         try {
+            DatabaseRecoveryResponse response = objectMapper.readValue(
+                    rawResponseFile.toAbsolutePath().normalize().toFile(), DatabaseRecoveryResponse.class);
+            return response == null ? null : response.requestId();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    public DatabaseImportManifest importResponse(Path rawBackupDirectory, Path rawResponseFile,
+            OperatorSnapshot operator) {
+        Path backup = null;
+        Path responsePath = null;
+        String auditRequestId = null;
+        boolean stagingStarted = false;
+        Path temporaryKey = null;
+        try {
+            requireEnabled();
+            backup = validateBackup(rawBackupDirectory);
+            responsePath = rawResponseFile == null ? null : rawResponseFile.toAbsolutePath().normalize();
+            if (responsePath == null || !Files.isRegularFile(responsePath)) {
+                throw error(HttpStatus.UNPROCESSABLE_ENTITY, "DATABASE_RECOVERY_RESPONSE_MISSING");
+            }
             DatabaseRecoveryResponse response = objectMapper.readValue(responsePath.toFile(), DatabaseRecoveryResponse.class);
+            auditRequestId = response == null ? null : response.requestId();
             validateResponse(response);
             Object lock = locks.computeIfAbsent(response.requestId(), ignored -> new Object());
             synchronized (lock) {
@@ -155,8 +212,9 @@ public class DatabaseRecoveryService {
                 }
                 Path staging = engine.sourceDatabase().getParent().resolve("import-staging");
                 Files.createDirectories(staging);
-                Path temporaryKey = staging.resolve("recovery-" + response.requestId() + ".data-key.dpapi");
+                temporaryKey = staging.resolve("recovery-" + response.requestId() + ".data-key.dpapi");
                 dataKeys.writeEnvelope(temporaryKey, material);
+                stagingStarted = true;
                 try {
                     DatabaseBackupCandidate candidate = imports.registerExternal(backup.resolve("platform.db"), temporaryKey);
                     DatabaseImportManifest manifest = imports.prepare(candidate.candidateId());
@@ -164,28 +222,69 @@ public class DatabaseRecoveryService {
                     Files.deleteIfExists(sessionPath(response.requestId()));
                     return manifest;
                 } catch (RuntimeException exception) {
-                    Files.deleteIfExists(temporaryKey);
                     throw exception;
                 }
             }
         } catch (PlatformApiException exception) {
+            audit(operator, stagingStarted ? "DATABASE_RECOVERY_ROLLED_BACK"
+                    : isResponseValidationCode(exception.getCode())
+                            ? "DATABASE_RECOVERY_RESPONSE_VALIDATION_FAILED"
+                            : "DATABASE_RECOVERY_IMPORT_VALIDATION_FAILED",
+                    auditRequestId, "/api/database-recovery/response/import", exception.getCode());
             throw exception;
         } catch (Exception exception) {
+            audit(operator, stagingStarted ? "DATABASE_RECOVERY_ROLLED_BACK"
+                    : "DATABASE_RECOVERY_RESPONSE_VALIDATION_FAILED", auditRequestId,
+                    "/api/database-recovery/response/import", "DATABASE_RECOVERY_RESPONSE_INVALID");
             throw error(HttpStatus.UNPROCESSABLE_ENTITY, "DATABASE_RECOVERY_RESPONSE_INVALID", exception);
+        } finally {
+            if (temporaryKey != null) {
+                try {
+                    Files.deleteIfExists(temporaryKey);
+                } catch (Exception ignored) {
+                    // Cleanup failure must not hide the original recovery result.
+                }
+            }
         }
     }
 
     /** Cancels a pending request and removes its DPAPI-protected ephemeral private key. */
     public void cancelRequest(String requestId) {
+        cancelRequest(requestId, null);
+    }
+
+    public void cancelRequest(String requestId, OperatorSnapshot operator) {
         Object lock = locks.computeIfAbsent(String.valueOf(requestId), ignored -> new Object());
         synchronized (lock) {
             try {
                 Files.deleteIfExists(sessionPath(requestId));
             } catch (PlatformApiException exception) {
+                audit(operator, "DATABASE_RECOVERY_REQUEST_CANCEL_FAILED", requestId,
+                        "/api/database-recovery/request/cancel", exception.getCode());
                 throw exception;
             } catch (Exception exception) {
+                audit(operator, "DATABASE_RECOVERY_REQUEST_CANCEL_FAILED", requestId,
+                        "/api/database-recovery/request/cancel", "DATABASE_RECOVERY_SESSION_CLEANUP_FAILED");
                 throw error(HttpStatus.INTERNAL_SERVER_ERROR, "DATABASE_RECOVERY_SESSION_CLEANUP_FAILED", exception);
             }
+        }
+    }
+
+    private static boolean isResponseValidationCode(String code) {
+        return code != null && (code.startsWith("DATABASE_RECOVERY_RESPONSE_")
+                || code.equals("DATABASE_RECOVERY_REQUEST_NOT_FOUND")
+                || code.equals("DATABASE_RECOVERY_REQUEST_EXPIRED")
+                || code.equals("DATABASE_RECOVERY_RESPONSE_MISMATCH"));
+    }
+
+    private void audit(OperatorSnapshot operator, String action, String targetId,
+            String path, String outcome) {
+        if (operator == null || auditLogs == null) return;
+        try {
+            auditLogs.record(operator, new OperatorAuditAction(action, "DATABASE_RECOVERY", targetId),
+                    "RECOVERY", path, outcome);
+        } catch (RuntimeException ignored) {
+            // Auditing must never turn a recovery failure into a different failure.
         }
     }
 

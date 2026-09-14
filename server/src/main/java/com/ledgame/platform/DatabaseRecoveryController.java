@@ -31,7 +31,18 @@ public class DatabaseRecoveryController {
         if (request == null || request.path() == null || request.path().isBlank()) {
             throw new PlatformApiException(HttpStatus.UNPROCESSABLE_ENTITY, "DATABASE_RECOVERY_BACKUP_INVALID", "请选择有效的备份目录");
         }
-        return recovery.createRequest(Path.of(request.path()));
+        OperatorSnapshot operator = operatorSnapshot(servletRequest);
+        DatabaseRecoveryRequest response;
+        try {
+            response = operator == null
+                    ? recovery.createRequest(Path.of(request.path()))
+                    : recovery.createRequest(Path.of(request.path()), operator);
+        } catch (RuntimeException exception) {
+            servletRequest.setAttribute(OperatorAuditInterceptor.FAILURE_RECORDED_ATTRIBUTE, Boolean.TRUE);
+            throw exception;
+        }
+        servletRequest.setAttribute(OperatorAuditInterceptor.TARGET_ID_ATTRIBUTE, response.requestId());
+        return response;
     }
 
     @PostMapping("/response/import")
@@ -43,7 +54,17 @@ public class DatabaseRecoveryController {
         if (request == null || request.backupPath() == null || request.responsePath() == null) {
             throw new PlatformApiException(HttpStatus.UNPROCESSABLE_ENTITY, "DATABASE_RECOVERY_RESPONSE_INVALID", "请选择备份和厂家响应文件");
         }
-        return recovery.importResponse(Path.of(request.backupPath()), Path.of(request.responsePath()));
+        servletRequest.setAttribute(OperatorAuditInterceptor.TARGET_ID_ATTRIBUTE,
+                recovery.responseRequestId(Path.of(request.responsePath())));
+        OperatorSnapshot operator = operatorSnapshot(servletRequest);
+        try {
+            return operator == null
+                    ? recovery.importResponse(Path.of(request.backupPath()), Path.of(request.responsePath()))
+                    : recovery.importResponse(Path.of(request.backupPath()), Path.of(request.responsePath()), operator);
+        } catch (RuntimeException exception) {
+            servletRequest.setAttribute(OperatorAuditInterceptor.FAILURE_RECORDED_ATTRIBUTE, Boolean.TRUE);
+            throw exception;
+        }
     }
 
     @PostMapping("/request/cancel")
@@ -56,12 +77,25 @@ public class DatabaseRecoveryController {
             throw new PlatformApiException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "DATABASE_RECOVERY_REQUEST_INVALID", "恢复请求编号无效");
         }
-        recovery.cancelRequest(request.requestId());
+        servletRequest.setAttribute(OperatorAuditInterceptor.TARGET_ID_ATTRIBUTE, request.requestId());
+        OperatorSnapshot operator = operatorSnapshot(servletRequest);
+        try {
+            if (operator == null) recovery.cancelRequest(request.requestId());
+            else recovery.cancelRequest(request.requestId(), operator);
+        } catch (RuntimeException exception) {
+            servletRequest.setAttribute(OperatorAuditInterceptor.FAILURE_RECORDED_ATTRIBUTE, Boolean.TRUE);
+            throw exception;
+        }
     }
 
     public record PathRequest(String path) {}
     public record ResponseImportRequest(String backupPath, String responsePath) {}
     public record CancelRequest(String requestId) {}
+
+    private static OperatorSnapshot operatorSnapshot(HttpServletRequest request) {
+        Object value = request.getAttribute(OperatorAuditInterceptor.OPERATOR_ATTRIBUTE);
+        return value instanceof OperatorSnapshot snapshot ? snapshot : null;
+    }
 
     private static void requireLoopback(HttpServletRequest request) {
         String address = request.getRemoteAddr();
