@@ -19,6 +19,7 @@ public enum BackupErrorCode {
     DATABASE_VERSION_CONFLICT("备份版本高于主数据库，已停止自动覆盖"),
     DATABASE_IDENTITY_CONFLICT("发现另一份门店数据库备份，必须由出厂账号处理"),
     DATABASE_RECOVERY_AVAILABLE("检测到可跨 Windows 恢复的备份，请先用出厂账号生成恢复请求"),
+    BACKUP_ENVIRONMENT_MISMATCH("当前数据库属于测试环境，已禁止写入正式备份目录"),
     IMPORT_FORBIDDEN("只有出厂账号可以导入数据库"),
     IMPORT_FACTORY_ACCOUNT_INVALID("候选数据库必须包含唯一且已启用的出厂账号"),
     IMPORT_CANDIDATE_INVALID("所选备份数据库无效或不兼容"),

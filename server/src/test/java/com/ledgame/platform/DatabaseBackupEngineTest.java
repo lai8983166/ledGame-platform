@@ -59,7 +59,10 @@ class DatabaseBackupEngineTest {
         keyManager = mock(DataProtectionKeyManager.class);
         when(keyManager.loadOrCreate()).thenReturn(key);
         when(keyManager.loadExisting()).thenReturn(key);
-        when(keyManager.envelopeBytes()).thenReturn("dpapi-test-envelope".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(keyManager.requiresProtectedEnvelope()).thenReturn(true);
+        when(keyManager.envelopeBytes()).thenReturn(new ObjectMapper().writeValueAsBytes(
+            new DataProtectionKeyManager.KeyEnvelope(DataProtectionKeyManager.ENVELOPE_FORMAT,
+                key.keyId(), "dpapi-test-envelope")));
         protectedData = new ProtectedDataService(keyManager);
         new DataProtectionMigration(jdbc, keyManager, protectedData, clock)
                 .run(new DefaultApplicationArguments());
@@ -90,7 +93,9 @@ class DatabaseBackupEngineTest {
         assertThat(metadata.format()).isEqualTo("ledgame-platform-backup-v2");
         assertThat(metadata.environment()).isEqualTo("TEST");
         assertThat(backupRoot.resolve("latest/metadata.json")).isRegularFile();
-        assertThat(backupRoot.resolve("latest/data-key.dpapi")).hasContent("dpapi-test-envelope");
+        DataProtectionKeyManager.KeyEnvelope latestEnvelope = new ObjectMapper().readValue(
+                backupRoot.resolve("latest/data-key.dpapi").toFile(), DataProtectionKeyManager.KeyEnvelope.class);
+        assertThat(latestEnvelope.keyId()).isEqualTo(keyManager.loadExisting().keyId());
         assertThat(metadata.encryptionVersion()).isEqualTo(ProtectedDataService.ENCRYPTION_VERSION);
         assertThat(metadata.keyId()).isEqualTo(protectedData.keyId());
         Path historyDatabase = historyDatabases().get(0);
@@ -98,7 +103,9 @@ class DatabaseBackupEngineTest {
                 "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
         String historyKey = historyDatabase.getFileName().toString()
                 .replace("-platform.db", "-data-key.dpapi");
-        assertThat(historyDatabase.resolveSibling(historyKey)).hasContent("dpapi-test-envelope");
+        DataProtectionKeyManager.KeyEnvelope historyEnvelope = new ObjectMapper().readValue(
+                historyDatabase.resolveSibling(historyKey).toFile(), DataProtectionKeyManager.KeyEnvelope.class);
+        assertThat(historyEnvelope.keyId()).isEqualTo(keyManager.loadExisting().keyId());
     }
 
     @Test
@@ -166,6 +173,41 @@ class DatabaseBackupEngineTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThat(inspector.sha256(backupRoot.resolve("latest/platform.db"))).isEqualTo(originalHash);
         assertThat(inspector.inspect(backupRoot.resolve("latest/platform.db")).valid()).isTrue();
+    }
+
+    @Test
+    void mismatchedKeyEnvelopeNeverReplacesPreviousLatest() throws Exception {
+        DatabaseBackupEngine good = engine(new SqliteOnlineBackup(dataSource));
+        good.backup(backupRoot, "uid:disk-b");
+        String originalHash = inspector.sha256(backupRoot.resolve("latest/platform.db"));
+        DataKeyMaterial differentKey = DataProtectionKeyManager.material(new byte[] {
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32 });
+        when(keyManager.envelopeBytes()).thenReturn(new ObjectMapper().writeValueAsBytes(
+                new DataProtectionKeyManager.KeyEnvelope(DataProtectionKeyManager.ENVELOPE_FORMAT,
+                        differentKey.keyId(), "stale-envelope")));
+
+        assertThatThrownBy(() -> engine(new SqliteOnlineBackup(dataSource)).backup(backupRoot, "uid:disk-b"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("DATA_PROTECTION_KEY_ID_MISMATCH");
+        assertThat(inspector.sha256(backupRoot.resolve("latest/platform.db"))).isEqualTo(originalHash);
+        assertThat(inspector.inspect(backupRoot.resolve("latest/platform.db")).valid()).isTrue();
+        DataProtectionKeyManager.KeyEnvelope latest = new ObjectMapper().readValue(
+                backupRoot.resolve("latest/data-key.dpapi").toFile(), DataProtectionKeyManager.KeyEnvelope.class);
+        assertThat(latest.keyId()).isEqualTo(keyManager.loadExisting().keyId());
+    }
+
+    @Test
+    void fixedTestKeyRejectsMetadataWithADifferentKeyIdEvenWithoutEnvelope() {
+        when(keyManager.requiresProtectedEnvelope()).thenReturn(false);
+        DatabaseBackupEngine engine = engine(new SqliteOnlineBackup(dataSource));
+        DatabaseBackupMetadata metadata = new DatabaseBackupMetadata(
+                DatabaseBackupEngine.METADATA_FORMAT, "TEST", 3, "store", 1,
+                Instant.parse("2026-09-02T00:00:00Z"), null, null,
+                Instant.parse("2026-09-02T00:00:01Z"), source.toString(), "disk", 1,
+                "hash", "ok", ProtectedDataService.ENCRYPTION_VERSION, "stale-key-id");
+
+        assertThat(engine.acceptsMetadata(metadata)).isFalse();
     }
 
     @Test

@@ -4,9 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Instant;
@@ -117,12 +121,33 @@ public class DatabaseBackupEngine {
     public boolean inMemoryDatabase() { return inMemoryDatabase; }
     public String environment() { return properties.getEnvironment(); }
 
+    /**
+     * Test runs use a named temporary SQLite database.  Treat that name as an
+     * explicit boundary so a test process can never publish into a production
+     * backup root when an environment variable was omitted or misconfigured.
+     */
+    public boolean ephemeralDatabase() {
+        String fileName = sourceDatabase.getFileName() == null
+                ? "" : sourceDatabase.getFileName().toString();
+        return inMemoryDatabase || fileName.startsWith("ledgame-sqlite-memory-");
+    }
+
     public boolean acceptsMetadata(DatabaseBackupMetadata metadata) {
-        return metadata != null
+        boolean shapeValid = metadata != null
                 && METADATA_FORMAT.equals(metadata.format())
                 && properties.getEnvironment().equals(metadata.environment())
                 && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
                 && metadata.keyId() != null && !metadata.keyId().isBlank();
+        if (!shapeValid) return false;
+        if (dataKeys == null) return true;
+        try {
+            // TEST runs have no DPAPI file, but the fixed test key still has a
+            // stable identity. A metadata/key mismatch must not be accepted
+            // merely because the envelope is intentionally absent.
+            return metadata.keyId().equals(dataKeys.loadExisting().keyId());
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     public boolean acceptsKeyEnvelope(Path envelopePath, DatabaseBackupMetadata metadata) {
@@ -137,13 +162,25 @@ public class DatabaseBackupEngine {
 
     public DatabaseBackupMetadata backup(Path root, String targetDiskIdentity) {
         Path normalizedRoot = root.toAbsolutePath().normalize();
+        try (BackupTargetLock ignored = BackupTargetLock.acquire(normalizedRoot)) {
+            return backupLocked(normalizedRoot, targetDiskIdentity);
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException(BackupErrorCode.BACKUP_PUBLISH_FAILED.name(), exception);
+        }
+    }
+
+    private DatabaseBackupMetadata backupLocked(Path normalizedRoot, String targetDiskIdentity) {
         Path stagingDirectory = normalizedRoot.resolve("staging");
         Path latestDirectory = normalizedRoot.resolve("latest");
         Path historyDirectory = normalizedRoot.resolve("history");
         Path candidate = stagingDirectory.resolve("platform-" + UUID.randomUUID() + ".db.tmp");
+        Path candidateKey = stagingDirectory.resolve(candidate.getFileName() + ".data-key.dpapi");
         Path candidateAvatars = stagingDirectory.resolve("avatars-" + UUID.randomUUID());
         Path candidateAvatarManifest = stagingDirectory.resolve(candidateAvatars.getFileName() + ".json");
         Path candidateRecovery = stagingDirectory.resolve(candidate.getFileName() + ".factory-key-envelope.json");
+        Path candidateMetadata = stagingDirectory.resolve(candidate.getFileName() + ".json");
         try {
             Files.createDirectories(stagingDirectory);
             Files.createDirectories(latestDirectory);
@@ -153,10 +190,18 @@ public class DatabaseBackupEngine {
             InspectedDatabase inspected = inspector.inspect(candidate);
             if (!inspected.valid()) throw new IllegalStateException(BackupErrorCode.BACKUP_INTEGRITY_FAILED.name());
             verifyProtectedDatabase(candidate);
+
+            DataKeyMaterial storeKey = dataKeys == null ? null : dataKeys.loadExisting();
+            String keyId = protectedData == null
+                    ? (storeKey == null ? "test-key" : storeKey.keyId()) : protectedData.keyId();
+            if (storeKey != null && !storeKey.keyId().equals(keyId)) {
+                throw new IllegalStateException("DATA_PROTECTION_BACKUP_KEY_MISMATCH");
+            }
+            stageKeyEnvelope(candidateKey, storeKey);
             stageAvatars(candidateAvatars, candidateAvatarManifest);
             DatabaseRecoveryEnvelope recoveryEnvelope = null;
-            if (recoveryKeys != null && recoveryKeys.enabled() && dataKeys != null) {
-                recoveryEnvelope = recoveryKeys.wrap(dataKeys.loadExisting());
+            if (recoveryKeys != null && recoveryKeys.enabled() && storeKey != null) {
+                recoveryEnvelope = recoveryKeys.wrap(storeKey);
                 Files.write(candidateRecovery, recoveryKeys.serialize(recoveryEnvelope));
             }
             Instant generatedAt = clock.instant();
@@ -166,25 +211,25 @@ public class DatabaseBackupEngine {
                     state.instanceId(), state.revision(),
                     state.lastBusinessModifiedAt(), state.importedFromRevision(), state.importedAt(), generatedAt,
                     sourceDatabase.toString(), targetDiskIdentity, inspected.fileSize(), inspected.sha256(),
-                    inspected.integrityResult(), ProtectedDataService.ENCRYPTION_VERSION,
-                    protectedData == null ? "test-key" : protectedData.keyId(),
+                    inspected.integrityResult(), ProtectedDataService.ENCRYPTION_VERSION, keyId,
                     recoveryEnvelope == null ? null : recoveryEnvelope.recoveryKeyId(),
                     recoveryEnvelope == null ? null : recoveryEnvelope.format(),
                     recoveryEnvelope == null ? null : inspector.sha256(candidateRecovery));
-            Path candidateMetadata = stagingDirectory.resolve(candidate.getFileName() + ".json");
             writeJson(candidateMetadata, metadata);
-            publishKeyEnvelope(latestDirectory);
             publishAvatars(candidateAvatars, candidateAvatarManifest, latestDirectory);
             publishPair(candidate, candidateMetadata,
+                    Files.isRegularFile(candidateKey) ? candidateKey : null,
                     latestDirectory.resolve("platform.db"), latestDirectory.resolve("metadata.json"),
+                    latestDirectory.resolve("data-key.dpapi"),
                     recoveryEnvelope == null ? null : candidateRecovery,
-                    recoveryEnvelope == null ? null : latestDirectory.resolve("factory-key-envelope.json"));
+                    latestDirectory.resolve("factory-key-envelope.json"));
             createDailyHistory(latestDirectory, historyDirectory, metadata);
             cleanupHistory(historyDirectory);
             return metadata;
         } catch (Exception exception) {
             try { Files.deleteIfExists(candidate); } catch (IOException ignored) {}
-            try { Files.deleteIfExists(stagingDirectory.resolve(candidate.getFileName() + ".json")); } catch (IOException ignored) {}
+            try { Files.deleteIfExists(candidateMetadata); } catch (IOException ignored) {}
+            try { Files.deleteIfExists(candidateKey); } catch (IOException ignored) {}
             try { Files.deleteIfExists(candidateRecovery); } catch (IOException ignored) {}
             deleteTree(candidateAvatars);
             try { Files.deleteIfExists(candidateAvatarManifest); } catch (IOException ignored) {}
@@ -254,14 +299,29 @@ public class DatabaseBackupEngine {
         }
     }
 
-    private void publishKeyEnvelope(Path latestDirectory) throws IOException {
-        if (dataKeys == null) return;
+    private void stageKeyEnvelope(Path candidateKey, DataKeyMaterial storeKey) throws IOException {
+        if (dataKeys == null || !dataKeys.requiresProtectedEnvelope()) return;
         byte[] envelope = dataKeys.envelopeBytes();
-        if (envelope.length == 0) return;
-        Path target = latestDirectory.resolve("data-key.dpapi");
-        Path temporary = target.resolveSibling("data-key.dpapi.writing");
-        Files.write(temporary, envelope);
-        move(temporary, target, true);
+        if (envelope.length == 0) {
+            throw new IllegalStateException("DATA_PROTECTION_KEY_MISSING");
+        }
+        try {
+            DataProtectionKeyManager.KeyEnvelope parsed = objectMapper.readValue(
+                    envelope, DataProtectionKeyManager.KeyEnvelope.class);
+            if (!DataProtectionKeyManager.ENVELOPE_FORMAT.equals(parsed.format())
+                    || parsed.keyId() == null || parsed.keyId().isBlank()
+                    || parsed.protectedKey() == null || parsed.protectedKey().isBlank()) {
+                throw new IllegalStateException("DATA_PROTECTION_KEY_FORMAT_INVALID");
+            }
+            if (storeKey == null || !storeKey.keyId().equals(parsed.keyId())) {
+                throw new IllegalStateException("DATA_PROTECTION_KEY_ID_MISMATCH");
+            }
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("DATA_PROTECTION_KEY_FORMAT_INVALID", exception);
+        }
+        Files.write(candidateKey, envelope, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
     private void verifyProtectedDatabase(Path database) {
@@ -382,35 +442,84 @@ public class DatabaseBackupEngine {
         } catch (IOException ignored) { }
     }
 
-    private void publishPair(Path candidateDatabase, Path candidateMetadata, Path latestDatabase, Path latestMetadata)
-            throws IOException {
-        publishPair(candidateDatabase, candidateMetadata, latestDatabase, latestMetadata, null, null);
+    /**
+     * Prevents two application processes from publishing different generations
+     * into the same target directory at the same time. Without this lock, one
+     * process could publish a database while another publishes its key envelope,
+     * leaving a syntactically valid but unusable mixed backup.
+     */
+    private static final class BackupTargetLock implements AutoCloseable {
+        private final FileChannel channel;
+        private final FileLock lock;
+
+        private BackupTargetLock(FileChannel channel, FileLock lock) {
+            this.channel = channel;
+            this.lock = lock;
+        }
+
+        static BackupTargetLock acquire(Path root) {
+            try {
+                Files.createDirectories(root);
+                FileChannel channel = FileChannel.open(root.resolve(".backup.lock"),
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                try {
+                    FileLock lock = channel.tryLock();
+                    if (lock == null) {
+                        channel.close();
+                        throw new IllegalStateException("BACKUP_TARGET_BUSY");
+                    }
+                    return new BackupTargetLock(channel, lock);
+                } catch (OverlappingFileLockException exception) {
+                    channel.close();
+                    throw new IllegalStateException("BACKUP_TARGET_BUSY", exception);
+                } catch (RuntimeException | IOException exception) {
+                    try { channel.close(); } catch (IOException ignored) { }
+                    if (exception instanceof IllegalStateException stateException) throw stateException;
+                    throw new IllegalStateException("BACKUP_TARGET_LOCK_FAILED", exception);
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("BACKUP_TARGET_LOCK_FAILED", exception);
+            }
+        }
+
+        @Override public void close() throws IOException {
+            try { lock.release(); }
+            finally { channel.close(); }
+        }
     }
 
-    private void publishPair(Path candidateDatabase, Path candidateMetadata, Path latestDatabase, Path latestMetadata,
+    private void publishPair(Path candidateDatabase, Path candidateMetadata, Path candidateKey,
+            Path latestDatabase, Path latestMetadata, Path latestKey,
             Path candidateRecovery, Path latestRecovery) throws IOException {
         Path previousDatabase = latestDatabase.resolveSibling("platform.db.previous");
         Path previousMetadata = latestMetadata.resolveSibling("metadata.json.previous");
+        Path previousKey = latestKey.resolveSibling("data-key.dpapi.previous");
         Path previousRecovery = latestRecovery == null ? null : latestRecovery.resolveSibling("factory-key-envelope.json.previous");
         Files.deleteIfExists(previousDatabase);
         Files.deleteIfExists(previousMetadata);
+        Files.deleteIfExists(previousKey);
         if (previousRecovery != null) Files.deleteIfExists(previousRecovery);
         if (Files.exists(latestDatabase)) move(latestDatabase, previousDatabase, false);
         if (Files.exists(latestMetadata)) move(latestMetadata, previousMetadata, false);
+        if (Files.exists(latestKey)) move(latestKey, previousKey, false);
         if (latestRecovery != null && Files.exists(latestRecovery)) move(latestRecovery, previousRecovery, false);
         try {
             move(candidateDatabase, latestDatabase, true);
             move(candidateMetadata, latestMetadata, true);
+            if (candidateKey != null) move(candidateKey, latestKey, true);
             if (candidateRecovery != null) move(candidateRecovery, latestRecovery, true);
             Files.deleteIfExists(previousDatabase);
             Files.deleteIfExists(previousMetadata);
+            Files.deleteIfExists(previousKey);
             if (previousRecovery != null) Files.deleteIfExists(previousRecovery);
         } catch (IOException exception) {
             Files.deleteIfExists(latestDatabase);
             Files.deleteIfExists(latestMetadata);
+            Files.deleteIfExists(latestKey);
             if (latestRecovery != null) Files.deleteIfExists(latestRecovery);
             if (Files.exists(previousDatabase)) move(previousDatabase, latestDatabase, true);
             if (Files.exists(previousMetadata)) move(previousMetadata, latestMetadata, true);
+            if (Files.exists(previousKey)) move(previousKey, latestKey, true);
             if (previousRecovery != null && Files.exists(previousRecovery)) move(previousRecovery, latestRecovery, true);
             throw exception;
         }

@@ -78,9 +78,27 @@ public class DataProtectionKeyManager {
     }
 
     public byte[] envelopeBytes() {
+        // A fixed test key is held in configuration and intentionally has no DPAPI
+        // envelope. Never copy a stale envelope left by another test/user into a
+        // backup generated with that fixed key.
+        if (!requiresProtectedEnvelope()) return new byte[0];
         if (!Files.isRegularFile(keyPath)) return new byte[0];
-        try { return Files.readAllBytes(keyPath); }
-        catch (Exception exception) { throw new IllegalStateException("DATA_PROTECTION_KEY_READ_FAILED", exception); }
+        try {
+            byte[] bytes = Files.readAllBytes(keyPath);
+            KeyEnvelope envelope = objectMapper.readValue(bytes, KeyEnvelope.class);
+            if (!ENVELOPE_FORMAT.equals(envelope.format())) {
+                throw new IllegalStateException("DATA_PROTECTION_KEY_FORMAT_INVALID");
+            }
+            DataKeyMaterial material = loadExisting();
+            if (!material.keyId().equals(envelope.keyId())) {
+                throw new IllegalStateException("DATA_PROTECTION_KEY_ID_MISMATCH");
+            }
+            return bytes;
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("DATA_PROTECTION_KEY_READ_FAILED", exception);
+        }
     }
 
     /** Installs a recovered store key under the current Windows user. */

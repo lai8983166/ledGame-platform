@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const releaseRoot = path.join(root, "release");
+const gameRoot = process.env.LEDGAME_ROOT || path.resolve(root, "..", "ledGame");
 const manifestJson = path.join(releaseRoot, "打包清单.json");
 const manifestMarkdown = path.join(releaseRoot, "打包清单.md");
 const dryRun = process.argv.includes("--dry-run");
@@ -19,9 +20,13 @@ const steps = [
   { name: "游戏端烤机工具", script: "portable:game-soak:release" },
 ];
 
+steps.push(
+  { name: "游戏端（win-unpacked + ZIP）", script: "portable:dist", cwd: gameRoot },
+);
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: root,
+    cwd: options.cwd || root,
     stdio: options.capture ? "pipe" : "inherit",
     encoding: "utf8",
     windowsHide: true,
@@ -33,12 +38,12 @@ function run(command, args, options = {}) {
   return options.capture ? String(result.stdout || "").trim() : "";
 }
 
-function runPnpm(script) {
+function runPnpm(script, cwd = root) {
   if (process.platform === "win32") {
-    run(process.env.ComSpec || "C:\\Windows\\System32\\cmd.exe", ["/d", "/s", "/c", `pnpm.cmd run ${script}`]);
+    run(process.env.ComSpec || "C:\\Windows\\System32\\cmd.exe", ["/d", "/s", "/c", `pnpm.cmd run ${script}`], { cwd });
     return;
   }
-  run("pnpm", ["run", script]);
+  run("pnpm", ["run", script], { cwd });
 }
 
 async function sha256(file) {
@@ -53,6 +58,16 @@ async function describeArtifact(relativePath) {
   if (!stat?.isFile()) throw new Error(`统一打包产物缺失：${relativePath}`);
   return {
     path: relativePath.replaceAll("\\", "/"),
+    bytes: stat.size,
+    sha256: await sha256(absolutePath),
+  };
+}
+
+async function describeExternalArtifact(absolutePath, displayPath) {
+  const stat = await fs.stat(absolutePath).catch(() => null);
+  if (!stat?.isFile()) throw new Error(`统一打包产物缺失：${absolutePath}`);
+  return {
+    path: displayPath.replaceAll("\\", "/"),
     bytes: stat.size,
     sha256: await sha256(absolutePath),
   };
@@ -98,6 +113,19 @@ async function writeManifest() {
       describeArtifact("release/game-soak/烤机测试.cmd"),
       describeArtifact("release/game-soak/config.example.json"),
     ]),
+    gameClient: await (async () => {
+      const gameRelease = path.join(gameRoot, "release");
+      const entries = await fs.readdir(gameRelease);
+      const zip = entries.find((name) => name.toLowerCase().endsWith("-win.zip"));
+      const unpacked = path.join(gameRelease, "win-unpacked");
+      const unpackedEntries = await fs.readdir(unpacked);
+      const exe = unpackedEntries.find((name) => name.toLowerCase().endsWith(".exe") && !name.startsWith("Uninstall"));
+      if (!zip || !exe) throw new Error("游戏端发布产物缺失");
+      return Promise.all([
+        describeExternalArtifact(path.join(unpacked, exe), path.join("..", "ledGame", "release", "win-unpacked", exe)),
+        describeExternalArtifact(path.join(gameRelease, zip), path.join("..", "ledGame", "release", zip)),
+      ]);
+    })(),
   };
   const manifest = {
     formatVersion: 1,
@@ -141,7 +169,7 @@ async function main() {
   await fs.rm(manifestMarkdown, { force: true });
   for (const [index, step] of steps.entries()) {
     process.stdout.write(`\n[${index + 1}/${steps.length}] 正在打包：${step.name}\n`);
-    runPnpm(step.script);
+    runPnpm(step.script, step.cwd || root);
   }
   process.stdout.write("\n正在校验会员管理端与自助注册端发布结构……\n");
   runPnpm("portable:verify");

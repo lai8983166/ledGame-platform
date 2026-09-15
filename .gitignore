@@ -11,7 +11,7 @@ target/
 server/*.db
 acceptance/artifacts/
 acceptance/.runtime/
-.build/game-soak-runs/
+.build/
 build-resources/platform/
 release/
 test-results/

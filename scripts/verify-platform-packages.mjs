@@ -4,6 +4,7 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const member = path.join(root, "release", "member-admin");
 const kiosk = path.join(root, "release", "registration-kiosk");
+const game = path.resolve(root, "..", "ledGame", "release");
 
 async function exists(target) {
   return fs.stat(target).then(() => true).catch(() => false);
@@ -31,6 +32,15 @@ const memberFiles = await fs.readdir(member);
 const kioskFiles = await fs.readdir(kiosk);
 if (!memberFiles.some((name) => name.endsWith("-win.zip"))) throw new Error("会员管理端 ZIP 缺失");
 if (!kioskFiles.some((name) => name.endsWith("-win.zip"))) throw new Error("自助注册端 ZIP 缺失");
+
+const gameDir = path.join(game, "win-unpacked");
+if (!await exists(gameDir)) throw new Error(`游戏端 win-unpacked 缺失：${gameDir}`);
+const gameContents = await walk(gameDir);
+const gameExe = gameContents.find((file) => path.extname(file).toLowerCase() === ".exe" && !path.basename(file).startsWith("Uninstall"));
+if (!gameExe) throw new Error(`游戏端 EXE 缺失：${gameDir}`);
+const gameFiles = await fs.readdir(game);
+const gameZip = gameFiles.find((name) => name.toLowerCase().endsWith("-win.zip"));
+if (!gameZip) throw new Error("游戏端 ZIP 缺失");
 
 const kioskContents = (await walk(path.join(kiosk, "win-unpacked"))).map((file) => path.relative(kiosk, file).toLowerCase());
 const forbidden = kioskContents.find((file) => /(^|[\\/])(backend|jre)([\\/]|$)|\.db$|sqlite/.test(file));

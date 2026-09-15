@@ -70,6 +70,39 @@ class DatabaseBackupCoordinatorStartupTest {
     }
 
     @Test
+    void factoryCanKeepCurrentDatabaseAfterRecoveryBackupIsDetected() throws Exception {
+        Fixture fixture = fixture(state("store-a", 4), state("store-a", 4), true,
+                "ledgame-platform-backup-v2", "PRODUCTION", true);
+        when(fixture.engine.acceptsKeyEnvelope(any(), any())).thenReturn(false);
+        fixture.start();
+        assertThat(fixture.coordinator.status().errorCode()).isEqualTo("DATABASE_RECOVERY_AVAILABLE");
+
+        BackupStatusSnapshot resolved = fixture.coordinator.keepCurrentDatabase();
+
+        assertThat(resolved.state()).isEqualTo(BackupLifecycleState.READY_PROTECTED);
+        assertThat(fixture.backupRoot.resolve("latest/platform.db")).doesNotExist();
+        try (var quarantined = Files.walk(fixture.backupRoot.resolve("quarantine"))) {
+            assertThat(quarantined.anyMatch(path -> path.getFileName().toString().equals("platform.db"))).isTrue();
+        }
+        verify(fixture.engine).backup(any(), anyString());
+        fixture.close();
+    }
+
+    @Test
+    void productionCoordinatorRefusesToPublishEphemeralTestDatabase() throws Exception {
+        Fixture fixture = fixture(state("store-a", 4), state("store-a", 4), true);
+        when(fixture.engine.ephemeralDatabase()).thenReturn(true);
+
+        fixture.start();
+
+        assertThat(fixture.coordinator.status().state()).isEqualTo(BackupLifecycleState.READY_DEGRADED);
+        assertThat(fixture.coordinator.status().errorCode()).isEqualTo("BACKUP_ENVIRONMENT_MISMATCH");
+        verify(fixture.engine, never()).backup(any(), anyString());
+        assertThat(fixture.backupRoot.resolve("latest/platform.db")).exists();
+        fixture.close();
+    }
+
+    @Test
     void invalidMainDatabaseBlocksStartupWithoutOverwritingBackup() throws Exception {
         Fixture fixture = fixture(state("store-a", 4), state("store-a", 4), false);
         fixture.start();

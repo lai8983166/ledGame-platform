@@ -29,6 +29,22 @@ class DataProtectionKeyManagerTest {
     }
 
     @Test
+    void explicitTestKeyNeverPublishesAStaleDpapiEnvelope() throws Exception {
+        DataProtectionProperties properties = new DataProtectionProperties();
+        properties.setTestKeyBase64("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=");
+        Path keyPath = root.resolve("isolated/data-key.dpapi");
+        properties.setKeyPath(keyPath.toString());
+        Files.createDirectories(keyPath.getParent());
+        Files.writeString(keyPath, "{\"format\":\"ledgame-data-key-v1\",\"keyId\":\"stale\",\"protectedKey\":\"stale\"}");
+        DataProtectionKeyManager manager = new DataProtectionKeyManager(
+                properties, new WindowsDataProtector(), new ObjectMapper(),
+                "jdbc:sqlite:" + root.resolve("platform.db"));
+
+        assertThat(manager.envelopeBytes()).isEmpty();
+        assertThat(keyPath).exists();
+    }
+
+    @Test
     @EnabledOnOs(OS.WINDOWS)
     void windowsCurrentUserCanUnsealAfterRestartWithoutPlaintextKeyInFile() throws Exception {
         DataProtectionProperties properties = new DataProtectionProperties();

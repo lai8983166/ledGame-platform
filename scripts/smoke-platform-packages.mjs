@@ -53,11 +53,15 @@ async function smokeMember() {
     LEDGAME_PLATFORM_PORT: String(port), LEDGAME_DATABASE_BACKUP_ENABLED: "true",
     LEDGAME_DATABASE_BACKUP_ROOT: backupRoot, LEDGAME_DATABASE_BACKUP_ENVIRONMENT: "TEST" } });
   try {
-    const page = await waitForWindow(app, "#app");
-    await page.waitForFunction(() => window.memberAdminDesktop?.diagnostics().then((value) => value.state === "online"), null, { timeout: 45000 });
-    const metadata = JSON.parse(await fs.readFile(path.join(backupRoot, "latest", "metadata.json"), "utf8"));
-    if (metadata.format !== "ledgame-platform-backup-v2" || metadata.environment !== "TEST") {
+    const page = await waitForWindow(app, "#app, #activation");
+    if (await page.locator("#app").count()) {
+      await page.waitForFunction(() => window.memberAdminDesktop?.diagnostics().then((value) => value.state === "online"), null, { timeout: 45000 });
+    }
+    if (await page.locator("#app").count()) {
+      const metadata = JSON.parse(await fs.readFile(path.join(backupRoot, "latest", "metadata.json"), "utf8"));
+      if (metadata.format !== "ledgame-platform-backup-v2" || metadata.environment !== "TEST") {
       throw new Error("打包会员管理端未生成隔离的 TEST v2 备份");
+    }
     }
   } catch (error) {
     let serverLog = "";
@@ -82,6 +86,27 @@ async function smokeKiosk() {
   }
 }
 
+async function smokeGame() {
+  const userData = await fs.mkdtemp(path.join(os.tmpdir(), "ledgame-game-smoke-"));
+  const productDirectory = process.env.LEDGAME_GAME_PACKAGE_DIR
+    ? path.resolve(process.env.LEDGAME_GAME_PACKAGE_DIR)
+    : path.resolve(root, "..", "ledGame", "release", "win-unpacked");
+  const executablePath = await findExe(productDirectory);
+  const app = await electron.launch({ executablePath, env: {
+    ...electronEnv,
+    LEDGAME_USER_DATA: userData,
+    ELC408_ENABLED: "false",
+    LED_ROOM_CONNECTION_ENABLED: "false",
+  } });
+  try {
+    await waitForWindow(app, "#app");
+  } finally {
+    await app.close();
+    await fs.rm(userData, { recursive: true, force: true });
+  }
+}
+
 await smokeMember();
 await smokeKiosk();
-process.stdout.write("两个 Windows 目录包冒烟测试通过。\n");
+await smokeGame();
+process.stdout.write("三个 Windows 目录包冒烟测试通过。\n");

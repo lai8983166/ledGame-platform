@@ -144,6 +144,13 @@ public class DatabaseBackupCoordinator {
             gate.update(StartupGate.blocked(BackupErrorCode.DATABASE_INTEGRITY_FAILED));
             return;
         }
+        if ("PRODUCTION".equals(properties.getEnvironment()) && engine.ephemeralDatabase()) {
+            gate.update(StartupGate.degraded(BackupErrorCode.BACKUP_ENVIRONMENT_MISMATCH,
+                    null, null, source.revision(), null));
+            LOG.warn("database_backup_environment_mismatch sourceDatabase={} environment={}",
+                    engine.sourceDatabase(), properties.getEnvironment());
+            return;
+        }
         gate.update(StartupGate.checking("CHECKING_TARGET", "正在检查异盘备份", source.revision()));
         Optional<BackupTarget> resolved = resolveTarget();
         if (resolved.isEmpty()) {
@@ -268,7 +275,8 @@ public class DatabaseBackupCoordinator {
         BackupStatusSnapshot current = gate.status();
         if (current.state() != BackupLifecycleState.MAINTENANCE_LOGIN_REQUIRED
                 || !(BackupErrorCode.DATABASE_IDENTITY_CONFLICT.name().equals(current.errorCode())
-                || BackupErrorCode.DATABASE_VERSION_CONFLICT.name().equals(current.errorCode()))) {
+                || BackupErrorCode.DATABASE_VERSION_CONFLICT.name().equals(current.errorCode())
+                || BackupErrorCode.DATABASE_RECOVERY_AVAILABLE.name().equals(current.errorCode()))) {
             throw new PlatformApiException(org.springframework.http.HttpStatus.CONFLICT,
                     "DATABASE_CONFLICT_NOT_ACTIVE", "当前没有需要处理的数据库备份冲突");
         }

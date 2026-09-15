@@ -62,4 +62,12 @@ describe("Windows desktop package contract", () => {
     expect(serialized).not.toContain("jre");
     expect(serialized).not.toContain("sqlite");
   });
+
+  it("leaves development builds debuggable", () => {
+    const rootPackage = readJson("package.json");
+    const gamePackage = JSON.parse(fs.readFileSync(path.resolve(root, "..", "ledGame", "package.json"), "utf8"));
+    expect(rootPackage.scripts["prepare:member-admin:dev"]).not.toContain("obfuscate");
+    expect(rootPackage.scripts["dev:member-admin:desktop"]).not.toContain("obfuscate");
+    expect(gamePackage.scripts.dev).not.toContain("obfuscate");
+  });
 });

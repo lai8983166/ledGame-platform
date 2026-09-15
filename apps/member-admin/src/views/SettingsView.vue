@@ -65,7 +65,7 @@ const recoverySelection = ref<{ backupPath: string; responsePath: string; reques
 const pendingImport = ref<DatabaseBackupCandidate | null>(null);
 const pendingKeepCurrent = ref(false);
 const canKeepCurrent = computed(() => props.backupStatus?.state === "MAINTENANCE_LOGIN_REQUIRED"
-  && ["DATABASE_IDENTITY_CONFLICT", "DATABASE_VERSION_CONFLICT"].includes(props.backupStatus?.errorCode || ""));
+  && ["DATABASE_IDENTITY_CONFLICT", "DATABASE_VERSION_CONFLICT", "DATABASE_RECOVERY_AVAILABLE"].includes(props.backupStatus?.errorCode || ""));
 
 const formatBackupTime = (value?: string | null) => value
   ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value)) : "暂无";

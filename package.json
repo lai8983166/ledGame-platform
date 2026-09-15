@@ -39,7 +39,7 @@
     "test:acceptance": "playwright test --config acceptance/playwright.config.ts",
     "test:acceptance:desktop": "pnpm prepare:member-admin:dev && playwright test --config acceptance/playwright.config.ts acceptance/specs/store-platform-desktop.spec.ts",
     "test:desktop": "vitest run desktop/tests/member-admin-runtime.test.mjs desktop/tests/database-import.test.mjs desktop/tests/registration-kiosk-shell.test.mjs desktop/tests/package-contract.test.mjs desktop/tests/shared-runtime.test.mjs && node --test desktop/tests/data-export.test.mjs",
-    "test:database-recovery": "mvn -q -f server/pom.xml -Dtest=DatabaseRecoveryKeyServiceTest,DatabaseRecoveryServiceTest,DatabaseRecoveryControllerAuthorizationTest,DatabaseBackupEngineTest,DatabaseBackupCoordinatorStartupTest,DatabaseBackupEnvironmentIsolationTest,DatabaseImportServiceTest test && node --test desktop/tests/database-recovery-tool.test.mjs",
+    "test:database-recovery": "mvn -q -f server/pom.xml -Dtest=DatabaseRecoveryKeyServiceTest,DatabaseRecoveryServiceTest,DatabaseRecoveryControllerAuthorizationTest,DatabaseBackupEngineTest,DatabaseBackupCoordinatorStartupTest,DatabaseBackupEnvironmentIsolationTest,DatabaseRecoveryIsolatedE2ETest,DatabaseImportServiceTest test && node --test desktop/tests/database-recovery-tool.test.mjs",
     "test:desktop:electron": "playwright test desktop/tests/registration-kiosk.electron.spec.mjs --workers=1",
     "test:desktop:member": "pnpm prepare:member-admin:dev && playwright test desktop/tests/member-admin.electron.spec.mjs --workers=1",
     "test:desktop:member:packaged": "pnpm portable:member-admin:dir && playwright test desktop/tests/member-admin.packaged.electron.spec.mjs --workers=1",
