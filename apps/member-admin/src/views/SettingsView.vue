@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import type { DatabaseBackupCandidate, DatabaseBackupStatus, OperatorAccount, OperatorAccountType } from "@ledgame/platform-api-client";
+import type { DatabaseBackupCandidate, DatabaseBackupStatus, OperatorAccount, OperatorAccountType, StoreSettings } from "@ledgame/platform-api-client";
 import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import StatusBadge from "../components/StatusBadge.vue";
@@ -10,6 +10,7 @@ import { platformApi } from "../platformApi";
 import { createOperatorAccountManager } from "../operatorAccountState";
 import { memberAdminMessage } from "../localization";
 import { operatorSession } from "../operatorSession";
+import { canUseOperatorCapability } from "../operatorPolicy";
 
 type SettingsTab = "accounts" | "password" | "basic" | "features" | "upload" | "backup";
 const emit = defineEmits<{ toast: [message: string]; backupChanged: []; logoutRequired: [] }>();
@@ -21,6 +22,11 @@ const activeTab = ref<SettingsTab>(props.backupStatus?.state === "MAINTENANCE_LO
 const braceletMinutes = ref<number | null>(60);
 const savedMinutes = ref(60);
 const durationError = ref("");
+const storeSettings = ref<StoreSettings | null>(null);
+const storeSettingsForm = reactive({ appTitle: "LED GAME MEMBER ADMIN", unitPriceYuan: "1.00", secondaryDisplayEnabled: false, iconImageBase64: "", iconImageMimeType: "", clearIcon: false });
+const storeSettingsLoading = ref(false);
+const storeSettingsSaving = ref(false);
+const storeSettingsError = ref("");
 const childMode = ref(false);
 const featureLoading = ref(false);
 const featureSaving = ref(false);
@@ -41,6 +47,7 @@ const accountForm = reactive<{ username: string; displayName: string; password: 
 const selfPassword = ref("");
 const pendingDeleteAccount = ref<OperatorAccount | null>(null);
 const isFactory = computed(() => operatorSession.current.value?.accountType === "FACTORY_ADMIN");
+const canManageFeatureSettings = computed(() => canUseOperatorCapability(operatorSession.current.value, "featureSettings"));
 const canManageAccounts = computed(() => role.value === "FACTORY_ADMIN" || role.value === "STORE_MANAGER");
 const backupTab = { id: "backup", label: "数据库备份", icon: "database", desc: "异盘保护与受控导入" } as const;
 const settingsTabs = computed(() => props.backupStatus?.state === "MAINTENANCE_LOGIN_REQUIRED"
@@ -49,10 +56,10 @@ const settingsTabs = computed(() => props.backupStatus?.state === "MAINTENANCE_L
   ...(canManageAccounts.value ? [{ id: "accounts", label: "操作账号", icon: "members", desc: role.value === "STORE_MANAGER" ? "管理店员账号" : "管理店长与店员账号" }] : []),
   { id: "features", label: "功能开关", icon: "settings", desc: "启用或关闭功能" },
   { id: "password", label: "修改密码", icon: "settings", desc: "修改当前登录账号密码" },
-  ...(isFactory.value ? [
-    { id: "basic", label: "基础设置", icon: "clock", desc: "手环与计时规则" },
-    backupTab,
+  ...(canManageFeatureSettings.value ? [
+    { id: "basic", label: "品牌与收费", icon: "settings", desc: "应用品牌、充值规则与副屏" },
   ] : []),
+  ...(isFactory.value ? [backupTab] : []),
 ] as Array<{ id: SettingsTab; label: string; icon: string; desc: string }>);
 const backupCandidates = ref<DatabaseBackupCandidate[]>([]);
 const backupLoading = ref(false);
@@ -274,9 +281,83 @@ const loadFeatureSettings = async () => {
   finally { featureLoading.value = false; }
 };
 
+const loadStoreSettings = async () => {
+  if (!canManageFeatureSettings.value) return;
+  storeSettingsLoading.value = true;
+  storeSettingsError.value = "";
+  try {
+    const value = await platformApi.getStoreSettings();
+    storeSettings.value = value;
+    storeSettingsForm.appTitle = value.appTitle;
+    storeSettingsForm.unitPriceYuan = (value.unitPriceCents / 100).toFixed(2);
+    storeSettingsForm.secondaryDisplayEnabled = value.secondaryDisplayEnabled;
+    storeSettingsForm.iconImageBase64 = "";
+    storeSettingsForm.iconImageMimeType = "";
+    storeSettingsForm.clearIcon = false;
+    await window.memberAdminDesktop?.applyBranding?.({ secondaryDisplayEnabled: value.secondaryDisplayEnabled });
+  } catch (error) { storeSettingsError.value = error instanceof Error ? error.message : "门店设置加载失败"; }
+  finally { storeSettingsLoading.value = false; }
+};
+
+const toggleSecondaryDisplay = async () => {
+  if (storeSettingsSaving.value) return;
+  const enabled = !storeSettingsForm.secondaryDisplayEnabled;
+  storeSettingsForm.secondaryDisplayEnabled = enabled;
+  storeSettingsError.value = "";
+  try {
+    await window.memberAdminDesktop?.applyBranding?.({ secondaryDisplayEnabled: enabled });
+    emit("toast", enabled ? "副屏已打开" : "副屏已关闭");
+  } catch (error) {
+    storeSettingsForm.secondaryDisplayEnabled = !enabled;
+    storeSettingsError.value = error instanceof Error ? error.message : "副屏窗口操作失败";
+  }
+};
+
+const selectBrandIcon = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 256 * 1024) { storeSettingsError.value = "应用图标不能超过 256 KB"; input.value = ""; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    storeSettingsForm.iconImageBase64 = String(reader.result || "");
+    storeSettingsForm.iconImageMimeType = file.type;
+    storeSettingsForm.clearIcon = false;
+    storeSettingsError.value = "";
+  };
+  reader.onerror = () => { storeSettingsError.value = "应用图标读取失败"; };
+  reader.readAsDataURL(file);
+};
+
+const saveStoreSettings = async () => {
+  const title = storeSettingsForm.appTitle.trim();
+  const unit = Number(storeSettingsForm.unitPriceYuan);
+  if (!title || title.length > 60) return void (storeSettingsError.value = "应用标题必须是 1 到 60 个字符");
+  if (!Number.isFinite(unit) || unit <= 0 || unit > 10000) return void (storeSettingsError.value = "每分钟金额必须是 0 到 10000 元之间的正数");
+  const cents = Math.round(unit * 100);
+  if (cents < 1 || cents > 1_000_000) return void (storeSettingsError.value = "每分钟金额最多精确到分");
+  storeSettingsSaving.value = true;
+  storeSettingsError.value = "";
+  try {
+    const saved = await platformApi.updateStoreSettings({
+      appTitle: title, unitPriceCents: cents, secondaryDisplayEnabled: storeSettingsForm.secondaryDisplayEnabled,
+      iconImageBase64: storeSettingsForm.iconImageBase64 || null, iconImageMimeType: storeSettingsForm.iconImageMimeType || null,
+      clearIcon: storeSettingsForm.clearIcon,
+    });
+    storeSettings.value = saved;
+    storeSettingsForm.iconImageBase64 = "";
+    storeSettingsForm.iconImageMimeType = "";
+    storeSettingsForm.clearIcon = false;
+    await window.memberAdminDesktop?.applyBranding?.({ title: saved.appTitle, iconDataUrl: saved.appIconDataUrl ?? null, secondaryDisplayEnabled: saved.secondaryDisplayEnabled });
+    emit("toast", "品牌、收费和副屏设置已保存");
+  } catch (error) { storeSettingsError.value = error instanceof Error ? error.message : "门店设置保存失败"; }
+  finally { storeSettingsSaving.value = false; }
+};
+
 onMounted(() => {
   if (canManageAccounts.value) void accountManager.load();
   void loadFeatureSettings();
+  void loadStoreSettings();
 });
 watch(activeTab, (tab) => { if (tab === "backup") void loadBackupCandidates(); });
 
@@ -395,8 +476,23 @@ const testUpload = () => {
         <footer class="settings-actions"><button class="primary-button" data-testid="operator-own-password-submit" type="button" :disabled="accountManager.submitting" @click="updateOwnPassword">保存新密码</button></footer>
       </section>
 
-      <section v-else-if="activeTab === 'basic'" class="settings-card glass-panel">
-        <header class="settings-card__header"><span class="settings-icon"><AppIcon name="clock" /></span><div><p class="section-eyebrow">DURATION SHORTCUT</p><h2>常用充时快捷值</h2><p>仅作为柜台录入本次购买时长时的快捷选择，不会自动写入所有手环。</p></div><StatusBadge tone="info">常用 {{ savedMinutes }} 分钟</StatusBadge></header>
+      <section v-else-if="activeTab === 'basic'" class="settings-card glass-panel" data-testid="store-settings">
+        <header class="settings-card__header"><span class="settings-icon"><AppIcon name="settings" /></span><div><p class="section-eyebrow">STORE SETTINGS</p><h2>品牌、收费与副屏</h2><p>修改会员管理端运行时品牌、手环收款规则和副屏排行榜。</p></div><StatusBadge tone="info">{{ storeSettingsLoading ? '读取中…' : '已持久化' }}</StatusBadge></header>
+        <div class="form-grid brand-payment-grid">
+          <label class="form-field"><span>应用标题 <b>*</b></span><input v-model="storeSettingsForm.appTitle" data-testid="store-settings-title" maxlength="60" :disabled="storeSettingsSaving" /><small>只影响运行时窗口和界面，不修改 EXE 编译图标。</small></label>
+          <label class="form-field"><span>每分钟收款金额（元） <b>*</b></span><input v-model="storeSettingsForm.unitPriceYuan" data-testid="store-settings-unit-price" type="number" min="0.01" max="10000" step="0.01" :disabled="storeSettingsSaving" /><small>充值金额 = 分钟数 × 当前单价。</small></label>
+          <label class="form-field"><span>应用图标</span><input data-testid="store-settings-icon" type="file" accept="image/png,image/jpeg,image/webp" :disabled="storeSettingsSaving" @change="selectBrandIcon" /><small>{{ storeSettingsForm.iconImageBase64 ? '已选择新图标，保存后生效' : storeSettings?.appIconPath ? '已配置图标' : '默认图标' }}</small></label>
+          <div class="feature-item feature-item--compact"><span class="feature-item__icon"><AppIcon name="overview" /></span><div><strong>副屏排行榜</strong><p>点击开关立即显示或隐藏；保存后下次启动继续沿用。</p></div><button data-testid="secondary-display-toggle" class="switch-control" :class="{ active: storeSettingsForm.secondaryDisplayEnabled }" type="button" role="switch" :aria-checked="storeSettingsForm.secondaryDisplayEnabled" :disabled="storeSettingsSaving" @click="toggleSecondaryDisplay"><span></span></button></div>
+        </div>
+        <p v-if="storeSettingsError" class="form-error" data-testid="store-settings-error"><AppIcon name="alert" :size="16" />{{ storeSettingsError }} <button class="secondary-button compact-button" type="button" @click="loadStoreSettings">重试</button></p>
+        <footer class="settings-actions"><button class="secondary-button" type="button" :disabled="storeSettingsLoading || storeSettingsSaving" @click="loadStoreSettings"><AppIcon name="refresh" :size="17" />读取设置</button><button class="primary-button" data-testid="store-settings-save" type="button" :disabled="storeSettingsLoading || storeSettingsSaving" @click="saveStoreSettings">{{ storeSettingsSaving ? '保存中…' : '保存品牌与收费设置' }}</button></footer>
+        <div class="rule-flow">
+          <div><span>1</span><section><strong>常用充时快捷值</strong><p>继续作为柜台录入本次购买时长时的快捷选择。</p></section></div><AppIcon name="arrow" />
+          <div><span>2</span><section><strong>读取当前收费规则</strong><p>服务端会按保存后的每分钟金额计算交易。</p></section></div><AppIcon name="arrow" />
+          <div><span>3</span><section><strong>副屏同步排行榜</strong><p>副屏打开后按门店时区显示日、月、年榜。</p></section></div>
+        </div>
+        <hr class="settings-divider" />
+        <header class="settings-card__header settings-card__header--compact"><span class="settings-icon"><AppIcon name="clock" /></span><div><p class="section-eyebrow">DURATION SHORTCUT</p><h2>常用充时快捷值</h2><p>仅作为柜台录入本次购买时长时的快捷选择，不会自动写入所有手环。</p></div><StatusBadge tone="info">常用 {{ savedMinutes }} 分钟</StatusBadge></header>
         <div class="duration-editor">
           <label class="form-field"><span>常用分钟数 <b>*</b></span><div class="duration-input"><input v-model.number="braceletMinutes" type="number" min="1" max="1440" @input="durationError = ''" /><span>分钟</span></div><small v-if="durationError" class="field-error">{{ durationError }}</small><small v-else>每只手环仍可在办理时输入不同分钟数</small></label>
           <div class="quick-amounts quick-amounts--duration"><button v-for="duration in [30, 45, 60, 90, 120]" :key="duration" type="button" :class="{ active: braceletMinutes === duration }" @click="braceletMinutes = duration; durationError = ''">{{ duration }} 分钟</button></div>

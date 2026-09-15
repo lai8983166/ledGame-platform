@@ -9,6 +9,7 @@ import MembersView from "./views/MembersView.vue";
 import RecordsView from "./views/RecordsView.vue";
 import RoomsView from "./views/RoomsView.vue";
 import SettingsView from "./views/SettingsView.vue";
+import SecondaryLeaderboardView from "./views/SecondaryLeaderboardView.vue";
 import LoginView from "./views/LoginView.vue";
 import type { DatabaseBackupStatus, OperatorProfile } from "@ledgame/platform-api-client";
 import { operatorSession } from "./operatorSession";
@@ -30,6 +31,7 @@ import {
 import { localeFlagUrls } from "./localeFlags";
 
 const activePage = ref<PageId>("wristbands");
+const isSecondaryDisplay = new URLSearchParams(window.location.search).get("secondary") === "1";
 const mobileNavOpen = ref(false);
 const languageOpen = ref(false);
 const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, MEMBER_ADMIN_LOCALE_STORAGE_KEY));
@@ -156,6 +158,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <SecondaryLeaderboardView v-if="isSecondaryDisplay" :locale="locale" />
+  <template v-else>
   <div v-if="concurrencyTestRunId" class="concurrency-test-banner" data-testid="concurrency-test-banner">
     并发测试模式 · {{ concurrencyTestRunId }}
   </div>
@@ -277,4 +281,5 @@ onBeforeUnmount(() => {
   </div>
 
   <div v-if="toastMessage" data-testid="admin-toast"><ToastMessage :message="toastMessage" /></div>
+  </template>
 </template>

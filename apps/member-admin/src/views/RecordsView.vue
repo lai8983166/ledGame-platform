@@ -24,6 +24,8 @@ type BindingRecord = {
   boundAt: string;
   startedAt: string | null;
   endedAt: string | null;
+  issuedAt: string | null;
+  operatorLabel: string;
   status: string;
 };
 type ChargeRecord = {
@@ -32,7 +34,9 @@ type ChargeRecord = {
   durationMinutes: number;
   unitPriceCents: number;
   amountCents: number;
+  issuedAt: string | null;
   chargedAt: string;
+  operatorLabel: string;
 };
 type RealPlay = {
   id: string;
@@ -120,13 +124,14 @@ const loadRecords = async () => {
       id: `BIND-${item.id}`, braceletId: String(item.uid ?? "—"), memberId: `DB-${item.memberId}`,
       memberName: String(item.memberName ?? "—"), phone: String(item.phone ?? "—"),
       durationMinutes: Number(item.durationMinutes ?? 0), boundAt: String(item.boundAt ?? ""),
+      issuedAt: item.issuedAt == null ? null : String(item.issuedAt), operatorLabel: String(item.operatorLabel ?? "历史记录 / 未知"),
       startedAt: item.startedAt == null ? null : String(item.startedAt),
       endedAt: item.endedAt == null ? null : String(item.endedAt), status: String(item.status ?? "UNKNOWN"),
     }));
     chargeRecords.value = (chargeRows ?? []).map((item) => ({
       id: `TX-${item.id}`, braceletId: String(item.uid ?? "—"),
       durationMinutes: Number(item.durationMinutes ?? 0), unitPriceCents: Number(item.unitPriceCents ?? 0),
-      amountCents: Number(item.amountCents ?? 0), chargedAt: String(item.chargedAt ?? ""),
+      amountCents: Number(item.amountCents ?? 0), issuedAt: item.issuedAt == null ? null : String(item.issuedAt), chargedAt: String(item.chargedAt ?? ""), operatorLabel: String(item.operatorLabel ?? "历史记录 / 未知"),
     }));
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : "记录加载失败";
@@ -185,9 +190,9 @@ onMounted(() => void loadRecords());
 
   <section class="table-card glass-panel">
     <div class="data-table-wrap">
-      <table v-if="activeTab === 'cards'" class="data-table" data-testid="admin-binding-records"><thead><tr><th>发卡编号</th><th>手环 UID</th><th>关联会员</th><th>绑定时间</th><th>首次游戏 / 结束</th><th>有效时长</th><th>状态</th></tr></thead><tbody><tr v-for="item in filteredCards" :key="item.id"><td><code>{{ item.id }}</code></td><td><strong>{{ item.braceletId }}</strong></td><td>{{ item.memberName }}<small class="cell-sub">{{ item.memberId }} · {{ item.phone }}</small></td><td>{{ formatTime(item.boundAt) }}</td><td>{{ item.startedAt ? formatTime(item.startedAt) : '尚未开始' }}<small v-if="item.endedAt" class="cell-sub">结束：{{ formatTime(item.endedAt) }}</small></td><td>{{ item.durationMinutes }} 分钟</td><td><StatusBadge :tone="bindingStatusTone(item.status)">{{ bindingStatusLabel(item.status) }}</StatusBadge></td></tr><tr v-if="!filteredCards.length"><td colspan="7">暂无符合条件的真实发卡记录</td></tr></tbody></table>
+      <table v-if="activeTab === 'cards'" class="data-table" data-testid="admin-binding-records"><thead><tr><th>发卡编号</th><th>手环 UID</th><th>关联会员</th><th>操作员</th><th>发卡时间</th><th>绑定时间</th><th>首次游戏 / 结束</th><th>有效时长</th><th>状态</th></tr></thead><tbody><tr v-for="item in filteredCards" :key="item.id"><td><code>{{ item.id }}</code></td><td><strong>{{ item.braceletId }}</strong></td><td>{{ item.memberName }}<small class="cell-sub">{{ item.memberId }} · {{ item.phone }}</small></td><td>{{ item.operatorLabel }}</td><td>{{ formatTime(item.issuedAt) }}</td><td>{{ formatTime(item.boundAt) }}</td><td>{{ item.startedAt ? formatTime(item.startedAt) : '尚未开始' }}<small v-if="item.endedAt" class="cell-sub">结束：{{ formatTime(item.endedAt) }}</small></td><td>{{ item.durationMinutes }} 分钟</td><td><StatusBadge :tone="bindingStatusTone(item.status)">{{ bindingStatusLabel(item.status) }}</StatusBadge></td></tr><tr v-if="!filteredCards.length"><td colspan="9">暂无符合条件的真实发卡记录</td></tr></tbody></table>
       <table v-else-if="activeTab === 'plays'" class="data-table" data-testid="admin-play-records"><thead><tr><th>记录编号</th><th>会员 / 手环</th><th>游玩房间</th><th>{{ text("rawScore") }}</th><th>{{ text("memberPoints") }}</th><th>{{ text("statusReason") }}</th><th>{{ text("startEndTime") }}</th></tr></thead><tbody><tr v-for="item in filteredPlays" :key="item.id" :data-testid="`admin-play-${item.id}`" :data-status="item.status"><td><code>{{ item.id }}</code></td><td>{{ item.memberName }}<small class="cell-sub">{{ item.braceletId }}</small></td><td><strong>{{ item.roomName }}</strong></td><td data-testid="admin-play-raw-score"><strong class="score-value">{{ item.rawScore.toLocaleString() }}</strong></td><td data-testid="admin-play-points"><strong class="score-value">{{ item.pointsAwarded.toLocaleString() }}</strong><small class="cell-sub">{{ item.scoringPolicy }}</small></td><td data-testid="admin-play-termination"><StatusBadge :tone="item.status === 'COMPLETED' ? 'success' : item.status === 'ABORTED' ? 'warning' : 'purple'">{{ item.status }}</StatusBadge><small class="cell-sub">{{ item.terminationReason }}</small></td><td>{{ formatTime(item.startedAt) }}<small class="cell-sub">{{ item.endedAt ? formatTime(item.endedAt) : '进行中' }}</small></td></tr><tr v-if="!filteredPlays.length"><td colspan="7">暂无符合条件的真实游玩记录</td></tr></tbody></table>
-      <table v-else-if="activeTab === 'transactions'" class="data-table" data-testid="admin-charge-records"><thead><tr><th>交易流水</th><th>手环 UID</th><th>购买时长</th><th>分钟单价</th><th>交易金额</th><th>交易时间</th><th>状态</th></tr></thead><tbody><tr v-for="item in filteredTransactions" :key="item.id"><td><code>{{ item.id }}</code></td><td><strong>{{ item.braceletId }}</strong></td><td>{{ item.durationMinutes }} 分钟</td><td>¥{{ (item.unitPriceCents / 100).toFixed(2) }}</td><td><strong class="money-value">+ ¥{{ (item.amountCents / 100).toFixed(2) }}</strong></td><td>{{ formatTime(item.chargedAt) }}</td><td><StatusBadge tone="success">成功</StatusBadge></td></tr><tr v-if="!filteredTransactions.length"><td colspan="7">暂无符合条件的真实交易记录</td></tr></tbody></table>
+      <table v-else-if="activeTab === 'transactions'" class="data-table" data-testid="admin-charge-records"><thead><tr><th>交易流水</th><th>手环 UID</th><th>购买时长</th><th>分钟单价</th><th>交易金额</th><th>操作员</th><th>发卡时间</th><th>充值时间</th><th>状态</th></tr></thead><tbody><tr v-for="item in filteredTransactions" :key="item.id"><td><code>{{ item.id }}</code></td><td><strong>{{ item.braceletId }}</strong></td><td>{{ item.durationMinutes }} 分钟</td><td>¥{{ (item.unitPriceCents / 100).toFixed(2) }}</td><td><strong class="money-value">+ ¥{{ (item.amountCents / 100).toFixed(2) }}</strong></td><td>{{ item.operatorLabel }}</td><td>{{ formatTime(item.issuedAt) }}</td><td>{{ formatTime(item.chargedAt) }}</td><td><StatusBadge tone="success">成功</StatusBadge></td></tr><tr v-if="!filteredTransactions.length"><td colspan="9">暂无符合条件的真实交易记录</td></tr></tbody></table>
       <table v-else class="data-table"><thead><tr><th>会员账号</th><th>会员</th><th>联系方式</th><th>身份 ID</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="item in filteredMembers" :key="item.id"><td><code>{{ item.account }}</code></td><td><span class="member-inline"><span class="avatar avatar--small" :style="{ background: item.color }">{{ item.initials }}</span><strong>{{ item.name }}</strong></span></td><td>{{ item.phone }}</td><td>{{ item.identityId }}</td><td>{{ item.joinedAt }}</td><td><StatusBadge :tone="item.status === 'active' ? 'success' : 'neutral'">{{ item.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="text-button" type="button" @click="selectedMember = item">详情 <AppIcon name="arrow" :size="14" /></button></td></tr><tr v-if="!filteredMembers.length"><td colspan="7">暂无符合条件的真实会员数据</td></tr></tbody></table>
     </div>
     <footer class="table-footer records-count-footer"><strong>共 {{ visibleCount }} 条</strong></footer>

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -34,10 +35,12 @@ public class CoreFlowController {
     private final ProtectedDataService protectedData;
     private final OperatorAuthorizationService authorization;
     private final AvatarStorageService avatars;
+    private final StoreSettingsService storeSettings;
 
     public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService, Clock clock,
             ActivationService activation, StartupGate startupGate, ProtectedDataService protectedData,
-            OperatorAuthorizationService authorization, AvatarStorageService avatars) {
+            OperatorAuthorizationService authorization, AvatarStorageService avatars,
+            StoreSettingsService storeSettings) {
         this.jdbc = jdbc;
         this.gameAccessService = gameAccessService;
         this.clock = clock;
@@ -46,6 +49,7 @@ public class CoreFlowController {
         this.protectedData = protectedData;
         this.authorization = authorization;
         this.avatars = avatars;
+        this.storeSettings = storeSettings;
     }
 
     @GetMapping("/health")
@@ -168,6 +172,66 @@ public class CoreFlowController {
                 "deletedAt", deletedAt);
     }
 
+    @PutMapping("/members/{id}")
+    @Transactional
+    public Map<String, Object> updateMember(@PathVariable Long id,
+            @RequestBody MemberUpdateRequest request,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.MEMBER_MANAGE);
+        if (request == null) throw badRequest("缺少会员资料");
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT id, phone, name, avatar_id, birthday, gender, status, deleted_at
+              FROM members WHERE id=?
+            """, id);
+        if (rows.isEmpty() || !"ACTIVE".equals(String.valueOf(rows.get(0).get("status"))) || rows.get(0).get("deleted_at") != null) {
+            throw GameAccessService.error(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "会员不存在或已经删除");
+        }
+        Map<String, Object> existing = rows.get(0);
+        String currentPhone = protectedData.decryptField("members", "phone", existing.get("phone"));
+        String currentName = protectedData.decryptField("members", "name", existing.get("name"));
+        String currentBirthday = protectedData.decryptField("members", "birthday", existing.get("birthday"));
+        String currentGender = protectedData.decryptField("members", "gender", existing.get("gender"));
+        String currentAvatar = protectedData.decryptField("members", "avatar_id", existing.get("avatar_id"));
+        String phone = request.phone() == null ? currentPhone : normalizePhone(request.phone());
+        String name = request.name() == null ? currentName : request.name().trim();
+        String birthday = request.birthday() == null ? currentBirthday : blankToNull(request.birthday());
+        String gender = request.gender() == null ? currentGender : blankToNull(request.gender());
+        if (!phone.matches("\\d{7,15}")) throw badRequest("手机号格式不正确");
+        if (name == null || name.length() < 2 || name.length() > 60) throw badRequest("会员姓名必须是 2 到 60 个字符");
+        if (birthday != null && !birthday.matches("\\d{4}-\\d{2}-\\d{2}")) throw badRequest("生日格式必须为 YYYY-MM-DD");
+        String phoneHash = protectedData.phoneLookupHash(phone);
+        List<Map<String, Object>> duplicates = jdbc.queryForList("""
+            SELECT id FROM members
+             WHERE (phone_lookup_hash=? OR (phone_lookup_hash IS NULL AND phone=?))
+               AND id<>? AND status='ACTIVE' AND deleted_at IS NULL
+            """, phoneHash, phone, id);
+        if (!duplicates.isEmpty()) throw conflict("该手机号已经注册");
+        String avatar = currentAvatar;
+        String uploadedAvatar = null;
+        if (request.avatarImageBase64() != null && !request.avatarImageBase64().isBlank()) {
+            uploadedAvatar = avatars.store(request.avatarImageBase64(), request.avatarImageMimeType());
+            avatar = uploadedAvatar;
+        } else if (request.avatarId() != null) {
+            avatar = blankToNull(request.avatarId());
+        }
+        String now = now();
+        try {
+            jdbc.update("""
+                UPDATE members SET phone=?, phone_lookup_hash=?, name=?, avatar_id=?, birthday=?, gender=?, updated_at=?
+                 WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL
+                """, protectedData.encryptField("members", "phone", phone), phoneHash,
+                protectedData.encryptField("members", "name", name),
+                protectedData.encryptField("members", "avatar_id", avatar),
+                protectedData.encryptField("members", "birthday", birthday),
+                protectedData.encryptField("members", "gender", gender), now, id);
+            if (avatars.isUploaded(currentAvatar) && !java.util.Objects.equals(currentAvatar, avatar)) avatars.delete(currentAvatar);
+            return findMembers(phone).stream().findFirst().orElseThrow(() -> new IllegalStateException("会员更新后读取失败"));
+        } catch (RuntimeException exception) {
+            if (uploadedAvatar != null) avatars.delete(uploadedAvatar);
+            throw exception;
+        }
+    }
+
     @GetMapping("/wristbands")
     public List<Map<String, Object>> listWristbands() {
         return gameAccessService.listWristbands();
@@ -182,10 +246,16 @@ public class CoreFlowController {
             SELECT b.id, w.card_uid AS uid, b.member_id AS memberId,
                    m.phone, m.name AS memberName, b.status,
                    b.duration_minutes AS durationMinutes, b.bound_at AS boundAt,
-                   b.started_at AS startedAt, b.ended_at AS endedAt
+                   b.started_at AS startedAt, b.ended_at AS endedAt,
+                   c.issued_at AS issuedAt, c.charged_at AS chargedAt,
+                   c.operator_id AS operatorId, c.operator_username AS operatorUsername,
+                   c.operator_display_name AS operatorDisplayName
               FROM wristband_bindings b
               JOIN wristbands w ON w.id=b.wristband_id
               JOIN members m ON m.id=b.member_id
+              LEFT JOIN wristband_charge_records c ON c.id=(
+                  SELECT c2.id FROM wristband_charge_records c2
+                   WHERE c2.wristband_id=b.wristband_id ORDER BY c2.id DESC LIMIT 1)
             """;
         if (uid != null) sql += " WHERE w.card_uid_lookup_hash=?";
         sql += " ORDER BY b.bound_at DESC, b.id DESC";
@@ -203,7 +273,9 @@ public class CoreFlowController {
         String sql = """
             SELECT c.id, c.wristband_uid AS uid, c.duration_minutes AS durationMinutes,
                    unit_price_cents AS unitPriceCents, amount_cents AS amountCents,
-                   c.charged_at AS chargedAt
+                   c.issued_at AS issuedAt, c.charged_at AS chargedAt,
+                   c.operator_id AS operatorId, c.operator_username AS operatorUsername,
+                   c.operator_display_name AS operatorDisplayName
               FROM wristband_charge_records c
               JOIN wristbands w ON w.id=c.wristband_id
             """;
@@ -224,7 +296,7 @@ public class CoreFlowController {
     @Transactional
     public Map<String, Object> charge(@RequestBody ChargeRequest request,
             @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
-        authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
+        OperatorAuthorizationService.AuthorizedOperator operator = authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
         String uid = normalizeUid(request.uid());
         if (request.durationMinutes() == null || request.durationMinutes() < 1 || request.durationMinutes() > 1440) throw badRequest("购买分钟数必须是 1 到 1440 的整数");
         String uidHash = protectedData.wristbandLookupHash(uid);
@@ -244,14 +316,17 @@ public class CoreFlowController {
         Long wristbandId = jdbc.queryForObject(
                 "SELECT id FROM wristbands WHERE card_uid_lookup_hash=? OR (card_uid_lookup_hash IS NULL AND card_uid=?)",
                 Long.class, uidHash, uid);
-        int unitPriceCents = 100;
+        int unitPriceCents = ((Number) storeSettings.get().get("unitPriceCents")).intValue();
         jdbc.update("""
             INSERT INTO wristband_charge_records(
                 wristband_id, wristband_uid, duration_minutes,
-                unit_price_cents, amount_cents, charged_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                unit_price_cents, amount_cents, issued_at, charged_at,
+                operator_id, operator_username, operator_display_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, wristbandId, protectedData.encryptField("wristband_charge_records", "wristband_uid", uid), request.durationMinutes(), unitPriceCents,
-                request.durationMinutes() * unitPriceCents, now);
+                request.durationMinutes() * unitPriceCents, now, now, operator.id(),
+                protectedData.encryptField("wristband_charge_records", "operator_username", operator.username()),
+                protectedData.encryptField("wristband_charge_records", "operator_display_name", operator.displayName()));
         return findWristband(uid);
     }
 
@@ -345,12 +420,24 @@ public class CoreFlowController {
     }
 
     private Map<String, Object> decryptBindingRow(Map<String, Object> source) {
-        return decryptWristbandRow(source);
+        java.util.LinkedHashMap<String, Object> row = new java.util.LinkedHashMap<>(decryptWristbandRow(source));
+        decryptInto(row, "operatorUsername", "wristband_charge_records", "operator_username");
+        decryptInto(row, "operatorDisplayName", "wristband_charge_records", "operator_display_name");
+        row.put("operatorLabel", row.get("operatorDisplayName") == null && row.get("operatorUsername") == null
+                ? "历史记录 / 未知" : String.valueOf(row.getOrDefault("operatorDisplayName", row.get("operatorUsername"))));
+        return row;
     }
 
     private Map<String, Object> decryptChargeRow(Map<String, Object> source) {
         java.util.LinkedHashMap<String, Object> row = new java.util.LinkedHashMap<>(source);
         decryptInto(row, "uid", "wristband_charge_records", "wristband_uid");
+        decryptInto(row, "operatorUsername", "wristband_charge_records", "operator_username");
+        decryptInto(row, "operatorDisplayName", "wristband_charge_records", "operator_display_name");
+        if (row.get("operatorUsername") == null && row.get("operatorDisplayName") == null) {
+            row.put("operatorLabel", "历史记录 / 未知");
+        } else {
+            row.put("operatorLabel", String.valueOf(row.getOrDefault("operatorDisplayName", row.get("operatorUsername"))));
+        }
         return row;
     }
 
@@ -370,6 +457,12 @@ public class CoreFlowController {
         return raw == null ? "" : raw.replaceAll("\\D", "");
     }
 
+    private static String blankToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private String now() {
         return clock.instant().toString();
     }
@@ -386,5 +479,7 @@ public class CoreFlowController {
     public record BindRequest(String uid, Long memberId) {}
     public record UidRequest(String uid) {}
     public record MemberRequest(String phone, String name, String avatarId, String birthday, String gender, String createdBy,
+            String avatarImageBase64, String avatarImageMimeType) {}
+    public record MemberUpdateRequest(String phone, String name, String avatarId, String birthday, String gender,
             String avatarImageBase64, String avatarImageMimeType) {}
 }

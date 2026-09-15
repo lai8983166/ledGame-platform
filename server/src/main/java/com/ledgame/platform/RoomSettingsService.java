@@ -91,6 +91,7 @@ public class RoomSettingsService {
         result.put("lastEventType", null);
         result.put("lastEventAt", null);
         result.put("queueLength", 0);
+        result.put("players", List.of());
         return result;
     }
 }

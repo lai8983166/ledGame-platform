@@ -132,6 +132,8 @@ public class DataProtectionMigration implements ApplicationRunner {
         protectColumn("wristbands", "card_uid");
         populateLookup("wristbands", "card_uid", "card_uid_lookup_hash", "wristbands.card_uid");
         protectColumn("wristband_charge_records", "wristband_uid");
+        protectColumn("wristband_charge_records", "operator_username");
+        protectColumn("wristband_charge_records", "operator_display_name");
         protectColumn("game_play_records", "wristband_uid");
         protectColumn("game_play_records", "result_json");
         protectColumn("operator_action_logs", "operator_username");
@@ -177,6 +179,10 @@ public class DataProtectionMigration implements ApplicationRunner {
     private void ensureSchema() {
         addColumnIfMissing("members", "phone_lookup_hash", "TEXT");
         addColumnIfMissing("wristbands", "card_uid_lookup_hash", "TEXT");
+        addColumnIfMissing("wristband_charge_records", "operator_id", "INTEGER");
+        addColumnIfMissing("wristband_charge_records", "operator_username", "TEXT");
+        addColumnIfMissing("wristband_charge_records", "operator_display_name", "TEXT");
+        addColumnIfMissing("wristband_charge_records", "issued_at", "TEXT");
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS data_protection_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -235,6 +241,8 @@ public class DataProtectionMigration implements ApplicationRunner {
         verifyColumn("members", "gender");
         verifyColumn("wristbands", "card_uid");
         verifyColumn("wristband_charge_records", "wristband_uid");
+        verifyColumn("wristband_charge_records", "operator_username");
+        verifyColumn("wristband_charge_records", "operator_display_name");
         verifyColumn("game_play_records", "wristband_uid");
         verifyColumn("game_play_records", "result_json");
         verifyColumn("operator_action_logs", "operator_username");

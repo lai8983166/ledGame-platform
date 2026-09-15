@@ -75,4 +75,10 @@ describe("operator UI capability boundaries", () => {
     expect(settings).not.toContain("createFeatureSettings");
     expect(settings).not.toContain("开关只改变当前页面状态");
   });
+
+  it("opens or hides the secondary leaderboard immediately when the switch is clicked", () => {
+    expect(settings).toContain("const toggleSecondaryDisplay = async () =>");
+    expect(settings).toContain("applyBranding?.({ secondaryDisplayEnabled: enabled })");
+    expect(settings).toContain('@click="toggleSecondaryDisplay"');
+  });
 });

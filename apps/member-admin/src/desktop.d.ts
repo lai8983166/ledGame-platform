@@ -24,6 +24,7 @@ declare global {
     memberAdminDesktop?: {
       request(request: PlatformApiTransportRequest): Promise<PlatformApiTransportResponse>;
       diagnostics(): Promise<MemberAdminDiagnostics>;
+      applyBranding(input: { title?: string; iconDataUrl?: string | null; secondaryDisplayEnabled?: boolean }): Promise<{ applied: boolean }>;
       restartBackend(port: number): Promise<MemberAdminDiagnostics>;
       retryBackend(): Promise<MemberAdminDiagnostics>;
       chooseBackupDatabase(operatorId: number): Promise<import("@ledgame/platform-api-client").DatabaseBackupCandidate | null>;

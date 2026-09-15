@@ -33,6 +33,26 @@ describe("mapRoomStatus", () => {
     });
   });
 
+  it("maps live player scores and stable ranks from the room projection", () => {
+    const room = mapRoomStatus({
+      ip: "192.168.1.25", deviceId: "game-01", roomId: "room-01", roomName: "Room 01",
+      connectionId: "connection-1", online: true,
+      state: { engineState: "RUNNING" },
+      players: [
+        { id: 11, memberId: 11, name: "甲", score: 20, rank: 1 },
+        { id: 12, memberId: 12, name: "乙", score: 20, rank: 1 },
+        { id: 13, memberId: 13, name: "丙", score: 8, rank: 3 },
+      ],
+      lastSequence: 4, lastEventType: "GAME_STARTED", lastEventAt: "2026-08-09T12:00:00Z", queueLength: 0,
+    });
+
+    expect(room.players).toEqual([
+      expect.objectContaining({ id: "11", name: "甲", score: 20, rank: 1 }),
+      expect.objectContaining({ id: "12", name: "乙", score: 20, rank: 1 }),
+      expect.objectContaining({ id: "13", name: "丙", score: 8, rank: 3 }),
+    ]);
+  });
+
   it("maps controller discovery health instead of inventing a healthy device", () => {
     const room = mapRoomStatus({
       ip: "192.168.1.25", deviceId: "game-01", roomId: "room-01", roomName: "Room 01",

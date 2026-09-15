@@ -85,6 +85,15 @@ public class LeaderboardService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> getSummary() {
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        result.put("day", getLeaderboard("day"));
+        result.put("month", getLeaderboard("month"));
+        result.put("year", getLeaderboard("year"));
+        return result;
+    }
+
     private static long number(Object value) {
         return value == null ? 0 : ((Number) value).longValue();
     }

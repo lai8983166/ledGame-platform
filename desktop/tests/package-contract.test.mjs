@@ -47,6 +47,19 @@ describe("Windows desktop package contract", () => {
     expect(main).toContain("mainWindow.webContents.focus()");
   });
 
+  it("wires persisted branding and secondary-display settings through the desktop shell", () => {
+    const main = fs.readFileSync(path.join(root, "desktop/member-admin/main.cjs"), "utf8");
+    const preload = fs.readFileSync(path.join(root, "desktop/member-admin/preload.cjs"), "utf8");
+    expect(main).toContain("/api/store-settings");
+    expect(main).toContain("applyWindowBranding");
+    expect(main).toContain("secondary=1");
+    expect(main).toContain('ipcMain.handle("member-admin:apply-branding"');
+    expect(preload).toContain("member-admin:apply-branding");
+    expect(main).toContain("screen.getAllDisplays()");
+    expect(main).toContain("secondaryWindow.setFullScreen(true)");
+    expect(main).toContain("secondaryWindow.showInactive()");
+  });
+
   it("uses a single instance and closes the hidden startup window before normal operation", () => {
     const main = fs.readFileSync(path.join(root, "desktop/member-admin/main.cjs"), "utf8");
     expect(main).toContain("app.requestSingleInstanceLock()");

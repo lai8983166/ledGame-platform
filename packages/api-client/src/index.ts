@@ -27,8 +27,12 @@ export interface PlatformApiClient {
   ): Promise<TResponse | null>;
   getPlayerInfo(query: string | PlayerInfoQuery): Promise<PlayerInfo>;
   getLeaderboard(period: LeaderboardPeriod): Promise<LeaderboardResponse>;
+  getLeaderboardSummary(): Promise<LeaderboardSummary>;
+  getStoreSettings(): Promise<StoreSettings>;
+  updateStoreSettings(input: UpdateStoreSettingsInput): Promise<StoreSettings>;
   getDashboardOverview(): Promise<DashboardOverview>;
   deleteMember(id: number): Promise<DeletedMember>;
+  updateMember(id: number, input: UpdateMemberInput): Promise<PlayerProfile>;
   listRooms(): Promise<RoomStatus[]>;
   renameRoom(ip: string, roomName: string): Promise<RoomStatus>;
   loginOperator(username: string, password: string): Promise<OperatorProfile>;
@@ -91,6 +95,16 @@ export interface CreateMemberInput {
   gender?: string | null;
   createdBy?: string | null;
   /** Optional base64 payload produced by the kiosk camera flow. */
+  avatarImageBase64?: string | null;
+  avatarImageMimeType?: "image/jpeg" | "image/png" | string | null;
+}
+
+export interface UpdateMemberInput {
+  phone?: string | null;
+  name?: string | null;
+  avatarId?: string | null;
+  birthday?: string | null;
+  gender?: string | null;
   avatarImageBase64?: string | null;
   avatarImageMimeType?: "image/jpeg" | "image/png" | string | null;
 }
@@ -173,6 +187,32 @@ export interface LeaderboardResponse {
   periodEnd: string;
   generatedAt: string;
   entries: LeaderboardEntry[];
+}
+
+export interface LeaderboardSummary {
+  day: LeaderboardResponse;
+  month: LeaderboardResponse;
+  year: LeaderboardResponse;
+}
+
+export interface StoreSettings {
+  appTitle: string;
+  appIconPath?: string | null;
+  appIconSha256?: string | null;
+  appIconDataUrl?: string | null;
+  unitPriceCents: number;
+  unitPriceYuan: number;
+  secondaryDisplayEnabled: boolean;
+  updatedAt?: string | null;
+}
+
+export interface UpdateStoreSettingsInput {
+  appTitle?: string | null;
+  iconImageBase64?: string | null;
+  iconImageMimeType?: string | null;
+  clearIcon?: boolean | null;
+  unitPriceCents?: number | null;
+  secondaryDisplayEnabled?: boolean | null;
 }
 
 export interface DashboardOverview {
@@ -281,6 +321,17 @@ export interface RoomStatus {
   lastEventType: string | null;
   lastEventAt: string | null;
   queueLength: number;
+  players?: RoomLivePlayer[];
+}
+
+export interface RoomLivePlayer {
+  id: string | number;
+  memberId?: number | null;
+  name: string;
+  wristbandUid?: string | null;
+  score: number;
+  rank: number;
+  participating?: boolean;
 }
 
 export class PlatformApiError extends Error {
@@ -405,6 +456,20 @@ export function createPlatformApiClient({
       }
       return result;
     },
+    async getLeaderboardSummary(): Promise<LeaderboardSummary> {
+      const result = await client.request<LeaderboardSummary>("/api/leaderboard/summary");
+      if (!result) throw new PlatformApiError("排行榜响应为空", 502, "EMPTY_RESPONSE");
+      return result;
+    },
+    async getStoreSettings(): Promise<StoreSettings> {
+      return requireResponse(await client.request<StoreSettings>("/api/store-settings"), "门店设置响应为空");
+    },
+    async updateStoreSettings(input: UpdateStoreSettingsInput): Promise<StoreSettings> {
+      return requireResponse(await client.request<StoreSettings>("/api/store-settings", {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }), "门店设置保存响应为空");
+    },
     async getDashboardOverview(): Promise<DashboardOverview> {
       const result = await client.request<DashboardOverview>("/api/dashboard/overview");
       if (!result) {
@@ -424,6 +489,15 @@ export function createPlatformApiClient({
         throw new PlatformApiError("删除会员响应为空", 502, "EMPTY_RESPONSE");
       }
       return result;
+    },
+    async updateMember(id: number, input: UpdateMemberInput): Promise<PlayerProfile> {
+      if (!Number.isInteger(id) || id <= 0) {
+        throw new PlatformApiError("会员 ID 无效", 400, "INVALID_MEMBER_ID");
+      }
+      return requireResponse(await client.request<PlayerProfile>(`/api/members/${encodeURIComponent(String(id))}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }), "会员更新响应为空");
     },
     async listRooms(): Promise<RoomStatus[]> {
       const result = await client.request<RoomStatus[]>("/api/rooms");

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -141,6 +142,36 @@ class RoomConnectionRegistryTest {
         assertThat((Map<String, Object>) resumedState.get("gameTime"))
                 .containsEntry("remainingMillis", 55_000)
                 .containsEntry("running", true);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void projectsLivePlayersWithStableTiedRanksAndClearsThemWhenIdle() throws Exception {
+        WebSocketSession session = session("session-players", "192.168.1.35");
+        registry.register(session, objectMapper.readTree("{\"type\":\"HELLO\"}"));
+        registry.accept(session, objectMapper.readTree("""
+                {"type":"ROOM_SNAPSHOT","sequence":1,"state":{
+                  "engineState":"RUNNING",
+                  "gameplay":{"players":[{"totalScore":20},{"totalScore":20},{"totalScore":8}]},
+                  "playerAccesses":[
+                    {"member":{"id":11,"name":"甲"},"access":{"uid":"2283055601"}},
+                    {"member":{"id":12,"name":"乙"},"access":{"uid":"2283055602"}},
+                    {"member":{"id":13,"name":"丙"},"access":{"uid":"2283055603"}}
+                  ]
+                }}
+                """));
+
+        Map<String, Object> projection = registry.find("192.168.1.35");
+        List<Map<String, Object>> players = (List<Map<String, Object>>) projection.get("players");
+        assertThat(players).hasSize(3);
+        assertThat(players.get(0)).containsEntry("name", "甲").containsEntry("score", 20L).containsEntry("rank", 1);
+        assertThat(players.get(1)).containsEntry("name", "乙").containsEntry("score", 20L).containsEntry("rank", 1);
+        assertThat(players.get(2)).containsEntry("name", "丙").containsEntry("score", 8L).containsEntry("rank", 3);
+
+        registry.accept(session, objectMapper.readTree("""
+                {"type":"GAME_ENDED","sequence":2,"state":{"engineState":"IDLE","gameplay":{"players":[]},"playerAccesses":[]}}
+                """));
+        assertThat((List<Map<String, Object>>) registry.find("192.168.1.35").get("players")).isEmpty();
     }
 
     private static WebSocketSession session(String id, String ip) {

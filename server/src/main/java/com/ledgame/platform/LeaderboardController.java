@@ -31,4 +31,13 @@ public class LeaderboardController {
         }
         return service.getLeaderboard(period);
     }
+
+    @GetMapping("/summary")
+    public Map<String, Object> getSummary(
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        if (operatorId != null) {
+            authorization.requireCapability(operatorId, OperatorCapability.OPERATIONS_VIEW);
+        }
+        return service.getSummary();
+    }
 }

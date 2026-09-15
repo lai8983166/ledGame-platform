@@ -53,11 +53,16 @@ public class OperationalDataExportService {
     @Transactional(readOnly = true)
     public byte[] wristbandCharges() {
         return queryCsv("""
-            SELECT id, wristband_uid, duration_minutes, unit_price_cents, amount_cents, charged_at
+            SELECT id, wristband_uid, duration_minutes, unit_price_cents, amount_cents,
+                   issued_at, charged_at, operator_id, operator_username, operator_display_name
               FROM wristband_charge_records ORDER BY id
-            """, List.of("交易ID", "手环UID", "充值分钟", "每分钟单价（分）", "交易金额（分）", "交易时间"),
-                row -> decrypt(row, "wristband_uid", "wristband_charge_records", "wristband_uid"),
-                "id", "wristband_uid", "duration_minutes", "unit_price_cents", "amount_cents", "charged_at");
+            """, List.of("交易ID", "手环UID", "充值分钟", "每分钟单价（分）", "交易金额（分）", "发卡时间", "充值时间", "操作员ID", "操作员账号", "操作员名称"),
+                row -> {
+                    decrypt(row, "wristband_uid", "wristband_charge_records", "wristband_uid");
+                    decrypt(row, "operator_username", "wristband_charge_records", "operator_username");
+                    decrypt(row, "operator_display_name", "wristband_charge_records", "operator_display_name");
+                },
+                "id", "wristband_uid", "duration_minutes", "unit_price_cents", "amount_cents", "issued_at", "charged_at", "operator_id", "operator_username", "operator_display_name");
     }
 
     @Transactional(readOnly = true)

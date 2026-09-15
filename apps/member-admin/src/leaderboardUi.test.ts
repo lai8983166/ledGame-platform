@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./views/LeaderboardView.vue", import.meta.url), "utf8");
+const secondary = readFileSync(new URL("./views/SecondaryLeaderboardView.vue", import.meta.url), "utf8");
+const style = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+const app = readFileSync(new URL("./App.vue", import.meta.url), "utf8");
 const kiosk = readFileSync(new URL("../../registration-kiosk/src/App.vue", import.meta.url), "utf8");
 
 describe("real leaderboard and explicit kiosk scan UI", () => {
@@ -25,5 +28,22 @@ describe("real leaderboard and explicit kiosk scan UI", () => {
     expect(kiosk).toContain('data-testid="kiosk-scan-dialog"');
     expect(kiosk).toContain('data-testid="kiosk-scan-cancel"');
     expect(kiosk).not.toContain('data-testid="kiosk-wristband-uid"');
+  });
+
+  it("renders all three persisted leaderboard periods on the secondary screen", () => {
+    expect(app).toContain("SecondaryLeaderboardView");
+    expect(app).toContain('secondary") === "1"');
+    expect(secondary).toContain("getLeaderboardSummary");
+    expect(secondary).toContain('key: "day"');
+    expect(secondary).toContain('key: "month"');
+    expect(secondary).toContain('key: "year"');
+    expect(secondary).toContain('window.addEventListener("online", refresh)');
+  });
+
+  it("fills the secondary display and scales its leaderboard layout to the viewport", () => {
+    expect(style).toContain("width: 100vw; height: 100vh");
+    expect(style).toContain("max-width: none");
+    expect(style).toContain("grid-template-rows: auto minmax(0, 1fr)");
+    expect(style).toContain("font-size: clamp(24px, 2vw, 44px)");
   });
 });

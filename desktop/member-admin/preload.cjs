@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("memberAdminDesktop", {
   request: (request) => ipcRenderer.invoke("member-admin:api-request", request),
   diagnostics: () => ipcRenderer.invoke("member-admin:diagnostics"),
+  applyBranding: (input) => ipcRenderer.invoke("member-admin:apply-branding", input),
   restartBackend: (port) => ipcRenderer.invoke("member-admin:restart-backend", { port }),
   retryBackend: () => ipcRenderer.invoke("member-admin:retry-backend"),
   chooseBackupDatabase: (operatorId) => ipcRenderer.invoke("member-admin:choose-backup-database", { operatorId }),

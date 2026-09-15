@@ -1,6 +1,8 @@
 const { buildHttpBaseUrl } = require("./network.cjs");
 
-const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "DELETE"]);
+// Keep this whitelist aligned with the platform API.  Store settings use
+// PATCH so the renderer can update only the fields that changed.
+const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 // A captured avatar is capped at 256 KiB decoded. Base64 plus the JSON
 // envelope is roughly 342 KiB, so the transport must allow that overhead.
 const MAX_REQUEST_BYTES = 384 * 1024;

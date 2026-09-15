@@ -48,7 +48,7 @@ public class OperatorAuthorizationService {
     static boolean allowed(OperatorRole role, OperatorCapability capability) {
         if (role == OperatorRole.FACTORY_ADMIN) return true;
         return switch (capability) {
-            case WRISTBAND_MANAGE, FEATURE_SETTINGS -> true;
+            case WRISTBAND_MANAGE, MEMBER_MANAGE, FEATURE_SETTINGS -> true;
             case OPERATIONS_VIEW, DATA_EXPORT -> role == OperatorRole.STORE_MANAGER;
             case MEMBER_DELETE, FACTORY_MAINTENANCE -> false;
         };

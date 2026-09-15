@@ -19,11 +19,13 @@ class OperatorAuthorizationPolicyTest {
     private static Stream<Arguments> matrix() {
         Set<OperatorCapability> manager = Set.of(
                 OperatorCapability.WRISTBAND_MANAGE,
+                OperatorCapability.MEMBER_MANAGE,
                 OperatorCapability.OPERATIONS_VIEW,
                 OperatorCapability.FEATURE_SETTINGS,
                 OperatorCapability.DATA_EXPORT);
         Set<OperatorCapability> clerk = Set.of(
                 OperatorCapability.WRISTBAND_MANAGE,
+                OperatorCapability.MEMBER_MANAGE,
                 OperatorCapability.FEATURE_SETTINGS);
         return Stream.of(OperatorRole.values()).flatMap(role ->
                 Stream.of(OperatorCapability.values()).map(capability -> Arguments.of(

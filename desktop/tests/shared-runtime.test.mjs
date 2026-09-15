@@ -56,6 +56,14 @@ describe("shared desktop runtime", () => {
     })).toThrowError(expect.objectContaining({ code: "INVALID_OPERATOR_ID" }));
   });
 
+  it("allows PATCH requests used by store settings", () => {
+    expect(validateApiRequest({
+      path: "/api/store-settings",
+      method: "PATCH",
+      body: JSON.stringify({ secondaryDisplayEnabled: true }),
+    }).method).toBe("PATCH");
+  });
+
   it("allows the bounded base64 avatar request envelope", () => {
     expect(MAX_REQUEST_BYTES).toBe(384 * 1024);
     expect(() => validateApiRequest({ path: "/api/members", method: "POST", body: JSON.stringify({ avatarImageBase64: "A".repeat(340 * 1024) }) })).not.toThrow();

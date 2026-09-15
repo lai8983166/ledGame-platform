@@ -81,6 +81,18 @@ export function mapRoomStatus(source: RoomStatus): Room {
   const engineState = String(state.engineState || "IDLE").toUpperCase();
   const playing = engineState === "RUNNING" || engineState === "STARTING" || engineState === "SETTLING";
   const gameTime = normalizeGameTime(state.gameTime);
+  const palette = ["#5b7cff", "#9b6dff", "#18b6a4", "#ff8a65", "#62758a", "#ed64a6"];
+  const players = Array.isArray(source.players) ? source.players.map((player, index) => {
+    const name = String(player.name || `玩家 ${index + 1}`);
+    return {
+      id: String(player.id ?? player.memberId ?? `player-${index + 1}`),
+      name,
+      initials: name.trim().slice(-2).toUpperCase(),
+      score: Math.max(0, Number(player.score) || 0),
+      rank: Math.max(1, Number(player.rank) || index + 1),
+      color: palette[index % palette.length],
+    };
+  }) : [];
   return {
     id: source.ip,
     code: source.ip,
@@ -98,7 +110,7 @@ export function mapRoomStatus(source: RoomStatus): Room {
     gameTimeMode: gameTime?.mode,
     gameTimeRemainingMillis: gameTime?.remainingMillis,
     gameTimeRunning: gameTime?.running,
-    players: [],
+    players,
     hardware: normalizeHardware(state.hardware, source.online),
   };
 }

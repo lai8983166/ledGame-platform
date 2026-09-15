@@ -2,6 +2,8 @@ import type { OperatorProfile } from "@ledgame/platform-api-client";
 
 export type OperatorCapability =
   | "operationsView"
+  | "memberManage"
+  | "featureSettings"
   | "deleteMember"
   | "clearWristbandBalance"
   | "renameRoom"
@@ -9,12 +11,12 @@ export type OperatorCapability =
 
 const MATRIX: Record<OperatorProfile["accountType"], ReadonlySet<OperatorCapability>> = {
   FACTORY_ADMIN: new Set([
-    "operationsView", "deleteMember", "clearWristbandBalance", "renameRoom", "exportData",
+    "operationsView", "memberManage", "featureSettings", "deleteMember", "clearWristbandBalance", "renameRoom", "exportData",
   ]),
   STORE_MANAGER: new Set([
-    "operationsView", "clearWristbandBalance", "renameRoom", "exportData",
+    "operationsView", "memberManage", "featureSettings", "clearWristbandBalance", "renameRoom", "exportData",
   ]),
-  CLERK: new Set(["clearWristbandBalance"]),
+  CLERK: new Set(["memberManage", "featureSettings", "clearWristbandBalance"]),
 };
 
 export function canUseOperatorCapability(

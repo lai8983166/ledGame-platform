@@ -53,6 +53,9 @@ export interface Member {
   avatarUrl?: string | null;
   pointsTotal?: number;
   rank?: number;
+  avatarId?: string | null;
+  birthday?: string | null;
+  gender?: string | null;
 }
 
 export type WristbandState = "empty" | "charged" | "ready" | "active" | "expired";

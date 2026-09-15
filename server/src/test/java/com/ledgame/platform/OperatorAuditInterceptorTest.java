@@ -68,4 +68,31 @@ class OperatorAuditInterceptorTest {
                         "DATABASE_RECOVERY_RESPONSE_IMPORTED_FAILED",
                         "DATABASE_RECOVERY_REQUEST_CANCELLED_DENIED");
     }
+
+    @Test
+    void memberAndStoreSettingsMutationsAreMappedToAuditableActions() throws Exception {
+        OperatorActionLogService logs = mock(OperatorActionLogService.class);
+        OperatorSnapshot operator = new OperatorSnapshot(7L, "factory", "Factory");
+        when(logs.resolve(7L)).thenReturn(operator);
+        OperatorAuditInterceptor interceptor = new OperatorAuditInterceptor(logs);
+
+        MockHttpServletRequest memberRequest = new MockHttpServletRequest("PUT", "/api/members/42");
+        memberRequest.addHeader("X-Operator-Id", "7");
+        MockHttpServletResponse memberResponse = new MockHttpServletResponse();
+        interceptor.preHandle(memberRequest, memberResponse, new Object());
+        memberResponse.setStatus(200);
+        interceptor.afterCompletion(memberRequest, memberResponse, new Object(), null);
+
+        MockHttpServletRequest settingsRequest = new MockHttpServletRequest("PATCH", "/api/store-settings");
+        settingsRequest.addHeader("X-Operator-Id", "7");
+        MockHttpServletResponse settingsResponse = new MockHttpServletResponse();
+        interceptor.preHandle(settingsRequest, settingsResponse, new Object());
+        settingsResponse.setStatus(200);
+        interceptor.afterCompletion(settingsRequest, settingsResponse, new Object(), null);
+
+        var actions = org.mockito.ArgumentCaptor.forClass(OperatorAuditAction.class);
+        verify(logs, org.mockito.Mockito.times(2)).record(eq(operator), actions.capture(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        assertThat(actions.getAllValues()).extracting(OperatorAuditAction::action)
+                .containsExactlyInAnyOrder("MEMBER_UPDATED", "STORE_SETTINGS_UPDATED");
+    }
 }

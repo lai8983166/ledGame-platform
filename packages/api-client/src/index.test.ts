@@ -228,6 +228,30 @@ describe("platform api client player info", () => {
     await expect(createPlatformApiClient().listRooms()).resolves.toEqual(response);
   });
 
+  it("uses the store settings, member update and leaderboard summary contracts", async () => {
+    const settings = {
+      appTitle: "测试门店", appIconPath: null, appIconSha256: null, appIconDataUrl: null,
+      unitPriceCents: 250, unitPriceYuan: 2.5, secondaryDisplayEnabled: true,
+    };
+    const member = { id: 7, phone: "13800138000", name: "已编辑", status: "ACTIVE", createdAt: "now", createdBy: "test" };
+    const summary = { day: { period: "day", entries: [] }, month: { period: "month", entries: [] }, year: { period: "year", entries: [] } };
+    const transport = vi.fn()
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(settings) })
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(settings) })
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(member) })
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify(summary) });
+    const client = createPlatformApiClient({ transport, operatorIdProvider: () => 7 });
+
+    await expect(client.getStoreSettings()).resolves.toEqual(settings);
+    await expect(client.updateStoreSettings({ unitPriceCents: 250, secondaryDisplayEnabled: true })).resolves.toEqual(settings);
+    await expect(client.updateMember(7, { name: "已编辑", phone: "13800138000" })).resolves.toEqual(member);
+    await expect(client.getLeaderboardSummary()).resolves.toEqual(summary);
+    expect(transport.mock.calls.map(([request]) => [request.path, request.method])).toEqual([
+      ["/api/store-settings", "GET"], ["/api/store-settings", "PATCH"],
+      ["/api/members/7", "PUT"], ["/api/leaderboard/summary", "GET"],
+    ]);
+  });
+
   it("soft deletes a member by immutable database id", async () => {
     const response = { id: 42, phone: "13800138000", status: "DELETED", deletedAt: "2026-08-26T12:00:00Z" };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));

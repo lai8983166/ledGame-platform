@@ -1,6 +1,6 @@
 const path = require("node:path");
 const fs = require("node:fs");
-const { app, BrowserWindow, dialog, ipcMain, clipboard } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, clipboard, nativeImage, screen } = require("electron");
 const { createProductConfigStore } = require("../shared/config-store.cjs");
 const { createApiTransport } = require("../shared/api-transport.cjs");
 const { assertPortAvailable, checkHealth, listLanIpv4, validatePort } = require("../shared/network.cjs");
@@ -21,6 +21,8 @@ app.setName("LED Game Member Admin");
 if (process.env.LEDGAME_USER_DATA) app.setPath("userData", path.resolve(process.env.LEDGAME_USER_DATA));
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 let mainWindow;
+let secondaryWindow;
+let secondaryDisplayListenersRegistered = false;
 let startupWindow;
 let store;
 let settings = { port: 8090 };
@@ -54,6 +56,92 @@ function refocusMainWindow() {
   mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.focus();
+}
+
+function applyWindowBranding(value) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (Object.prototype.hasOwnProperty.call(value || {}, "title")) {
+      const title = String(value?.title || "LED GAME MEMBER ADMIN").trim() || "LED GAME MEMBER ADMIN";
+      mainWindow.setTitle(title);
+    }
+    if (Object.prototype.hasOwnProperty.call(value || {}, "iconDataUrl")) {
+      const iconDataUrl = String(value?.iconDataUrl || "").trim();
+      if (iconDataUrl.startsWith("data:image/")) {
+        const icon = nativeImage.createFromDataURL(iconDataUrl);
+        if (!icon.isEmpty()) mainWindow.setIcon(icon);
+      }
+    }
+  }
+}
+
+function getSecondaryDisplay() {
+  const displays = screen.getAllDisplays();
+  const primary = screen.getPrimaryDisplay();
+  return displays.find((display) => display.id !== primary.id) || primary;
+}
+
+function positionSecondaryWindow() {
+  if (!secondaryWindow || secondaryWindow.isDestroyed()) return;
+  const bounds = getSecondaryDisplay().bounds;
+  secondaryWindow.setBounds({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height });
+  secondaryWindow.setFullScreen(true);
+}
+
+function registerSecondaryDisplayListeners() {
+  if (secondaryDisplayListenersRegistered) return;
+  secondaryDisplayListenersRegistered = true;
+  const reposition = () => {
+    if (!secondaryWindow || secondaryWindow.isDestroyed()) return;
+    positionSecondaryWindow();
+    secondaryWindow.showInactive();
+  };
+  screen.on("display-added", reposition);
+  screen.on("display-removed", reposition);
+  screen.on("display-metrics-changed", reposition);
+}
+
+async function setSecondaryDisplay(enabled) {
+  if (!enabled) {
+    if (secondaryWindow && !secondaryWindow.isDestroyed()) secondaryWindow.hide();
+    return;
+  }
+  if (!secondaryWindow || secondaryWindow.isDestroyed()) {
+    const display = getSecondaryDisplay();
+    secondaryWindow = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      show: false,
+      frame: false,
+      fullscreenable: true,
+      autoHideMenuBar: true,
+      backgroundColor: "#071324",
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    secondaryWindow.setMenuBarVisibility(false);
+    secondaryWindow.on("closed", () => { secondaryWindow = undefined; });
+    registerSecondaryDisplayListeners();
+    if (devUrl) await secondaryWindow.loadURL(`${devUrl}${devUrl.includes("?") ? "&" : "?"}secondary=1`);
+    else await secondaryWindow.loadFile(path.join(projectRoot, "apps/member-admin/dist/index.html"), { query: { secondary: "1" } });
+  }
+  positionSecondaryWindow();
+  secondaryWindow.showInactive();
+}
+
+async function loadAndApplyStoreSettings() {
+  try {
+    const result = parseApiResponse(await transport({ path: "/api/store-settings", method: "GET" }));
+    applyWindowBranding({ title: result.appTitle, iconDataUrl: result.appIconDataUrl });
+    await setSecondaryDisplay(result.secondaryDisplayEnabled === true);
+  } catch {
+    applyWindowBranding({ title: "LED GAME MEMBER ADMIN" });
+  }
 }
 
 function readDiskFreePercent(targetPath) {
@@ -258,7 +346,8 @@ async function applyPreparedImport(prepared) {
 }
 
 function registerIpc() {
-  const fromMainWindow = (event) => event.sender.id === mainWindow?.webContents.id;
+  const fromMainWindow = (event) => event.sender.id === mainWindow?.webContents.id
+    || event.sender.id === secondaryWindow?.webContents.id;
   const fromStartup = (event) => event.sender.id === startupWindow?.webContents.id;
   transport = createApiTransport(async () => `http://127.0.0.1:${settings.port}`);
   ipcMain.handle("member-admin:activation", async (event, code) => {
@@ -308,6 +397,12 @@ function registerIpc() {
   ipcMain.handle("member-admin:diagnostics", (event) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
     return diagnostics();
+  });
+  ipcMain.handle("member-admin:apply-branding", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    applyWindowBranding(input);
+    if (typeof input?.secondaryDisplayEnabled === "boolean") await setSecondaryDisplay(input.secondaryDisplayEnabled);
+    return { applied: true };
   });
   ipcMain.handle("member-admin:restart-backend", (event, input) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
@@ -468,6 +563,7 @@ async function createWindow() {
   });
   if (devUrl) await mainWindow.loadURL(devUrl);
   else await mainWindow.loadFile(path.join(projectRoot, "apps/member-admin/dist/index.html"));
+  await loadAndApplyStoreSettings();
 }
 
 async function ensureStartupWindow() {

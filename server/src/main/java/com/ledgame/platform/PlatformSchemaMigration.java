@@ -13,10 +13,10 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 3;
+    public static final int CURRENT_SCHEMA_VERSION = 4;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
             "members", "wristbands", "wristband_charge_records", "wristband_bindings",
-            "game_play_records", "room_settings", "store_feature_settings",
+            "game_play_records", "room_settings", "store_feature_settings", "store_settings",
             "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
 
@@ -27,6 +27,8 @@ public class PlatformSchemaMigration implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         migrateOperatorAccounts();
+        migrateStoreSettings();
+        migrateChargeAuditFields();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -61,6 +63,56 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         }
         ensureDatabaseStateAndRevisionTriggers();
         jdbc.execute("PRAGMA user_version=" + CURRENT_SCHEMA_VERSION);
+    }
+
+    private void migrateStoreSettings() {
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS store_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                app_title TEXT,
+                app_icon_path TEXT,
+                app_icon_sha256 TEXT,
+                unit_price_cents INTEGER NOT NULL DEFAULT 100 CHECK (unit_price_cents > 0),
+                secondary_display_enabled INTEGER NOT NULL DEFAULT 0 CHECK (secondary_display_enabled IN (0, 1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL)
+            """);
+        addColumnIfMissing("store_settings", "app_title", "TEXT");
+        addColumnIfMissing("store_settings", "app_icon_path", "TEXT");
+        addColumnIfMissing("store_settings", "app_icon_sha256", "TEXT");
+        addColumnIfMissing("store_settings", "unit_price_cents", "INTEGER NOT NULL DEFAULT 100");
+        addColumnIfMissing("store_settings", "secondary_display_enabled", "INTEGER NOT NULL DEFAULT 0");
+        addColumnIfMissing("store_settings", "created_at", "TEXT");
+        addColumnIfMissing("store_settings", "updated_at", "TEXT");
+        String now = java.time.Instant.now().toString();
+        jdbc.update("""
+            INSERT OR IGNORE INTO store_settings(
+                id, app_title, app_icon_path, app_icon_sha256,
+                unit_price_cents, secondary_display_enabled, created_at, updated_at)
+            VALUES (1, NULL, NULL, NULL, 100, 0, ?, ?)
+            """, now, now);
+        jdbc.update("UPDATE store_settings SET unit_price_cents=100 WHERE unit_price_cents IS NULL OR unit_price_cents <= 0");
+        jdbc.update("UPDATE store_settings SET secondary_display_enabled=0 WHERE secondary_display_enabled IS NULL");
+    }
+
+    private void migrateChargeAuditFields() {
+        if (!tableExists("wristband_charge_records")) return;
+        addColumnIfMissing("wristband_charge_records", "operator_id", "INTEGER");
+        addColumnIfMissing("wristband_charge_records", "operator_username", "TEXT");
+        addColumnIfMissing("wristband_charge_records", "operator_display_name", "TEXT");
+        addColumnIfMissing("wristband_charge_records", "issued_at", "TEXT");
+    }
+
+    private boolean tableExists(String table) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", Integer.class, table);
+        return count != null && count > 0;
+    }
+
+    private void addColumnIfMissing(String table, String column, String definition) {
+        boolean present = jdbc.queryForList("PRAGMA table_info(" + table + ")").stream()
+                .anyMatch(row -> column.equalsIgnoreCase(String.valueOf(row.get("name"))));
+        if (!present) jdbc.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
     }
 
     private void migrateOperatorAccounts() {

@@ -100,6 +100,23 @@ CREATE TABLE IF NOT EXISTS store_feature_settings (
 INSERT OR IGNORE INTO store_feature_settings(id, child_mode, created_at, updated_at)
 VALUES (1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
+CREATE TABLE IF NOT EXISTS store_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    app_title TEXT,
+    app_icon_path TEXT,
+    app_icon_sha256 TEXT,
+    unit_price_cents INTEGER NOT NULL DEFAULT 100 CHECK (unit_price_cents > 0),
+    secondary_display_enabled INTEGER NOT NULL DEFAULT 0 CHECK (secondary_display_enabled IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO store_settings(
+    id, app_title, app_icon_path, app_icon_sha256,
+    unit_price_cents, secondary_display_enabled, created_at, updated_at)
+VALUES (1, NULL, NULL, NULL, 100, 0,
+        strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
 CREATE TABLE IF NOT EXISTS operator_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,

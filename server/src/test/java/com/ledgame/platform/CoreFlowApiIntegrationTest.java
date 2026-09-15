@@ -74,6 +74,9 @@ class CoreFlowApiIntegrationTest {
     private AvatarStorageService avatarStorage;
 
     @Autowired
+    private BrandingStorageService brandingStorage;
+
+    @Autowired
     private MutableClock clock;
     private long factoryOperatorId;
 
@@ -87,6 +90,14 @@ class CoreFlowApiIntegrationTest {
         jdbc.update("DELETE FROM wristband_bindings");
         jdbc.update("DELETE FROM wristbands");
         jdbc.update("DELETE FROM members");
+        jdbc.update("UPDATE store_settings SET app_title=NULL, app_icon_path=NULL, app_icon_sha256=NULL, unit_price_cents=100, secondary_display_enabled=0");
+        try {
+            Files.deleteIfExists(brandingStorage.root().resolve("app-icon.png"));
+            Files.deleteIfExists(brandingStorage.root().resolve("app-icon.jpg"));
+            Files.deleteIfExists(brandingStorage.root().resolve("app-icon.webp"));
+        } catch (IOException ignored) {
+            // The icon fallback test must not make unrelated scenarios fail.
+        }
         avatarStorage.storedFiles().forEach(path -> {
             String fileName = path.getFileName().toString();
             avatarStorage.delete("uploaded:" + fileName.substring(0, fileName.length() - 4));
@@ -121,6 +132,87 @@ class CoreFlowApiIntegrationTest {
         assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(duplicate.getBody()).containsEntry("message", "该手机号已经注册");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM members", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void updatesMemberProfileWithoutChangingIdentityAndRejectsDuplicatePhone() {
+        long memberId = number(post("/api/members", Map.of(
+                "phone", "13800138010", "name", "待编辑会员", "birthday", "2000-01-01", "gender", "男")).getBody().get("id"));
+        long otherId = number(post("/api/members", Map.of(
+                "phone", "13800138011", "name", "另一会员")).getBody().get("id"));
+
+        ResponseEntity<Map<String, Object>> updated = put("/api/members/" + memberId, Map.of(
+                "phone", "13900139010", "name", "已编辑会员", "birthday", "2001-02-02", "gender", "女", "avatarId", "avatar-09"));
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(updated.getBody().get("id"))).isEqualTo(memberId);
+        assertThat(updated.getBody())
+                .containsEntry("phone", "13900139010")
+                .containsEntry("name", "已编辑会员")
+                .containsEntry("birthday", "2001-02-02")
+                .containsEntry("gender", "女");
+        ResponseEntity<Map<String, Object>> duplicate = put("/api/members/" + memberId, Map.of(
+                "phone", "13800138011", "name", "不应保存"));
+        assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(duplicate.getBody()).containsEntry("message", "该手机号已经注册");
+        assertThat(number(post("/api/members", Map.of(
+                "phone", "13900139012", "name", "第三会员")).getBody().get("id"))).isGreaterThan(otherId);
+    }
+
+    @Test
+    void persistsStoreSettingsUsesConfiguredPriceAndAggregatesThreeLeaderboards() {
+        ResponseEntity<Map<String, Object>> defaults = get("/api/store-settings");
+        assertThat(defaults.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(defaults.getBody()).containsEntry("appTitle", StoreSettingsService.DEFAULT_TITLE)
+                .containsEntry("unitPriceCents", 100)
+                .containsEntry("secondaryDisplayEnabled", false);
+
+        ResponseEntity<Map<String, Object>> saved = http.exchange(
+                "/api/store-settings", HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("appTitle", "测试门店", "unitPriceCents", 250,
+                        "secondaryDisplayEnabled", true), operatorHeaders()),
+                new ParameterizedTypeReference<>() {});
+        assertThat(saved.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(saved.getBody()).containsEntry("appTitle", "测试门店")
+                .containsEntry("unitPriceCents", 250)
+                .containsEntry("secondaryDisplayEnabled", true);
+
+        post("/api/wristbands/charge", Map.of("uid", "2283055699", "durationMinutes", 12));
+        ResponseEntity<List<Map<String, Object>>> charges = getList("/api/records/wristband-charges");
+        assertThat(charges.getBody()).singleElement().satisfies(record -> assertThat(record)
+                .containsEntry("durationMinutes", 12)
+                .containsEntry("unitPriceCents", 250)
+                .containsEntry("amountCents", 3000)
+                .containsEntry("operatorLabel", "出厂管理员")
+                .containsKey("issuedAt"));
+
+        ResponseEntity<Map<String, Object>> invalid = http.exchange(
+                "/api/store-settings", HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("unitPriceCents", 0), operatorHeaders()),
+                new ParameterizedTypeReference<>() {});
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(get("/api/store-settings").getBody()).containsEntry("unitPriceCents", 250);
+
+        ResponseEntity<Map<String, Object>> summary = get("/api/leaderboard/summary");
+        assertThat(summary.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(summary.getBody()).containsKeys("day", "month", "year");
+    }
+
+    @Test
+    void validatesBrandIconAndFallsBackWhenTheRuntimeAssetIsMissing() throws IOException {
+        String png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        ResponseEntity<Map<String, Object>> saved = http.exchange(
+                "/api/store-settings", HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("iconImageBase64", png, "iconImageMimeType", "image/png"), operatorHeaders()),
+                new ParameterizedTypeReference<>() {});
+        assertThat(saved.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(saved.getBody()).containsEntry("appIconPath", "branding/app-icon.png")
+                .containsKey("appIconSha256");
+        assertThat(String.valueOf(saved.getBody().get("appIconDataUrl"))).startsWith("data:image/png;base64,");
+
+        Files.deleteIfExists(brandingStorage.root().resolve("app-icon.png"));
+        ResponseEntity<Map<String, Object>> fallback = get("/api/store-settings");
+        assertThat(fallback.getBody()).containsEntry("appIconPath", null)
+                .containsEntry("appIconDataUrl", null);
     }
 
     @Test

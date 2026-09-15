@@ -78,7 +78,10 @@ public class RoomConnectionRegistry {
         if (connection != null) {
             byIp.remove(connection.ip(), connection);
             Map<String, Object> projection = roomProjections.get(connection.ip());
-            if (projection != null) projection.put("online", false);
+            if (projection != null) {
+                projection.put("online", false);
+                projection.put("players", List.of());
+            }
         }
     }
 
@@ -156,7 +159,81 @@ public class RoomConnectionRegistry {
         item.put("lastEventType", connection.lastEventType());
         item.put("lastEventAt", connection.lastEventAt());
         item.put("queueLength", connection.queueLength());
+        item.put("players", livePlayers(connection.state()));
         roomProjections.put(connection.ip(), item);
+    }
+
+    private List<Map<String, Object>> livePlayers(Map<String, Object> state) {
+        if (state == null) return List.of();
+        String engineState = String.valueOf(state.getOrDefault("engineState", "IDLE")).toUpperCase();
+        if (!(engineState.equals("RUNNING") || engineState.equals("STARTING")
+                || engineState.equals("PREPARING") || engineState.equals("SETTLING"))) return List.of();
+        Map<String, Object> gameplay = state.get("gameplay") instanceof Map<?, ?> raw
+                ? toStringMap(raw) : Map.of();
+        List<?> gameplayPlayers = gameplay.get("players") instanceof List<?> list ? list : List.of();
+        List<?> accesses = state.get("playerAccesses") instanceof List<?> list ? list : List.of();
+        // A score array without member/access identities is not enough to claim
+        // that a real member is playing. Keep the room card honest for older
+        // clients that have not started reporting playerAccesses yet.
+        int count = accesses.size();
+        if (count == 0) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            Map<String, Object> gamePlayer = index < gameplayPlayers.size() && gameplayPlayers.get(index) instanceof Map<?, ?> raw
+                    ? toStringMap(raw) : Map.of();
+            Map<String, Object> access = index < accesses.size() && accesses.get(index) instanceof Map<?, ?> raw
+                    ? toStringMap(raw) : Map.of();
+            Map<String, Object> member = access.get("member") instanceof Map<?, ?> raw
+                    ? toStringMap(raw) : Map.of();
+            Map<String, Object> accessInfo = access.get("access") instanceof Map<?, ?> raw
+                    ? toStringMap(raw) : Map.of();
+            LinkedHashMap<String, Object> player = new LinkedHashMap<>();
+            player.put("id", member.getOrDefault("id", accessInfo.getOrDefault("uid", "player-" + (index + 1))));
+            player.put("memberId", member.get("id"));
+            player.put("name", text(member.get("name"), text(member.get("phone"), "玩家 " + (index + 1))));
+            player.put("wristbandUid", accessInfo.get("uid"));
+            player.put("playerIndex", index);
+            long currentScore = score(gamePlayer);
+            if (gamePlayer.isEmpty() && count == 1) {
+                currentScore = number(gameplay.get("memberPoints"));
+            }
+            player.put("score", currentScore);
+            player.put("participating", true);
+            result.add(player);
+        }
+        List<Map<String, Object>> ranking = result.stream()
+                .sorted(java.util.Comparator.comparingLong((Map<String, Object> item) -> number(item.get("score"))).reversed()
+                        .thenComparingInt(item -> (int) number(item.get("playerIndex"))))
+                .toList();
+        long previous = Long.MIN_VALUE;
+        int rank = 0;
+        for (int index = 0; index < ranking.size(); index++) {
+            Map<String, Object> player = ranking.get(index);
+            long points = number(player.get("score"));
+            if (points != previous) { rank = index + 1; previous = points; }
+            player.put("rank", rank);
+        }
+        return result;
+    }
+
+    private static Map<String, Object> toStringMap(Map<?, ?> source) {
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private static long score(Map<String, Object> player) {
+        for (String key : List.of("memberPoints", "totalScore", "score", "stageScore")) {
+            if (player.get(key) instanceof Number number) return Math.max(0, number.longValue());
+        }
+        return 0;
+    }
+
+    private static long number(Object value) { return value instanceof Number number ? number.longValue() : 0; }
+
+    private static String text(Object value, String fallback) {
+        String valueText = value == null ? "" : String.valueOf(value).trim();
+        return valueText.isBlank() ? fallback : valueText;
     }
 
     private static String text(JsonNode node, String name) {

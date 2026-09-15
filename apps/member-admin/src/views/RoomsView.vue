@@ -48,6 +48,10 @@ const roomConnectionLabel = (room: Room) => {
   return Number.isFinite(timestamp) && Date.now() - timestamp > 60_000 ? "STALE" : "ONLINE";
 };
 const roomConnectionTone = (room: Room) => roomConnectionLabel(room) === "STALE" ? "warning" : room.online ? "success" : "danger";
+const hasFreshRoomSnapshot = (room: Room) => room.online === true
+  && !!room.lastEventAt
+  && Number.isFinite(Date.parse(room.lastEventAt))
+  && Date.now() - Date.parse(room.lastEventAt) <= 60_000;
 const hardwareTone = (status: string) => status === "online" ? "success" : status === "warning" || status === "unknown" ? "warning" : "danger";
 const hardwareLabel = (status: string) => status === "online" ? "在线" : status === "warning" ? "异常" : status === "unknown" ? "未检测" : "离线";
 
@@ -124,6 +128,10 @@ const saveRoomName = async () => {
         <span><AppIcon name="members" :size="16" /> {{ room.players.length }} 位玩家</span>
         <span :class="{ 'text-warning': room.hardware.some((item) => item.status !== 'online') }"><AppIcon :name="room.hardware.some((item) => item.status !== 'online') ? 'alert' : 'check'" :size="16" /> {{ room.hardware.some((item) => item.status !== 'online') ? '硬件需留意' : '硬件正常' }}</span>
       </div>
+      <div v-if="room.status === 'playing' && hasFreshRoomSnapshot(room) && room.players.length" class="room-live-score-list" data-testid="admin-room-live-scores">
+        <div v-for="player in room.players.slice(0, 3)" :key="player.id" class="room-live-score-item"><span>#{{ player.rank }}</span><strong>{{ player.name }}</strong><b>{{ player.score.toLocaleString() }}</b></div>
+        <small v-if="room.players.length > 3">还有 {{ room.players.length - 3 }} 位玩家…</small>
+      </div>
       <button class="secondary-button secondary-button--full" type="button" @click="selectedRoomId = room.id">查看实时详情 <AppIcon name="arrow" :size="16" /></button>
     </article>
   </div>
@@ -142,10 +150,10 @@ const saveRoomName = async () => {
     </div>
     <section class="drawer-section">
       <div class="drawer-section__title"><h3>实时积分与排名</h3><span>{{ selectedRoom.players.length }} 位玩家</span></div>
-      <div v-if="selectedRoom.players.length" class="live-ranking-list">
+      <div v-if="hasFreshRoomSnapshot(selectedRoom) && selectedRoom.players.length" class="live-ranking-list">
         <div v-for="player in selectedRoom.players" :key="player.id" class="live-ranking-item"><strong class="rank-number">{{ player.rank }}</strong><span class="avatar" :style="{ background: player.color }">{{ player.initials }}</span><div><strong>{{ player.name }}</strong><small>实时排名 #{{ player.rank }}</small></div><b>{{ player.score.toLocaleString() }}<small>分</small></b></div>
       </div>
-      <div v-else class="mini-empty"><AppIcon name="members" /><p>游戏尚未开始，暂无实时积分。</p></div>
+      <div v-else class="mini-empty"><AppIcon name="members" /><p>{{ hasFreshRoomSnapshot(selectedRoom) ? '游戏尚未开始，暂无实时积分。' : '房间数据已过期，等待游戏端重新上报。' }}</p></div>
     </section>
     <section class="drawer-section">
       <div class="drawer-section__title"><h3>硬件临时状态</h3><span>{{ selectedRoom.hardware.length }} 个设备</span></div>
