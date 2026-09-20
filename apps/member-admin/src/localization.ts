@@ -59,6 +59,14 @@ export const memberAdminBaseCatalog = {
   memberDeleteConfirmTitle: "Delete this member?",
   memberDeleteModalDescription: "This removes the active member profile.",
   memberDeleteConsequences: "The phone number can be registered as a new member with zero points. Old wristband and game history is retained.",
+  memberChargeHistoryTitle: "Recharge history",
+  memberGameHistoryTitle: "Game history",
+  memberHistoryLoading: "Loading member history…",
+  memberHistoryEmpty: "No records",
+  memberHistoryMinutes: "minutes",
+  memberHistoryPoints: "points",
+  memberHistoryLoadFailed: "Unable to load member history",
+  memberHistoryHistoricalNote: "Recharge records are associated through this member's historical wristband bindings.",
   chargeStartDescription: "Click the button to start accepting reader input. The database is not changed until the final confirmation.",
   chargeStart: "Charge wristband",
   chargeScanTitle: "Scan wristband",
@@ -295,6 +303,17 @@ export const memberAdminAuthoredCatalogs = {
   "ro-RO": navigation("Limbă", "Alege limba", ["Brățări", "Prezentare", "Camere", "Membri", "Date", "Clasament", "Setări"]),
   "ar-SA": navigation("اللغة", "اختر اللغة", ["الأساور", "نظرة عامة", "الغرف", "الأعضاء", "السجلات والبيانات", "الترتيب", "الإعدادات"]),
 } satisfies AuthoredCatalogs<typeof memberAdminBaseCatalog>;
+
+Object.assign(memberAdminAuthoredCatalogs["zh-CN"], {
+  memberChargeHistoryTitle: "充值记录",
+  memberGameHistoryTitle: "游戏记录",
+  memberHistoryLoading: "正在加载会员记录…",
+  memberHistoryEmpty: "暂无记录",
+  memberHistoryMinutes: "分钟",
+  memberHistoryPoints: "积分",
+  memberHistoryLoadFailed: "无法加载会员记录",
+  memberHistoryHistoricalNote: "充值记录按该会员历史绑定过的手环关联。",
+});
 
 export const memberAdminCatalogs = createCompleteCatalogs(
   memberAdminBaseCatalog,

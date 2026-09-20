@@ -159,6 +159,34 @@ class CoreFlowApiIntegrationTest {
     }
 
     @Test
+    void memberHistoryReturnsOnlyTheMemberRechargeAndGameRecords() {
+        long memberId = createActiveWristband("2283055991", "13000130991", "member-history-player");
+        ResponseEntity<Map<String, Object>> started = startPlay(
+                "2283055991", "member-history-session", "simple", "member-history-game");
+        assertThat(started.getStatusCode()).isEqualTo(HttpStatus.OK);
+        long playId = number(started.getBody().get("id"));
+        ResponseEntity<Map<String, Object>> settled = put(
+                "/api/game-plays/" + playId + "/result",
+                Map.of("success", true, "terminationReason", "NATURAL_COMPLETION", "rawScore", 123));
+        assertThat(settled.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map<String, Object>> response = get("/api/members/" + memberId + "/history");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsKeys("charges", "plays");
+        List<Map<String, Object>> charges = maps(response.getBody().get("charges"));
+        List<Map<String, Object>> plays = maps(response.getBody().get("plays"));
+        assertThat(charges).singleElement().satisfies(charge -> assertThat(charge)
+                .containsEntry("uid", "2283055991")
+                .containsEntry("durationMinutes", 60)
+                .containsKey("operatorLabel"));
+        assertThat(plays).singleElement().satisfies(play -> assertThat(play)
+                .containsEntry("uid", "2283055991")
+                .containsEntry("gameName", "member-history-game")
+                .containsEntry("status", "COMPLETED")
+                .containsEntry("rawScore", 123));
+    }
+
+    @Test
     void persistsStoreSettingsUsesConfiguredPriceAndAggregatesThreeLeaderboards() {
         ResponseEntity<Map<String, Object>> defaults = get("/api/store-settings");
         assertThat(defaults.getStatusCode()).isEqualTo(HttpStatus.OK);

@@ -232,6 +232,53 @@ public class CoreFlowController {
         }
     }
 
+    @GetMapping("/members/{id}/history")
+    @Transactional(readOnly = true)
+    public Map<String, Object> memberHistory(@PathVariable Long id,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        authorization.requireCapability(operatorId, OperatorCapability.MEMBER_MANAGE);
+        Integer memberCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM members WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL",
+                Integer.class, id);
+        if (memberCount == null || memberCount == 0) {
+            throw GameAccessService.error(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "会员不存在或已经删除");
+        }
+
+        List<Map<String, Object>> chargeRows = jdbc.queryForList("""
+            SELECT c.id, c.wristband_uid AS uid, c.duration_minutes AS durationMinutes,
+                   c.unit_price_cents AS unitPriceCents, c.amount_cents AS amountCents,
+                   c.issued_at AS issuedAt, c.charged_at AS chargedAt,
+                   c.operator_id AS operatorId, c.operator_username AS operatorUsername,
+                   c.operator_display_name AS operatorDisplayName
+              FROM wristband_charge_records c
+             WHERE EXISTS (
+                 SELECT 1 FROM wristband_bindings b
+                  WHERE b.wristband_id=c.wristband_id AND b.member_id=?
+             )
+             ORDER BY c.charged_at DESC, c.id DESC
+             LIMIT 100
+            """, id);
+        List<Map<String, Object>> playRows = jdbc.queryForList("""
+            SELECT g.id, g.member_id AS memberId, g.binding_id AS bindingId,
+                   g.wristband_uid AS uid, g.device_id AS deviceId, g.room_id AS roomId,
+                   g.external_session_id AS externalSessionId,
+                   g.participant_index AS participantIndex, g.game_id AS gameId,
+                   g.game_name AS gameName, g.status, g.started_at AS startedAt,
+                   g.ended_at AS endedAt, g.success,
+                   g.termination_reason AS terminationReason, g.raw_score AS rawScore,
+                   g.points_awarded AS pointsAwarded, g.scoring_policy AS scoringPolicy
+              FROM game_play_records g
+             WHERE g.member_id=?
+             ORDER BY g.started_at DESC, g.id DESC
+             LIMIT 100
+            """, id);
+
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("charges", chargeRows.stream().map(this::decryptChargeRow).toList());
+        response.put("plays", playRows.stream().map(this::decryptMemberPlayRow).toList());
+        return response;
+    }
+
     @GetMapping("/wristbands")
     public List<Map<String, Object>> listWristbands() {
         return gameAccessService.listWristbands();
@@ -438,6 +485,14 @@ public class CoreFlowController {
         } else {
             row.put("operatorLabel", String.valueOf(row.getOrDefault("operatorDisplayName", row.get("operatorUsername"))));
         }
+        return row;
+    }
+
+    private Map<String, Object> decryptMemberPlayRow(Map<String, Object> source) {
+        java.util.LinkedHashMap<String, Object> row = new java.util.LinkedHashMap<>(source);
+        decryptInto(row, "uid", "game_play_records", "wristband_uid");
+        Object success = row.get("success");
+        row.put("success", success == null ? null : ((Number) success).intValue() != 0);
         return row;
     }
 

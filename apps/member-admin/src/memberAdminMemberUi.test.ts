@@ -26,4 +26,17 @@ describe("member admin deletion UI", () => {
     expect(source).toContain('class="avatar__image"');
     expect(source).toContain("member.avatarUrl = null");
   });
+
+  it("loads and renders the selected member's recharge and game history", () => {
+    expect(source).toContain("/members/${member.id}/history");
+    expect(source).toContain('data-testid="admin-member-history-actions"');
+    expect(source).toContain('data-testid="admin-member-charge-history-button"');
+    expect(source).toContain('data-testid="admin-member-game-history-button"');
+    expect(source).toContain('data-testid="admin-member-charge-history-modal"');
+    expect(source).toContain('data-testid="admin-member-game-history-modal"');
+    expect(source).toContain("openHistoryModal('charges')");
+    expect(source).toContain("openHistoryModal('plays')");
+    expect(source).toContain("memberChargeHistoryTitle");
+    expect(source).toContain("memberGameHistoryTitle");
+  });
 });
