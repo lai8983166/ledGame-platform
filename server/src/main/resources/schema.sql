@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS game_play_records (
     participant_index INTEGER NOT NULL DEFAULT 0,
     game_id TEXT NOT NULL,
     game_name TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'ABORTED')),
+    status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'ABORTED', 'LEGACY_SETTLED')),
     started_at TEXT NOT NULL,
     ended_at TEXT,
     success INTEGER,
@@ -82,6 +82,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_running_play_binding
 
 CREATE INDEX IF NOT EXISTS ix_game_plays_member_started
     ON game_play_records(member_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS legacy_game_sessions (
+    session_id TEXT PRIMARY KEY,
+    room_ip TEXT NOT NULL,
+    game_id TEXT NOT NULL,
+    game_name TEXT NOT NULL,
+    participants_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
+    status TEXT NOT NULL CHECK (status IN ('RUNNING', 'SETTLED')),
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    settlement_fingerprint TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_legacy_session_open_room
+    ON legacy_game_sessions(room_ip) WHERE status = 'RUNNING';
+
+CREATE INDEX IF NOT EXISTS ix_legacy_session_room_started
+    ON legacy_game_sessions(room_ip, started_at DESC);
 
 CREATE TABLE IF NOT EXISTS room_settings (
     room_ip TEXT PRIMARY KEY,

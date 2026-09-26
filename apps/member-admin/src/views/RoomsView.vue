@@ -122,15 +122,18 @@ const saveRoomName = async () => {
         <StatusBadge data-testid="admin-room-status" :data-status="room.status" :tone="roomTone(room)">{{ room.status === "playing" ? "游戏中" : "空闲" }}</StatusBadge>
       </header>
       <div class="room-card__title"><div><h2>{{ room.name }}</h2><p>{{ room.status === 'playing' ? room.gameName : '等待玩家刷卡开始' }}</p></div><button v-if="canRenameRooms" class="icon-button" type="button" aria-label="编辑房间名称" @click="openEdit(room)"><AppIcon name="edit" :size="17" /></button></div>
-      <div v-if="room.status === 'playing'" class="room-timer"><span><AppIcon name="clock" :size="18" /> {{ text("roomGameRemaining") }}</span><strong data-testid="admin-room-game-time">{{ roomTimeText(room) }}</strong><small>{{ room.phase }}</small></div>
+      <div v-if="room.status === 'playing'" class="room-timer"><span><AppIcon name="clock" :size="18" /> {{ text("roomGameRemaining") }}</span><strong data-testid="admin-room-game-time">{{ roomTimeText(room) }}</strong><small>{{ room.legacyCompatibility ? '旧版协议未提供剩余时间' : room.phase }}</small></div>
       <div v-else class="idle-state"><span class="idle-state__icon"><AppIcon name="sparkles" /></span><div><strong>房间已就绪</strong><small>刷卡后开始计算游戏时长</small></div></div>
       <div class="room-card__stats">
         <span><AppIcon name="members" :size="16" /> {{ room.players.length }} 位玩家</span>
         <span :class="{ 'text-warning': room.hardware.some((item) => item.status !== 'online') }"><AppIcon :name="room.hardware.some((item) => item.status !== 'online') ? 'alert' : 'check'" :size="16" /> {{ room.hardware.some((item) => item.status !== 'online') ? '硬件需留意' : '硬件正常' }}</span>
       </div>
-      <div v-if="room.status === 'playing' && hasFreshRoomSnapshot(room) && room.players.length" class="room-live-score-list" data-testid="admin-room-live-scores">
+      <div v-if="room.status === 'playing' && hasFreshRoomSnapshot(room) && room.players.length && !room.legacyCompatibility" class="room-live-score-list" data-testid="admin-room-live-scores">
         <div v-for="player in room.players.slice(0, 3)" :key="player.id" class="room-live-score-item"><span>#{{ player.rank }}</span><strong>{{ player.name }}</strong><b>{{ player.score.toLocaleString() }}</b></div>
         <small v-if="room.players.length > 3">还有 {{ room.players.length - 3 }} 位玩家…</small>
+      </div>
+      <div v-if="room.status === 'playing' && hasFreshRoomSnapshot(room) && room.players.length && room.legacyCompatibility" class="legacy-room-player-list">
+        <small>{{ text("legacyRoomPlayers") }} · {{ text("legacyRoomLiveScoreUnavailable") }}</small><span v-for="player in room.players" :key="player.id">{{ player.name }}</span>
       </div>
       <button class="secondary-button secondary-button--full" type="button" @click="selectedRoomId = room.id">查看实时详情 <AppIcon name="arrow" :size="16" /></button>
     </article>
@@ -149,9 +152,13 @@ const saveRoomName = async () => {
       <strong v-if="selectedRoom.status === 'playing'" data-testid="admin-room-detail-game-time">{{ roomTimeText(selectedRoom) }}<small>{{ text("roomGameRemaining") }}</small></strong>
     </div>
     <section class="drawer-section">
-      <div class="drawer-section__title"><h3>实时积分与排名</h3><span>{{ selectedRoom.players.length }} 位玩家</span></div>
-      <div v-if="hasFreshRoomSnapshot(selectedRoom) && selectedRoom.players.length" class="live-ranking-list">
+      <div class="drawer-section__title"><h3>{{ selectedRoom.legacyCompatibility ? text("legacyRoomPlayers") : '实时积分与排名' }}</h3><span>{{ selectedRoom.players.length }} 位玩家</span></div>
+      <div v-if="hasFreshRoomSnapshot(selectedRoom) && selectedRoom.players.length && !selectedRoom.legacyCompatibility" class="live-ranking-list">
         <div v-for="player in selectedRoom.players" :key="player.id" class="live-ranking-item"><strong class="rank-number">{{ player.rank }}</strong><span class="avatar" :style="{ background: player.color }">{{ player.initials }}</span><div><strong>{{ player.name }}</strong><small>实时排名 #{{ player.rank }}</small></div><b>{{ player.score.toLocaleString() }}<small>分</small></b></div>
+      </div>
+      <div v-else-if="hasFreshRoomSnapshot(selectedRoom) && selectedRoom.players.length && selectedRoom.legacyCompatibility" class="legacy-room-player-list">
+        <span v-for="player in selectedRoom.players" :key="player.id">{{ player.name }}</span>
+        <small>{{ text("legacyRoomLiveScoreUnavailable") }}</small>
       </div>
       <div v-else class="mini-empty"><AppIcon name="members" /><p>{{ hasFreshRoomSnapshot(selectedRoom) ? '游戏尚未开始，暂无实时积分。' : '房间数据已过期，等待游戏端重新上报。' }}</p></div>
     </section>

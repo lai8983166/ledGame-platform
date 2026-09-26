@@ -30,7 +30,7 @@ public class OperationalDataExportService {
             WITH scores AS (
               SELECT m.id, m.phone, m.name, m.avatar_id, m.birthday, m.gender,
                      m.status, m.created_at, m.created_by,
-                     COALESCE(SUM(CASE WHEN p.status='COMPLETED' THEN p.points_awarded ELSE 0 END), 0) AS points_total
+                     COALESCE(SUM(CASE WHEN p.status IN ('COMPLETED', 'LEGACY_SETTLED') THEN p.points_awarded ELSE 0 END), 0) AS points_total
                 FROM members m LEFT JOIN game_play_records p ON p.member_id=m.id
                WHERE m.deleted_at IS NULL
                GROUP BY m.id

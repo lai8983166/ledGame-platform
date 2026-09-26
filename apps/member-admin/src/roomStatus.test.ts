@@ -163,6 +163,20 @@ describe("mapRoomStatus", () => {
     expect(roomGameTimeText({ ...activeLegacy, status: "idle" })).toBeNull();
   });
 
+  it("identifies legacy rooms so unavailable live scores are not presented as zero", () => {
+    const room = mapRoomStatus({
+      ip: "192.168.1.28", deviceId: "192.168.1.28", roomId: "192.168.1.28", roomName: "Legacy room",
+      connectionId: "legacy:192.168.1.28", online: true,
+      state: { engineState: "RUNNING", gameName: "Old game", legacyCompatibility: true },
+      lastSequence: -1, lastEventType: "LEGACY_GAME_STARTED", lastEventAt: "2026-08-09T12:00:00.000Z",
+      queueLength: 0, players: [{ id: 27, memberId: 27, name: "Legacy member" }],
+    });
+
+    expect(room.legacyCompatibility).toBe(true);
+    expect(room.players.map((player) => player.name)).toEqual(["Legacy member"]);
+    expect(roomGameTimeText(room)).toBe("--");
+  });
+
   it("formats zero, partial seconds and durations over an hour", () => {
     expect(formatGameTime(0)).toBe("00:00");
     expect(formatGameTime(1)).toBe("00:01");

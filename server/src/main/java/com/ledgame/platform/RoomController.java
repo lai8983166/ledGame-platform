@@ -18,12 +18,14 @@ import org.springframework.web.bind.annotation.RequestHeader;
 @CrossOrigin(origins = "*")
 public class RoomController {
     private final RoomConnectionRegistry registry;
+    private final LegacyRoomPresenceService legacyRooms;
     private final RoomSettingsService settings;
     private final OperatorAuthorizationService authorization;
 
-    public RoomController(RoomConnectionRegistry registry, RoomSettingsService settings,
+    public RoomController(RoomConnectionRegistry registry, LegacyRoomPresenceService legacyRooms, RoomSettingsService settings,
             OperatorAuthorizationService authorization) {
         this.registry = registry;
+        this.legacyRooms = legacyRooms;
         this.settings = settings;
         this.authorization = authorization;
     }
@@ -31,7 +33,10 @@ public class RoomController {
     @GetMapping
     public List<Map<String, Object>> list(@RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
         authorization.requireCapability(operatorId, OperatorCapability.OPERATIONS_VIEW);
-        return settings.merge(registry.list());
+        java.util.LinkedHashMap<String, Map<String, Object>> projections = new java.util.LinkedHashMap<>();
+        registry.list().forEach(room -> projections.put(String.valueOf(room.get("ip")), room));
+        legacyRooms.list().forEach(room -> projections.putIfAbsent(String.valueOf(room.get("ip")), room));
+        return settings.merge(List.copyOf(projections.values()));
     }
 
     @GetMapping("/{ip}")
@@ -39,6 +44,7 @@ public class RoomController {
             @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
         authorization.requireCapability(operatorId, OperatorCapability.OPERATIONS_VIEW);
         Map<String, Object> projection = registry.find(ip);
+        if (projection == null) projection = legacyRooms.find(ip);
         Map<String, Object> room = projection == null
                 ? settings.merge(List.of()).stream()
                         .filter(item -> item.get("ip").equals(RoomConnectionRegistry.normalizeIp(ip)))

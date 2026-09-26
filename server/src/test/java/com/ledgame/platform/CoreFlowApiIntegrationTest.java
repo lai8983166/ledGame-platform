@@ -1,6 +1,7 @@
 package com.ledgame.platform;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,6 +18,7 @@ import java.util.HashMap;
 import javax.sql.DataSource;
 
 import com.zaxxer.hikari.HikariDataSource;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,6 +76,27 @@ class CoreFlowApiIntegrationTest {
     private AvatarStorageService avatarStorage;
 
     @Autowired
+    private GameAccessService gameAccessService;
+
+    @Autowired
+    private GamePlayService gamePlayService;
+
+    @Autowired
+    private LegacyGameCompatibilityService legacyCompatibility;
+
+    @Autowired
+    private LegacyRoomPresenceService legacyRooms;
+
+    @Autowired
+    private RoomSettingsService roomSettings;
+
+    @Autowired
+    private ProtectedDataService protectedData;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
     private BrandingStorageService brandingStorage;
 
     @Autowired
@@ -86,7 +109,9 @@ class CoreFlowApiIntegrationTest {
                 "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN'", Long.class);
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
         jdbc.update("DELETE FROM wristband_charge_records");
+        jdbc.update("DELETE FROM legacy_game_sessions");
         jdbc.update("DELETE FROM game_play_records");
+        jdbc.update("DELETE FROM room_settings");
         jdbc.update("DELETE FROM wristband_bindings");
         jdbc.update("DELETE FROM wristbands");
         jdbc.update("DELETE FROM members");
@@ -457,6 +482,41 @@ class CoreFlowApiIntegrationTest {
                 "SELECT status FROM wristband_bindings WHERE member_id=? ORDER BY id DESC LIMIT 1",
                 String.class,
                 frozenMember)).isEqualTo("EXPIRED");
+    }
+
+    @Test
+    void legacyBatchAdmissionValidatesAllWristbandsBeforeActivatingAny() {
+        long firstMember = number(post("/api/members", Map.of(
+                "phone", "13100131000", "name", "批量玩家一")).getBody().get("id"));
+        long secondMember = number(post("/api/members", Map.of(
+                "phone", "13100131001", "name", "批量玩家二")).getBody().get("id"));
+        chargeAndBind("2283055618", firstMember, 30);
+        chargeAndBind("2283055620", secondMember, 45);
+
+        assertThatThrownBy(() -> gameAccessService.activateLegacyBatch(List.of("2283055618", "9999999999")))
+                .isInstanceOf(PlatformApiException.class)
+                .hasFieldOrPropertyWithValue("code", "WRISTBAND_NOT_FOUND");
+        assertThat(jdbc.queryForList(
+                "SELECT status, started_at FROM wristband_bindings ORDER BY id")).hasSize(2)
+                .allSatisfy(row -> {
+                    assertThat(row.get("status")).isEqualTo("READY");
+                    assertThat(row.get("started_at")).isNull();
+                });
+
+        assertThatThrownBy(() -> gameAccessService.activateLegacyBatch(List.of("2283055618", "2283055618")))
+                .isInstanceOf(PlatformApiException.class)
+                .hasFieldOrPropertyWithValue("code", "DUPLICATE_WRISTBAND");
+        assertThat(jdbc.queryForList("SELECT status FROM wristband_bindings ORDER BY id"))
+                .allSatisfy(row -> assertThat(row.get("status")).isEqualTo("READY"));
+
+        List<Map<String, Object>> admissions = gameAccessService.activateLegacyBatch(
+                List.of("2283055618", "2283055620"));
+        assertThat(admissions).hasSize(2);
+        assertThat(admissions.stream().map(item -> map(item.get("access"))))
+                .extracting(item -> item.get("uid"))
+                .containsExactly("2283055618", "2283055620");
+        assertThat(jdbc.queryForList("SELECT status FROM wristband_bindings ORDER BY id"))
+                .allSatisfy(row -> assertThat(row.get("status")).isEqualTo("ACTIVE"));
     }
 
     @Test
@@ -956,6 +1016,253 @@ class CoreFlowApiIntegrationTest {
     }
 
     @Test
+    void legacyAdmissionUsesOldTokenEnvelopeAndIsAtomic() throws Exception {
+        long firstMember = number(post("/api/members", Map.of(
+                "phone", "13000130971", "name", "旧协议玩家甲")).getBody().get("id"));
+        long secondMember = number(post("/api/members", Map.of(
+                "phone", "13000130972", "name", "旧协议玩家乙")).getBody().get("id"));
+        chargeAndBind("2283055971", firstMember, 45);
+        chargeAndBind("2283055972", secondMember, 30);
+
+        ResponseEntity<Map<String, Object>> rejected = legacyPost("""
+                {"cmd":5,"json":{"icList":["2283055971","2283055972","9999999999"],"isAdmin":false}}
+                """);
+        assertThat(number(rejected.getBody().get("code"))).isNotEqualTo(200);
+        assertThat(jdbc.queryForObject("""
+                SELECT b.status FROM wristband_bindings b JOIN wristbands w ON w.id=b.wristband_id
+                 WHERE w.card_uid_lookup_hash=?
+                """, String.class, protectedData.wristbandLookupHash("2283055971"))).isEqualTo("READY");
+
+        ResponseEntity<Map<String, Object>> accepted = legacyPost("""
+                {"cmd":5,"json":{"icList":["2283055971","2283055972"],"isAdmin":false}}
+                """);
+        assertThat(number(accepted.getBody().get("code"))).isEqualTo(200);
+        List<?> tokenEntries = (List<?>) accepted.getBody().get("data");
+        assertThat(tokenEntries).hasSize(2);
+        List<?> firstEntry = (List<?>) tokenEntries.get(0);
+        assertThat(firstEntry).hasSize(2);
+        Map<?, ?> firstToken = (Map<?, ?>) firstEntry.get(1);
+        assertThat(firstToken.get("ic")).isEqualTo("2283055971");
+        assertThat(firstToken.get("type")).isEqualTo(2);
+        assertThat(firstToken.get("durationMinutes")).isEqualTo(45);
+        assertThat(((Number) firstToken.get("endTime")).longValue()).isEqualTo(
+                Instant.parse("2026-08-09T02:45:00Z").toEpochMilli());
+        assertThat(jdbc.queryForObject("""
+                SELECT b.status FROM wristband_bindings b JOIN wristbands w ON w.id=b.wristband_id
+                 WHERE w.card_uid_lookup_hash=?
+                """, String.class, protectedData.wristbandLookupHash("2283055971"))).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void legacyCallbackRejectsUnsupportedCommandsWithTheLegacyEnvelope() {
+        ResponseEntity<Map<String, Object>> response = legacyPost("{\"cmd\":99,\"json\":{}}");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsKeys("code", "msg", "data");
+        assertThat(number(response.getBody().get("code"))).isNotEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM members", Integer.class)).isZero();
+    }
+
+    @Test
+    void legacyTouchOnlyMockParticipantsAreAcknowledgedWithoutSyntheticMemberOrPlayRecords() throws Exception {
+        var start = legacyCompatibility.handle(objectMapper.readTree("""
+                {"cmd":2,"gameId":401,"gameName":"Touch-only","json":{"icList":["mock_12345"],"isAdmin":true}}
+                """), "192.168.50.76");
+        assertThat(start.code()).isEqualTo(200);
+        assertThat(start.data()).isEqualTo(Map.of("tracked", false));
+
+        var end = legacyCompatibility.handle(objectMapper.readTree("""
+                {"cmd":3,"gameId":401,"json":{"points":[{"ic":"mock_12345","points":80}],"icList":["mock_12345"],"isAdmin":true}}
+                """), "192.168.50.76");
+        assertThat(end.code()).isEqualTo(200);
+        assertThat(end.data()).isEqualTo(Map.of("tracked", false));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM legacy_game_sessions", Integer.class)).isZero();
+    }
+
+    @Test
+    void legacyHeartbeatTracksIndependentIpRoomsAndExpiresAfterSixtySeconds() {
+        clock.set(Instant.parse("2026-08-09T02:00:00Z"));
+        assertThat(LegacyRoomPresenceService.normalizeIp("::ffff:192.168.50.71")).isEqualTo("192.168.50.71");
+        assertThat(LegacyRoomPresenceService.normalizeIp("::ffff:c0a8:3247")).isEqualTo("192.168.50.71");
+        assertThat(legacyCompatibility.handle(objectMapper.createObjectNode().put("cmd", 1), "192.168.50.71").code())
+                .isEqualTo(200);
+        assertThat(legacyCompatibility.handle(objectMapper.createObjectNode().put("cmd", 1), "192.168.50.72").code())
+                .isEqualTo(200);
+        roomSettings.saveName("192.168.50.71", "旧游戏房间");
+        jdbc.update("""
+                INSERT INTO legacy_game_sessions(
+                    session_id, room_ip, game_id, game_name, participants_hash, is_admin,
+                    status, started_at, ended_at, settlement_fingerprint)
+                VALUES ('heartbeat-history', '192.168.50.71', '386', 'Recorded game', 'hash', 0,
+                        'SETTLED', ?, ?, 'fingerprint')
+                """, clock.instant().toString(), clock.instant().toString());
+
+        List<Map<String, Object>> listed = roomSettings.merge(legacyRooms.list());
+        assertThat(listed.stream().filter(room -> String.valueOf(room.get("ip")).startsWith("192.168.50.")))
+                .hasSize(2);
+        assertThat(listed).anySatisfy(room -> assertThat(room)
+                .containsEntry("ip", "192.168.50.71")
+                .containsEntry("roomName", "旧游戏房间")
+                .containsEntry("online", true));
+
+        clock.advance(Duration.ofSeconds(61));
+        assertThat(legacyRooms.find("192.168.50.71")).containsEntry("online", false);
+        LegacyRoomPresenceService afterRestart = new LegacyRoomPresenceService(jdbc, clock, protectedData);
+        assertThat(roomSettings.merge(afterRestart.list()))
+                .anySatisfy(room -> assertThat(room)
+                        .containsEntry("ip", "192.168.50.71")
+                        .containsEntry("roomName", "旧游戏房间")
+                        .containsEntry("online", false));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM legacy_game_sessions WHERE session_id='heartbeat-history'",
+                Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void legacyMultiplayerSessionSettlesReportedLongPointsOnceAndSurvivesRoomProjectionRestart() throws Exception {
+        long firstMember = createActiveWristband("2283055973", "13000130973", "旧版积分玩家甲");
+        long secondMember = createActiveWristband("2283055974", "13000130974", "旧版积分玩家乙");
+        String startFixture = """
+                {"cmd":2,"gameId":386,"gameName":"Legacy Rank","json":{"icList":["2283055973","2283055974"],"isAdmin":true}}
+                """;
+        ResponseEntity<Map<String, Object>> firstStart = legacyPost(startFixture);
+        assertThat(number(firstStart.getBody().get("code"))).isEqualTo(200);
+        String sessionId = String.valueOf(map(firstStart.getBody().get("data")).get("sessionId"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records WHERE external_session_id=? AND status='RUNNING'",
+                Integer.class, sessionId)).isEqualTo(2);
+
+        ResponseEntity<Map<String, Object>> duplicateStart = legacyPost(startFixture);
+        assertThat(number(duplicateStart.getBody().get("code"))).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
+                Integer.class, sessionId)).isEqualTo(2);
+        Map<String, Object> activeRoom = legacyRooms.find("127.0.0.1");
+        assertThat(activeRoom).containsEntry("online", true);
+        assertThat(maps(activeRoom.get("players"))).hasSize(2);
+        assertThat(maps(activeRoom.get("players")).get(0)).doesNotContainKey("score");
+        assertThat(map(activeRoom.get("state"))).containsEntry("engineState", "RUNNING")
+                .containsEntry("gameName", "Legacy Rank");
+        ResponseEntity<Map<String, Object>> conflictingStart = legacyPost("""
+                {"cmd":2,"gameId":387,"gameName":"Conflicting Game","json":{"icList":["2283055973","2283055974"],"isAdmin":true}}
+                """);
+        assertThat(number(conflictingStart.getBody().get("code"))).isEqualTo(409);
+        assertThatThrownBy(() -> legacyCompatibility.handle(objectMapper.readTree("""
+                {"cmd":2,"gameId":387,"gameName":"Unknown Wristband","json":{"icList":["9999999998"],"isAdmin":true}}
+                """), "192.168.50.74"))
+                .isInstanceOf(PlatformApiException.class)
+                .satisfies(error -> assertThat(((PlatformApiException) error).getCode())
+                        .isEqualTo("WRISTBAND_NOT_FOUND"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records WHERE game_id='387'", Integer.class))
+                .isZero();
+
+        // A fresh in-memory registry models a backend restart: the DB session survives, but presence does not.
+        LegacyRoomPresenceService afterRestart = new LegacyRoomPresenceService(jdbc, clock, protectedData);
+        assertThat(afterRestart.find("127.0.0.1")).containsEntry("online", false);
+        String endFixture = """
+                {"cmd":3,"gameId":386,"json":{"points":[{"ic":"2283055973","points":5000000000},{"ic":"2283055974","points":95}],"icList":["2283055973","2283055974"],"isAdmin":true}}
+                """;
+        LegacyGameCompatibilityService afterRestartAdapter = new LegacyGameCompatibilityService(
+                jdbc, gameAccessService, new GamePlayService(jdbc, gameAccessService, objectMapper, clock,
+                        new GamePointsPolicy(), protectedData), afterRestart, protectedData, objectMapper, clock);
+        var settled = afterRestartAdapter.handle(objectMapper.readTree(endFixture), "127.0.0.1");
+        assertThat(settled.code()).isEqualTo(200);
+        List<Map<String, Object>> settledRows = jdbc.queryForList("""
+                SELECT status, points_awarded, scoring_policy, success, termination_reason
+                  FROM game_play_records WHERE external_session_id=? ORDER BY participant_index
+                """, sessionId);
+        assertThat(settledRows).hasSize(2);
+        assertThat(settledRows.get(0)).containsEntry("status", "LEGACY_SETTLED")
+                .containsEntry("scoring_policy", "legacy-reported-v1")
+                .containsEntry("success", null)
+                .containsEntry("termination_reason", "LEGACY_END_REASON_UNKNOWN");
+        assertThat(((Number) settledRows.get(0).get("points_awarded")).longValue()).isEqualTo(5000000000L);
+        assertThat(((Number) settledRows.get(1).get("points_awarded")).longValue()).isEqualTo(95L);
+        assertThat(jdbc.queryForObject("SELECT is_admin FROM legacy_game_sessions WHERE session_id=?", Integer.class, sessionId))
+                .isEqualTo(1);
+        List<Map<String, Object>> visiblePlays = gamePlayService.list();
+        Map<String, Object> firstVisiblePlay = visiblePlays.stream()
+                .filter(play -> sessionId.equals(play.get("externalSessionId"))).findFirst().orElseThrow();
+        assertThat(map(firstVisiblePlay.get("resultPayload")))
+                .containsEntry("startIsAdmin", true).containsEntry("endIsAdmin", true)
+                .containsEntry("legacyTerminationReason", "unknown");
+
+        Map<String, Object> info = get("/api/player-info?phone=13000130973").getBody();
+        assertThat(number(map(info.get("points")).get("total"))).isEqualTo(5000000000L);
+        assertThat(maps(get("/api/leaderboard?period=day").getBody().get("entries")))
+                .anySatisfy(entry -> assertThat(number(entry.get("memberId"))).isEqualTo(firstMember));
+        List<Map<String, Object>> memberRows = http.exchange(
+                "/api/members?phone=13000130974", HttpMethod.GET, null,
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
+        assertThat(number(memberRows.get(0).get("pointsTotal"))).isEqualTo(95L);
+        assertThat(secondMember).isPositive();
+        ResponseEntity<String> membersCsv = http.exchange("/api/exports/members.csv", HttpMethod.GET,
+                new HttpEntity<>(operatorHeaders()), String.class);
+        assertThat(membersCsv.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(membersCsv.getBody()).contains("13000130973", "5000000000")
+                .contains("13000130974", "95");
+        ResponseEntity<String> playsCsv = http.exchange("/api/exports/game-plays.csv", HttpMethod.GET,
+                new HttpEntity<>(operatorHeaders()), String.class);
+        assertThat(playsCsv.getBody()).contains("LEGACY_SETTLED", "legacy-reported-v1", "LEGACY_END_REASON_UNKNOWN");
+
+        var duplicateEnd = afterRestartAdapter.handle(objectMapper.readTree(endFixture), "127.0.0.1");
+        assertThat(duplicateEnd.code()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT COALESCE(SUM(points_awarded),0) FROM game_play_records WHERE external_session_id=?",
+                Long.class, sessionId)).isEqualTo(5000000095L);
+        assertThat(afterRestart.find("127.0.0.1")).containsEntry("online", true);
+        assertThat(map(afterRestart.find("127.0.0.1").get("state"))).containsEntry("engineState", "IDLE");
+
+        var nextSession = afterRestartAdapter.handle(objectMapper.readTree(startFixture), "127.0.0.1");
+        String nextSessionId = String.valueOf(((Map<?, ?>) nextSession.data()).get("sessionId"));
+        assertThat(nextSessionId).isNotEqualTo(sessionId);
+        var lateDuplicate = afterRestartAdapter.handle(objectMapper.readTree(endFixture), "127.0.0.1");
+        assertThat(map(lateDuplicate.data())).containsEntry("duplicate", true);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records WHERE external_session_id=? AND status='RUNNING'",
+                Integer.class, nextSessionId)).isEqualTo(2);
+    }
+
+    @Test
+    void legacySettlementRejectsNegativeAndDuplicateScoresWithoutChangingRunningPlays() throws Exception {
+        createActiveWristband("2283055975", "13000130975", "旧协议异常玩家");
+        var started = legacyCompatibility.handle(objectMapper.readTree("""
+                {"cmd":2,"gameId":389,"gameName":"Legacy","json":{"icList":["2283055975"],"isAdmin":false}}
+                """), "192.168.50.75");
+        assertThat(started.code()).isEqualTo(200);
+        String sessionId = String.valueOf(((Map<?, ?>) started.data()).get("sessionId"));
+
+        ResponseEntity<Map<String, Object>> negative = legacyPost("""
+                {"cmd":3,"gameId":389,"json":{"points":[{"ic":"2283055975","points":-1}],"icList":["2283055975"],"isAdmin":false}}
+                """);
+        assertThat(number(negative.getBody().get("code"))).isEqualTo(400);
+        ResponseEntity<Map<String, Object>> duplicate = legacyPost("""
+                {"cmd":3,"gameId":389,"json":{"points":[{"ic":"2283055975","points":7},{"ic":"2283055975","points":8}],"icList":["2283055975"],"isAdmin":false}}
+                """);
+        assertThat(number(duplicate.getBody().get("code"))).isEqualTo(400);
+        ResponseEntity<Map<String, Object>> missing = legacyPost("""
+                {"cmd":3,"gameId":389,"json":{"points":[],"icList":["2283055975"],"isAdmin":false}}
+                """);
+        assertThat(number(missing.getBody().get("code"))).isEqualTo(409);
+        ResponseEntity<Map<String, Object>> mismatchedGame = legacyPost("""
+                {"cmd":3,"gameId":390,"json":{"points":[{"ic":"2283055975","points":7}],"icList":["2283055975"],"isAdmin":false}}
+                """);
+        assertThat(number(mismatchedGame.getBody().get("code"))).isEqualTo(409);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM game_play_records WHERE external_session_id=? AND status='RUNNING'",
+                Integer.class, sessionId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT SUM(points_awarded) FROM game_play_records WHERE external_session_id=?",
+                Long.class, sessionId)).isZero();
+
+        String maximumLongFixture = """
+                {"cmd":3,"gameId":389,"json":{"points":[{"ic":"2283055975","points":9223372036854775807}],"icList":["2283055975"],"isAdmin":false}}
+                """;
+        var maximumLong = legacyCompatibility.handle(objectMapper.readTree(maximumLongFixture), "192.168.50.75");
+        assertThat(maximumLong.code()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT points_awarded FROM game_play_records WHERE external_session_id=?",
+                Long.class, sessionId)).isEqualTo(Long.MAX_VALUE);
+        var repeatedMaximum = legacyCompatibility.handle(objectMapper.readTree(maximumLongFixture), "192.168.50.75");
+        assertThat(repeatedMaximum.code()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT points_awarded FROM game_play_records WHERE external_session_id=?",
+                Long.class, sessionId)).isEqualTo(Long.MAX_VALUE);
+    }
+
+    @Test
     void structuredLevelPointsAreValidatedPersistedAndIdempotentAtTheApiBoundary() {
         createActiveWristband("2283055801", "13000130801", "structured-scoring-player");
         ResponseEntity<Map<String, Object>> play = startPlay(
@@ -1106,6 +1413,13 @@ class CoreFlowApiIntegrationTest {
                 HttpMethod.POST,
                 new HttpEntity<>(body, operatorHeaders()),
                 new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<Map<String, Object>> legacyPost(String body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return http.exchange("/dev/gameCallback", HttpMethod.POST,
+                new HttpEntity<>(body, headers), new ParameterizedTypeReference<>() {});
     }
 
     private ResponseEntity<List<Map<String, Object>>> postList(String path, Object body) {

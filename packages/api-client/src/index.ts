@@ -329,8 +329,8 @@ export interface RoomLivePlayer {
   memberId?: number | null;
   name: string;
   wristbandUid?: string | null;
-  score: number;
-  rank: number;
+  score?: number;
+  rank?: number;
   participating?: boolean;
 }
 

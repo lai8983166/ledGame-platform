@@ -110,6 +110,7 @@ export function mapRoomStatus(source: RoomStatus): Room {
     gameTimeMode: gameTime?.mode,
     gameTimeRemainingMillis: gameTime?.remainingMillis,
     gameTimeRunning: gameTime?.running,
+    legacyCompatibility: state.legacyCompatibility === true,
     players,
     hardware: normalizeHardware(state.hardware, source.online),
   };

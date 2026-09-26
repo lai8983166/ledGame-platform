@@ -199,6 +199,26 @@ public class GamePlayService {
         return playView(find(playId));
     }
 
+    @Transactional
+    public Map<String, Object> settleLegacy(long playId, long reportedPoints, Object resultPayload) {
+        if (reportedPoints < 0) {
+            throw GameAccessService.error(HttpStatus.BAD_REQUEST, "LEGACY_POINTS_INVALID",
+                    "Legacy points must be a non-negative 64-bit integer");
+        }
+        Map<String, Object> existing = find(playId);
+        if (!"RUNNING".equals(String.valueOf(existing.get("status")))) return playView(existing);
+        int updated = jdbc.update("""
+            UPDATE game_play_records
+               SET status='LEGACY_SETTLED', ended_at=?, success=NULL,
+                   termination_reason='LEGACY_END_REASON_UNKNOWN', points_awarded=?,
+                   scoring_policy='legacy-reported-v1', result_json=?
+             WHERE id=? AND status='RUNNING'
+            """, clock.instant().toString(), reportedPoints,
+                protectedData.encryptField("game_play_records", "result_json", toJson(resultPayload)), playId);
+        if (updated == 0) return playView(find(playId));
+        return playView(find(playId));
+    }
+
     private Map<String, Object> find(long playId) {
         List<Map<String, Object>> rows = jdbc.queryForList(PLAY_VIEW_SQL + " WHERE id=?", playId);
         if (rows.isEmpty()) {

@@ -112,14 +112,18 @@ const loadRecords = async () => {
       color: ["#5b7cff", "#9b6dff", "#18b6a4", "#ff8a65"][item.id % 4],
       pointsTotal: Number(item.pointsTotal ?? 0), rank: Number(item.rank ?? 1),
     }));
-    plays.value = (playRows ?? []).map((item) => ({
-      id: `PLAY-${item.id}`, memberName: String(item.memberName ?? item.memberId ?? "—"),
-      braceletId: String(item.uid ?? "—"), roomName: String(item.roomId ?? item.deviceId ?? "—"),
-      rawScore: Number(item.rawScore ?? 0), pointsAwarded: Number(item.pointsAwarded ?? 0),
-      scoringPolicy: String(item.scoringPolicy ?? "—"), terminationReason: String(item.terminationReason ?? "—"),
-      startedAt: String(item.startedAt ?? ""), endedAt: item.endedAt == null ? null : String(item.endedAt),
-      status: String(item.status ?? "UNKNOWN"),
-    }));
+    plays.value = (playRows ?? []).map((item) => {
+      const status = String(item.status ?? "UNKNOWN");
+      return {
+        id: `PLAY-${item.id}`, memberName: String(item.memberName ?? item.memberId ?? "—"),
+        braceletId: String(item.uid ?? "—"), roomName: String(item.roomId ?? item.deviceId ?? "—"),
+        rawScore: Number(item.rawScore ?? 0), pointsAwarded: Number(item.pointsAwarded ?? 0),
+        scoringPolicy: String(item.scoringPolicy ?? "—"),
+        terminationReason: status === "LEGACY_SETTLED" ? "旧版协议未提供结束原因" : String(item.terminationReason ?? "—"),
+        startedAt: String(item.startedAt ?? ""), endedAt: item.endedAt == null ? null : String(item.endedAt),
+        status,
+      };
+    });
     bindingRecords.value = (bindingRows ?? []).map((item) => ({
       id: `BIND-${item.id}`, braceletId: String(item.uid ?? "—"), memberId: `DB-${item.memberId}`,
       memberName: String(item.memberName ?? "—"), phone: String(item.phone ?? "—"),

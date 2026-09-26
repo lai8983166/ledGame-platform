@@ -29,6 +29,7 @@ export interface Room {
   gameTimeMode?: "LIMITED" | "UNLIMITED";
   gameTimeRemainingMillis?: number | null;
   gameTimeRunning?: boolean;
+  legacyCompatibility?: boolean;
   players: LivePlayer[];
   hardware: HardwareDevice[];
   ip?: string;

@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -62,6 +63,49 @@ public class GameAccessService {
             "member", memberView(row),
             "access", accessView(decorated)
         );
+    }
+
+    @Transactional
+    public List<Map<String, Object>> activateLegacyBatch(List<String> rawUids) {
+        if (rawUids == null || rawUids.isEmpty()) {
+            throw error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "至少需要一只参与游戏的手环");
+        }
+        List<String> uids = rawUids.stream().map(GameAccessService::normalizeUid).toList();
+        if (new LinkedHashSet<>(uids).size() != uids.size()) {
+            throw error(HttpStatus.CONFLICT, "DUPLICATE_WRISTBAND", "同一只手环不能在一局中重复参与");
+        }
+
+        List<Map<String, Object>> rows = uids.stream().map(this::findRaw).toList();
+        for (Map<String, Object> row : rows) {
+            requireBound(row);
+            requireActiveMember(row);
+            Map<String, Object> access = decorate(row, true, false);
+            if (number(access.get("remainingSeconds")) < 60) {
+                throw error(HttpStatus.CONFLICT, "WRISTBAND_INSUFFICIENT_TIME", "手环剩余时间不足一分钟");
+            }
+        }
+
+        String now = now();
+        for (Map<String, Object> row : rows) {
+            if (!"READY".equals(text(row.get("status")))) continue;
+            int bindingUpdated = jdbc.update(
+                    "UPDATE wristband_bindings SET status='ACTIVE', started_at=? WHERE id=? AND status='READY'",
+                    now, number(row.get("bindingId")));
+            if (bindingUpdated != 1) {
+                throw error(HttpStatus.CONFLICT, "WRISTBAND_STATE_CHANGED", "手环状态已变化，请重新刷卡");
+            }
+            jdbc.update("UPDATE wristbands SET status='ACTIVE', updated_at=? WHERE id=? AND status='READY'",
+                    now, number(row.get("id")));
+        }
+
+        return uids.stream().map(uid -> {
+            Map<String, Object> current = findRaw(uid);
+            Map<String, Object> access = decorate(current, true, false);
+            LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+            result.put("member", memberView(current));
+            result.put("access", accessView(access));
+            return (Map<String, Object>) result;
+        }).toList();
     }
 
     @Transactional

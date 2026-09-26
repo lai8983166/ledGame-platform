@@ -8,20 +8,24 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 4;
+    public static final int CURRENT_SCHEMA_VERSION = 5;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
             "members", "wristbands", "wristband_charge_records", "wristband_bindings",
-            "game_play_records", "room_settings", "store_feature_settings", "store_settings",
+            "game_play_records", "legacy_game_sessions", "room_settings", "store_feature_settings", "store_settings",
             "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
+    private final TransactionTemplate transactions;
 
     public PlatformSchemaMigration(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.transactions = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
     }
 
     @Override
@@ -61,8 +65,96 @@ public class PlatformSchemaMigration implements ApplicationRunner {
                     ON game_play_records(device_id, external_session_id, participant_index)
                 """);
         }
+        migrateLegacySettledPlayStatus();
+        ensureLegacyGameSessionTable();
         ensureDatabaseStateAndRevisionTriggers();
         jdbc.execute("PRAGMA user_version=" + CURRENT_SCHEMA_VERSION);
+    }
+
+    private void migrateLegacySettledPlayStatus() {
+        List<Map<String, Object>> columns = jdbc.queryForList("PRAGMA table_info(game_play_records)");
+        if (columns.isEmpty()) return;
+        String createSql = jdbc.queryForObject(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='game_play_records'", String.class);
+        if (createSql != null && createSql.contains("LEGACY_SETTLED")) return;
+        List<String> required = List.of("id", "member_id", "binding_id", "wristband_uid", "device_id",
+                "room_id", "external_session_id", "participant_index", "game_id", "game_name", "status",
+                "started_at", "ended_at", "success", "termination_reason", "raw_score", "points_awarded",
+                "scoring_policy", "result_json");
+        if (!required.stream().allMatch(name -> columns.stream()
+                .anyMatch(column -> name.equalsIgnoreCase(String.valueOf(column.get("name")))))) return;
+
+        transactions.executeWithoutResult(status -> {
+            String latestSql = jdbc.queryForObject(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='game_play_records'", String.class);
+            if (latestSql != null && latestSql.contains("LEGACY_SETTLED")) return;
+            jdbc.execute("ALTER TABLE game_play_records RENAME TO game_play_records_before_legacy_settled");
+            jdbc.execute(createGamePlayRecordsTableSql());
+            jdbc.execute("""
+                INSERT INTO game_play_records(
+                    id, member_id, binding_id, wristband_uid, device_id, room_id,
+                    external_session_id, participant_index, game_id, game_name, status,
+                    started_at, ended_at, success, termination_reason, raw_score,
+                    points_awarded, scoring_policy, result_json)
+                SELECT id, member_id, binding_id, wristband_uid, device_id, room_id,
+                       external_session_id, participant_index, game_id, game_name, status,
+                       started_at, ended_at, success, termination_reason, raw_score,
+                       points_awarded, scoring_policy, result_json
+                  FROM game_play_records_before_legacy_settled
+                """);
+            jdbc.execute("DROP TABLE game_play_records_before_legacy_settled");
+            ensureGamePlayIndexes();
+        });
+    }
+
+    private String createGamePlayRecordsTableSql() {
+        return """
+            CREATE TABLE game_play_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                member_id INTEGER NOT NULL REFERENCES members(id),
+                binding_id INTEGER NOT NULL REFERENCES wristband_bindings(id),
+                wristband_uid TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                room_id TEXT,
+                external_session_id TEXT NOT NULL,
+                participant_index INTEGER NOT NULL DEFAULT 0,
+                game_id TEXT NOT NULL,
+                game_name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'ABORTED', 'LEGACY_SETTLED')),
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                success INTEGER,
+                termination_reason TEXT,
+                raw_score INTEGER,
+                points_awarded INTEGER NOT NULL DEFAULT 0,
+                scoring_policy TEXT,
+                result_json TEXT)
+            """;
+    }
+
+    private void ensureGamePlayIndexes() {
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_running_play_binding ON game_play_records(binding_id) WHERE status='RUNNING'");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS ix_game_plays_member_started ON game_play_records(member_id, started_at DESC)");
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_game_play_session_binding ON game_play_records(device_id, external_session_id, binding_id)");
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_game_play_session_participant ON game_play_records(device_id, external_session_id, participant_index)");
+    }
+
+    private void ensureLegacyGameSessionTable() {
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS legacy_game_sessions (
+                session_id TEXT PRIMARY KEY,
+                room_ip TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                game_name TEXT NOT NULL,
+                participants_hash TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
+                status TEXT NOT NULL CHECK (status IN ('RUNNING', 'SETTLED')),
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                settlement_fingerprint TEXT)
+            """);
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_legacy_session_open_room ON legacy_game_sessions(room_ip) WHERE status='RUNNING'");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS ix_legacy_session_room_started ON legacy_game_sessions(room_ip, started_at DESC)");
     }
 
     private void migrateStoreSettings() {

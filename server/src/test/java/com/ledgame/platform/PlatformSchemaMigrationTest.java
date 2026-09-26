@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -238,6 +239,97 @@ class PlatformSchemaMigrationTest {
                     .map(index -> String.valueOf(index.get("name"))))
                     .contains("ux_game_play_session_binding", "ux_game_play_session_participant")
                     .doesNotContain("ux_game_play_external_session");
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
+    void expandsPlayStatusConstraintWithoutLosingEncryptedRowsOrIndexes() throws Exception {
+        Path database = Files.createTempFile("platform-legacy-settled-migration-", ".db");
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    "jdbc:sqlite:" + database.toAbsolutePath());
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            jdbc.execute("CREATE TABLE members(id INTEGER PRIMARY KEY, phone TEXT, name TEXT, status TEXT, deleted_at TEXT)");
+            jdbc.execute("CREATE TABLE wristband_bindings(id INTEGER PRIMARY KEY)");
+            jdbc.execute("""
+                CREATE TABLE game_play_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    member_id INTEGER NOT NULL REFERENCES members(id),
+                    binding_id INTEGER NOT NULL REFERENCES wristband_bindings(id),
+                    wristband_uid TEXT NOT NULL,
+                    device_id TEXT NOT NULL,
+                    room_id TEXT,
+                    external_session_id TEXT NOT NULL,
+                    participant_index INTEGER NOT NULL DEFAULT 0,
+                    game_id TEXT NOT NULL,
+                    game_name TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'ABORTED')),
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    success INTEGER,
+                    termination_reason TEXT,
+                    raw_score INTEGER,
+                    points_awarded INTEGER NOT NULL DEFAULT 0,
+                    scoring_policy TEXT,
+                    result_json TEXT)
+                """);
+            jdbc.execute("CREATE UNIQUE INDEX ux_running_play_binding ON game_play_records(binding_id) WHERE status='RUNNING'");
+            jdbc.execute("CREATE INDEX ix_game_plays_member_started ON game_play_records(member_id, started_at DESC)");
+
+            ProtectedDataService protection = ProtectedDataService.forKey(
+                    new DataKeyMaterial(new byte[32], "migration-test-key"));
+            String encryptedUid = protection.encryptField("game_play_records", "wristband_uid", "2283055618");
+            String encryptedResult = protection.encryptField("game_play_records", "result_json", "{\"kept\":true}");
+            jdbc.update("INSERT INTO members(id, phone, name, status) VALUES (1, ?, ?, 'ACTIVE')",
+                    protection.encryptField("members", "phone", "13800138000"),
+                    protection.encryptField("members", "name", "迁移会员"));
+            jdbc.update("INSERT INTO wristband_bindings(id) VALUES (1)");
+            jdbc.update("""
+                INSERT INTO game_play_records(
+                    id, member_id, binding_id, wristband_uid, device_id, room_id,
+                    external_session_id, participant_index, game_id, game_name, status,
+                    started_at, ended_at, success, termination_reason, raw_score,
+                    points_awarded, scoring_policy, result_json)
+                VALUES (7, 1, 1, ?, 'room-ip', 'room-ip', 'session-before', 0,
+                        '386', '旧游戏', 'COMPLETED', '2026-01-01T00:00:00Z',
+                        '2026-01-01T00:10:00Z', 1, 'NATURAL_END', 80,
+                        80, 'raw-score-v1', ?)
+                """, encryptedUid, encryptedResult);
+
+            PlatformSchemaMigration migration = new PlatformSchemaMigration(jdbc);
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            migration.run(new DefaultApplicationArguments(new String[0]));
+
+            Map<String, Object> row = jdbc.queryForMap("SELECT * FROM game_play_records WHERE id=7");
+            assertThat(row.get("status")).isEqualTo("COMPLETED");
+            assertThat(row.get("points_awarded")).isEqualTo(80);
+            assertThat(row.get("wristband_uid")).isEqualTo(encryptedUid);
+            assertThat(row.get("result_json")).isEqualTo(encryptedResult);
+            assertThat(protection.decryptField("game_play_records", "wristband_uid", row.get("wristband_uid")))
+                    .isEqualTo("2283055618");
+            assertThat(protection.decryptField("game_play_records", "result_json", row.get("result_json")))
+                    .isEqualTo("{\"kept\":true}");
+
+            jdbc.update("""
+                INSERT INTO game_play_records(
+                    member_id, binding_id, wristband_uid, device_id, room_id,
+                    external_session_id, participant_index, game_id, game_name, status,
+                    started_at, ended_at, success, termination_reason, points_awarded, scoring_policy)
+                VALUES (1, 1, ?, 'room-ip', 'room-ip', 'legacy-session', 0,
+                        '386', '旧游戏', 'LEGACY_SETTLED', '2026-02-01T00:00:00Z',
+                        '2026-02-01T00:10:00Z', NULL, 'LEGACY_END_REASON_UNKNOWN',
+                        9223372036854770000, 'legacy-reported-v1')
+                """, encryptedUid);
+            assertThat(jdbc.queryForObject(
+                    "SELECT points_awarded FROM game_play_records WHERE status='LEGACY_SETTLED'", Long.class))
+                    .isEqualTo(9223372036854770000L);
+            assertThat(jdbc.queryForList("PRAGMA index_list(game_play_records)").stream()
+                    .map(index -> String.valueOf(index.get("name"))))
+                    .contains("ux_running_play_binding", "ix_game_plays_member_started",
+                            "ux_game_play_session_binding", "ux_game_play_session_participant");
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM legacy_game_sessions", Integer.class)).isZero();
         } finally {
             Files.deleteIfExists(database);
         }

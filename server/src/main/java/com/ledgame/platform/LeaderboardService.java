@@ -49,7 +49,7 @@ public class LeaderboardService {
               FROM members m
               JOIN game_play_records g ON g.member_id=m.id
              WHERE m.status='ACTIVE' AND m.deleted_at IS NULL
-               AND g.status='COMPLETED'
+               AND g.status IN ('COMPLETED', 'LEGACY_SETTLED')
                AND g.ended_at IS NOT NULL
                AND g.ended_at>=?
                AND g.ended_at<?

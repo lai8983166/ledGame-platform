@@ -87,11 +87,11 @@ public class PlayerInfoService {
         long total = value(jdbc.queryForObject("""
             SELECT COALESCE(SUM(points_awarded), 0)
               FROM game_play_records
-             WHERE member_id=? AND status='COMPLETED'
+             WHERE member_id=? AND status IN ('COMPLETED', 'LEGACY_SETTLED')
             """, Long.class, memberId));
         long rank = 1 + value(jdbc.queryForObject("""
             SELECT COUNT(*) FROM (
-                SELECT m.id, COALESCE(SUM(CASE WHEN g.status='COMPLETED' THEN g.points_awarded ELSE 0 END), 0) AS total
+                SELECT m.id, COALESCE(SUM(CASE WHEN g.status IN ('COMPLETED', 'LEGACY_SETTLED') THEN g.points_awarded ELSE 0 END), 0) AS total
                   FROM members m
                   LEFT JOIN game_play_records g ON g.member_id=m.id
                  WHERE m.status='ACTIVE' AND m.deleted_at IS NULL

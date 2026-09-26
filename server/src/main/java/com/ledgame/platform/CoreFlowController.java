@@ -65,7 +65,7 @@ public class CoreFlowController {
             WITH totals AS (
                 SELECT m.id, m.phone, m.name, m.avatar_id AS avatarId, m.birthday, m.gender,
                        m.status, m.created_at AS createdAt,
-                       COALESCE(SUM(CASE WHEN g.status='COMPLETED' THEN g.points_awarded ELSE 0 END), 0) AS pointsTotal
+                       COALESCE(SUM(CASE WHEN g.status IN ('COMPLETED', 'LEGACY_SETTLED') THEN g.points_awarded ELSE 0 END), 0) AS pointsTotal
                   FROM members m
                   LEFT JOIN game_play_records g ON g.member_id=m.id
                  WHERE m.status='ACTIVE' AND m.deleted_at IS NULL

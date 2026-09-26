@@ -69,6 +69,7 @@
                 <configuration>
                     <systemPropertyVariables>
                         <ledgame.data-protection.test-key-base64>AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=</ledgame.data-protection.test-key-base64>
+                        <ledgame.legacy-compatibility.enabled>false</ledgame.legacy-compatibility.enabled>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
