@@ -38,31 +38,27 @@ public class LegacyGameCompatibilityController {
     public LegacyGameCompatibilityService.LegacyResponse callback(
             @RequestBody(required = false) String body, HttpServletRequest request) {
         String sourceIp = request.getRemoteAddr();
+        String command = "unparsed";
         try {
             JsonNode payload = body == null || body.isBlank() ? mapper.getNodeFactory().nullNode() : mapper.readTree(body);
+            JsonNode commandNode = payload.path("cmd");
+            if (commandNode.isIntegralNumber() && commandNode.canConvertToInt()) command = commandNode.asText();
             return compatibility.handle(payload, sourceIp);
         } catch (JsonProcessingException exception) {
             String correlationId = UUID.randomUUID().toString();
             log.warn("legacy_callback_rejected cmd=unparsed roomIp={} correlationId={} code=LEGACY_JSON_INVALID",
-                    LegacyRoomPresenceService.normalizeIp(sourceIp), correlationId);
+                    RoomConnectionRegistry.normalizeIp(sourceIp), correlationId);
             return LegacyGameCompatibilityService.LegacyResponse.failure(400, "Invalid JSON callback body");
         } catch (PlatformApiException exception) {
             String correlationId = UUID.randomUUID().toString();
-            String command = "unparsed";
-            try {
-                JsonNode payload = body == null ? null : mapper.readTree(body);
-                if (payload != null && payload.has("cmd")) command = payload.path("cmd").asText();
-            } catch (JsonProcessingException ignored) {
-                // The body is intentionally omitted from diagnostics.
-            }
             log.warn("legacy_callback_rejected cmd={} roomIp={} correlationId={} code={}", command,
-                    LegacyRoomPresenceService.normalizeIp(sourceIp), correlationId, exception.getCode());
+                    RoomConnectionRegistry.normalizeIp(sourceIp), correlationId, exception.getCode());
             return LegacyGameCompatibilityService.LegacyResponse.failure(
                     exception.getStatusCode().value(), exception.getReason());
         } catch (RuntimeException exception) {
             String correlationId = UUID.randomUUID().toString();
-            log.error("legacy_callback_failed roomIp={} correlationId={} code=LEGACY_INTERNAL_ERROR",
-                    LegacyRoomPresenceService.normalizeIp(sourceIp), correlationId);
+            log.error("legacy_callback_failed cmd={} roomIp={} correlationId={} code=LEGACY_INTERNAL_ERROR",
+                    command, RoomConnectionRegistry.normalizeIp(sourceIp), correlationId);
             return LegacyGameCompatibilityService.LegacyResponse.failure(500,
                     "Legacy callback could not be processed");
         }

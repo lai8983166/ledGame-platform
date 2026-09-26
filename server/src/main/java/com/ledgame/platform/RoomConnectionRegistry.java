@@ -2,7 +2,10 @@ package com.ledgame.platform;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -136,7 +139,22 @@ public class RoomConnectionRegistry {
 
     static String normalizeIp(String value) {
         String ip = value == null ? "" : value.trim();
-        return "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip) ? "127.0.0.1" : ip;
+        if (!ip.contains(":")) return ip;
+        try {
+            InetAddress address = InetAddress.getByName(ip);
+            if (address.isLoopbackAddress()) return "127.0.0.1";
+            if (address instanceof Inet4Address) return address.getHostAddress();
+            byte[] bytes = address.getAddress();
+            boolean mapped = bytes.length == 16;
+            for (int index = 0; mapped && index < 10; index++) mapped = bytes[index] == 0;
+            mapped = mapped && (bytes[10] & 0xff) == 0xff && (bytes[11] & 0xff) == 0xff;
+            if (mapped) {
+                return InetAddress.getByAddress(java.util.Arrays.copyOfRange(bytes, 12, 16)).getHostAddress();
+            }
+        } catch (UnknownHostException ignored) {
+            // Socket addresses are numeric; preserve unknown values for diagnostic clarity.
+        }
+        return ip;
     }
 
     private static int readQueueLength(JsonNode state) {

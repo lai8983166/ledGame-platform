@@ -1083,8 +1083,8 @@ class CoreFlowApiIntegrationTest {
     @Test
     void legacyHeartbeatTracksIndependentIpRoomsAndExpiresAfterSixtySeconds() {
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
-        assertThat(LegacyRoomPresenceService.normalizeIp("::ffff:192.168.50.71")).isEqualTo("192.168.50.71");
-        assertThat(LegacyRoomPresenceService.normalizeIp("::ffff:c0a8:3247")).isEqualTo("192.168.50.71");
+        assertThat(RoomConnectionRegistry.normalizeIp("::ffff:192.168.50.71")).isEqualTo("192.168.50.71");
+        assertThat(RoomConnectionRegistry.normalizeIp("::ffff:c0a8:3247")).isEqualTo("192.168.50.71");
         assertThat(legacyCompatibility.handle(objectMapper.createObjectNode().put("cmd", 1), "192.168.50.71").code())
                 .isEqualTo(200);
         assertThat(legacyCompatibility.handle(objectMapper.createObjectNode().put("cmd", 1), "192.168.50.72").code())

@@ -47,7 +47,7 @@ public class LegacyGameCompatibilityService {
 
     @Transactional
     public LegacyResponse handle(JsonNode request, String sourceIp) {
-        String ip = LegacyRoomPresenceService.normalizeIp(sourceIp);
+        String ip = RoomConnectionRegistry.normalizeIp(sourceIp);
         int command = request == null ? -1 : request.path("cmd").asInt(-1);
         if (command == 1) {
             rooms.heartbeat(ip);
@@ -166,7 +166,7 @@ public class LegacyGameCompatibilityService {
                  WHERE p.external_session_id=? AND p.status='RUNNING'
                  ORDER BY p.participant_index, p.id
                 """, sessionId);
-        LinkedHashMap<String, Long> participantScores = new LinkedHashMap<>();
+        LinkedHashMap<Long, Long> pointsByPlayId = new LinkedHashMap<>();
         for (Map<String, Object> participant : participants) {
             String uid = protectedData.decryptField("game_play_records", "wristband_uid", participant.get("uid"));
             Long points = reported.get(uid);
@@ -174,22 +174,23 @@ public class LegacyGameCompatibilityService {
                 throw GameAccessService.error(HttpStatus.CONFLICT, "LEGACY_POINTS_PARTICIPANTS_MISMATCH",
                         "Legacy point entries do not match the open session participants");
             }
-            participantScores.put(uid, points);
+            pointsByPlayId.put(((Number) participant.get("id")).longValue(), points);
         }
-        if (participants.isEmpty() || participantScores.size() != reported.size()) {
+        if (participants.isEmpty() || pointsByPlayId.size() != reported.size()) {
             throw GameAccessService.error(HttpStatus.CONFLICT, "LEGACY_POINTS_PARTICIPANTS_MISMATCH",
                     "Legacy point entries do not match the open session participants");
         }
         for (Map<String, Object> participant : participants) {
-            String uid = protectedData.decryptField("game_play_records", "wristband_uid", participant.get("uid"));
+            long playId = ((Number) participant.get("id")).longValue();
+            long points = pointsByPlayId.get(playId);
             LinkedHashMap<String, Object> stored = new LinkedHashMap<>();
             stored.put("legacyGameId", gameId);
             stored.put("legacyRoomIp", ip);
             stored.put("startIsAdmin", ((Number) open.get(0).get("isAdmin")).intValue() != 0);
             stored.put("endIsAdmin", isAdmin);
             stored.put("legacyTerminationReason", "unknown");
-            stored.put("reportedPoints", participantScores.get(uid));
-            plays.settleLegacy(((Number) participant.get("id")).longValue(), participantScores.get(uid), stored);
+            stored.put("reportedPoints", points);
+            plays.settleLegacy(playId, points, stored);
         }
         int changed = jdbc.update("""
                 UPDATE legacy_game_sessions SET status='SETTLED', ended_at=?, settlement_fingerprint=?

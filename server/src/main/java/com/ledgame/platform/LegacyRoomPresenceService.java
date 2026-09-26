@@ -3,8 +3,6 @@ package com.ledgame.platform;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -33,7 +31,7 @@ public class LegacyRoomPresenceService {
     }
 
     public String heartbeat(String rawIp) {
-        String ip = normalizeIp(rawIp);
+        String ip = RoomConnectionRegistry.normalizeIp(rawIp);
         if (registeredThisProcess.add(ip)) {
             String now = clock.instant().toString();
             jdbc.update("""
@@ -58,7 +56,7 @@ public class LegacyRoomPresenceService {
     }
 
     public Map<String, Object> find(String rawIp) {
-        String ip = normalizeIp(rawIp);
+        String ip = RoomConnectionRegistry.normalizeIp(rawIp);
         boolean known = lastSeenByIp.containsKey(ip)
                 || !jdbc.queryForList("SELECT room_ip FROM legacy_game_sessions WHERE room_ip=? LIMIT 1", ip).isEmpty();
         return known ? projection(ip) : null;
@@ -123,30 +121,4 @@ public class LegacyRoomPresenceService {
         return result;
     }
 
-    static String normalizeIp(String raw) {
-        String ip = RoomConnectionRegistry.normalizeIp(raw);
-        String lower = ip.toLowerCase(java.util.Locale.ROOT);
-        if (lower.startsWith("::ffff:") && lower.substring(7).matches("\\d{1,3}(?:\\.\\d{1,3}){3}")) {
-            return lower.substring(7);
-        }
-        if (lower.contains(":")) {
-            try {
-                byte[] address = InetAddress.getByName(lower).getAddress();
-                if (address.length == 4 && lower.contains(":ffff:")) {
-                    return (address[0] & 0xff) + "." + (address[1] & 0xff) + "."
-                            + (address[2] & 0xff) + "." + (address[3] & 0xff);
-                }
-                boolean mapped = address.length == 16;
-                for (int index = 0; mapped && index < 10; index++) mapped = address[index] == 0;
-                mapped = mapped && (address[10] & 0xff) == 0xff && (address[11] & 0xff) == 0xff;
-                if (mapped) {
-                    return (address[12] & 0xff) + "." + (address[13] & 0xff) + "."
-                            + (address[14] & 0xff) + "." + (address[15] & 0xff);
-                }
-            } catch (UnknownHostException ignored) {
-                // Socket remote addresses are numeric; keep an unrecognized value unchanged for diagnostics.
-            }
-        }
-        return ip;
-    }
 }
