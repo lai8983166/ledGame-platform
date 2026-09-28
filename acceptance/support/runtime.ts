@@ -38,7 +38,8 @@ export async function removeOwnedRunDirectory(runDirectory: string, baseDirector
   if (marker.owner !== "ledgame-store-acceptance" || marker.schemaVersion !== 1) {
     throw new Error(`Refusing to remove acceptance path with invalid ownership marker: ${run}`);
   }
-  await rm(run, { recursive: true, force: true });
+  // Windows 在进程退出后可能短暂锁住 SQLite WAL/SHM；只重试系统的瞬态删除错误。
+  await rm(run, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
 async function listenOnRandomPort(): Promise<number> {

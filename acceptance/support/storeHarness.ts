@@ -1,5 +1,5 @@
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   ManagedProcessRegistry,
@@ -49,6 +49,7 @@ const gameBackendRoot = path.resolve(platformRoot, "..", "ledGame-backend");
 const runtimeBase = path.resolve(platformRoot, "acceptance", ".runtime");
 export const ACCEPTANCE_FACTORY_USERNAME = "acceptance-admin";
 export const ACCEPTANCE_FACTORY_PASSWORD = "acceptance-password";
+const ACCEPTANCE_CLEAR_REWARD = 3;
 
 async function httpOk(url: string): Promise<boolean> {
   const response = await fetch(url);
@@ -68,6 +69,7 @@ function processNameInChinese(label: string): string {
     "registration-kiosk": "自助注册端",
     "game-backend": "游戏后端",
     "game-renderer": "游戏前端",
+    "platform-desktop-build": "会员管理桌面后端构建",
   } as Record<string, string>)[label] || label;
 }
 
@@ -93,6 +95,7 @@ export class StoreAcceptanceHarness {
   #touchPage: Page | null = null;
   #debugPage: Page | null = null;
   #floorDevice: BidirectionalFloorDevice | null = null;
+  #operatorId: number | null = null;
   #stopped = false;
 
   private constructor(testInfo: TestInfo, runDirectory: string, ports: RuntimePorts, options: ResolvedStoreAcceptanceOptions) {
@@ -172,6 +175,10 @@ export class StoreAcceptanceHarness {
     if (!seed.ok) throw new Error(`Game seed failed with HTTP ${seed.status}: ${await seed.text()}`);
     const rankSeed = await fetch(`${this.gameBaseUrl}/dev/seed/rank-type1`, { method: "POST" });
     if (!rankSeed.ok) throw new Error(`Rank game seed failed with HTTP ${rankSeed.status}: ${await rankSeed.text()}`);
+    // 业务积分与游戏内原始分分别验收，不依赖种子数据的默认奖励。
+    for (const name of ["simple-demo", "simple", "normal", "diffcult"]) {
+      await this.setSimpleLevelRewardPoints(name, ACCEPTANCE_CLEAR_REWARD);
+    }
 
     this.#startChild("game-renderer", "pnpm", ["exec", "vite", "--host", "127.0.0.1", "--port", String(this.#ports.renderer), "--strictPort"], gameRoot);
     await this.#ready("Game renderer", `http://127.0.0.1:${this.#ports.renderer}/`, this.#children.at(-1)!);
@@ -216,6 +223,10 @@ export class StoreAcceptanceHarness {
   }
 
   async #startPlatformDesktopClients(electronUserData: string): Promise<void> {
+    // 桌面端运行 JAR，不是 spring-boot:run；完整验收命令也必须准备当前版本。
+    const build = this.#startChild("platform-desktop-build", "mvn", ["-q", "-f", path.join(platformRoot, "server", "pom.xml"), "package", "-DskipTests"], platformRoot);
+    await expect.poll(() => build.hasExited(), { timeout: 90_000 }).toBe(true);
+    expect(build.child.exitCode, `会员管理端 JAR 构建失败：${build.log.text()}`).toBe(0);
     await prepareActivationLicense(path.join(electronUserData, "member-admin"));
     const electronExecutable = path.join(platformRoot, "node_modules", "electron", "dist", "electron.exe");
     const { ELECTRON_RUN_AS_NODE: _electronRunAsNode, ...electronEnvironment } = process.env;
@@ -228,6 +239,11 @@ export class StoreAcceptanceHarness {
         VITE_MEMBER_ADMIN_DEV_URL: `http://127.0.0.1:${this.#ports.admin}`,
         LEDGAME_USER_DATA: path.join(electronUserData, "member-admin"),
         LEDGAME_PLATFORM_PORT: String(this.#ports.platform),
+        LEDGAME_DATABASE_BACKUP_ENABLED: "true",
+        LEDGAME_DATABASE_BACKUP_ROOT: path.join(this.#runDirectory, "desktop-backup"),
+        LEDGAME_DATABASE_BACKUP_ENVIRONMENT: "TEST",
+        // 本套验收使用新版接口，不占用门店旧游戏端的固定监听端口。
+        PLATFORM_LEGACY_COMPATIBILITY_ENABLED: "false",
         PLATFORM_FACTORY_ADMIN_USERNAME: ACCEPTANCE_FACTORY_USERNAME,
         PLATFORM_FACTORY_ADMIN_PASSWORD: ACCEPTANCE_FACTORY_PASSWORD,
         PLATFORM_FACTORY_ADMIN_DISPLAY_NAME: "验收出厂管理员",
@@ -270,6 +286,29 @@ export class StoreAcceptanceHarness {
     await page.getByTestId("operator-login-password").fill(ACCEPTANCE_FACTORY_PASSWORD);
     await page.getByTestId("operator-login-submit").click();
     await expect(page.getByTestId("operator-authenticated-app")).toBeVisible();
+    // 页面登录验证交互，接口登录取得断言请求所需身份；不硬编码数据库 ID。
+    this.#operatorId = (await this.loginOperatorForAssertions(ACCEPTANCE_FACTORY_USERNAME, ACCEPTANCE_FACTORY_PASSWORD)).id;
+  }
+
+  async loginOperatorForAssertions(username: string, password: string): Promise<{ id: number; accountType: string }> {
+    const response = await fetch(`${this.platformBaseUrl}/api/operator-auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) throw new Error(`验收操作员登录失败：HTTP ${response.status}: ${await response.text()}`);
+    const profile = await response.json() as { id: number; accountType: string };
+    expect(profile.id).toBeGreaterThan(0);
+    return profile;
+  }
+
+  async #adminRequest(apiPath: string): Promise<Response> {
+    if (!this.#operatorId) throw new Error("验收查询前必须登录操作员");
+    const response = await fetch(`${this.platformBaseUrl}${apiPath}`, {
+      headers: { "X-Operator-Id": String(this.#operatorId) },
+    });
+    if (!response.ok) throw new Error(`管理数据查询 ${apiPath} 失败：HTTP ${response.status}: ${await response.text()}`);
+    return response;
   }
 
   async exitRegistrationKioskToOperator(): Promise<void> {
@@ -345,8 +384,17 @@ export class StoreAcceptanceHarness {
       ACCEPTANCE_FACTORY_ADMIN_USERNAME: ACCEPTANCE_FACTORY_USERNAME,
       ACCEPTANCE_FACTORY_ADMIN_PASSWORD: ACCEPTANCE_FACTORY_PASSWORD,
       ACCEPTANCE_FACTORY_ADMIN_DISPLAY_NAME: "验收出厂管理员",
+      PLATFORM_LEGACY_COMPATIBILITY_ENABLED: "false",
     });
     await this.#ready("Platform server", `${this.platformBaseUrl}/api/health`, this.#platformProcess, 90_000);
+    // 健康接口就绪不等于业务就绪；重启后仍可能短暂处于备份检查阶段。
+    await expect.poll(async () => {
+      const response = await fetch(`${this.platformBaseUrl}/api/system/startup-status`);
+      if (!response.ok) return `HTTP ${response.status}: ${await response.text()}`;
+      const status = await response.json() as { state: string; errorCode?: string };
+      return status.errorCode && !status.state.startsWith("READY_")
+        ? `${status.state}: ${status.errorCode}` : status.state;
+    }, { timeout: 30_000, message: "等待会员管理后端完成启动检查并开放业务" }).toMatch(/^READY_(PROTECTED|DEGRADED)$/);
   }
 
   async #ready(label: string, url: string, processHandle: ManagedChildProcess, timeoutMs = 45_000): Promise<void> {
@@ -393,8 +441,7 @@ export class StoreAcceptanceHarness {
   }
 
   async assertDashboardOverview(expected: { totalMembers: number; newMembersToday: number; chargesToday: number; revenueTodayCents: number }): Promise<void> {
-    const response = await fetch(`${this.platformBaseUrl}/api/dashboard/overview`);
-    if (!response.ok) throw new Error(`Dashboard overview failed with HTTP ${response.status}: ${await response.text()}`);
+    const response = await this.#adminRequest("/api/dashboard/overview");
     expect(await response.json()).toMatchObject({
       totalMembers: expected.totalMembers,
       newMembersToday: expected.newMembersToday,
@@ -524,12 +571,17 @@ export class StoreAcceptanceHarness {
     }
     if (this.#options.runtimeMode === "PRODUCTION") {
       await this.touchPage.getByTestId("game-player-next").click();
+    }
+    const game = this.touchPage.locator(this.#options.runtimeMode === "PRODUCTION"
+      ? '[data-testid^="game-carousel-"]'
+      : '[data-testid^="game-option-"]').filter({
+      has: this.touchPage.getByText("simple", { exact: true }),
+    });
+    await expect(game).toHaveCount(1);
+    await game.click();
+    if (this.#options.runtimeMode === "PRODUCTION") {
       await expect(this.touchPage.getByTestId("game-game-next")).toBeEnabled();
       await this.touchPage.getByTestId("game-game-next").click();
-    } else {
-      const game = this.touchPage.locator('[data-testid^="game-option-"]').first();
-      await expect(game).toBeVisible();
-      await game.click();
     }
     await expect(this.touchPage.getByTestId("game-start")).toBeEnabled();
     await this.touchPage.getByTestId("game-start").click();
@@ -617,6 +669,10 @@ export class StoreAcceptanceHarness {
       body: JSON.stringify(document),
     });
     if (!saveResponse.ok) throw new Error(`Game reward save failed with HTTP ${saveResponse.status}: ${await saveResponse.text()}`);
+    const saved = await fetch(`${this.gameBaseUrl}/game-editor/${game.gameId}`);
+    if (!saved.ok) throw new Error(`Game reward readback failed with HTTP ${saved.status}`);
+    const readback = await saved.json() as { data?: { levels?: Array<{ option?: { rewardPoints?: number } }> } };
+    expect(readback.data?.levels?.map((level) => level.option?.rewardPoints)).toEqual(document.levels.map(() => rewardPoints));
   }
 
   async setRankLevelRewardPoints(variantName: string, rewardPoints: number): Promise<void> {
@@ -765,8 +821,7 @@ export class StoreAcceptanceHarness {
 
   async assertRoomReconnected(expectedQueueLength: number): Promise<void> {
     await expect.poll(async () => {
-      const response = await fetch(`${this.platformBaseUrl}/api/rooms`);
-      if (!response.ok) return null;
+      const response = await this.#adminRequest("/api/rooms");
       const rooms = await response.json() as Array<{ ip?: string; online?: boolean; queueLength?: number }>;
       return {
         count: rooms.length,
@@ -830,15 +885,15 @@ export class StoreAcceptanceHarness {
     }, { timeout: 30_000 }).toBe("COMPLETED");
     if (!info) throw new Error("Player Info was not loaded");
     const settled = info.recentPlays[0];
-    expect(settled).toMatchObject({ status: "COMPLETED", terminationReason: "NATURAL_COMPLETION", rawScore: 1, pointsAwarded: 1, scoringPolicy: "raw-score-v1" });
-    expect(info.points).toEqual({ total: 1, rank: 1 });
+    expect(settled).toMatchObject({ status: "COMPLETED", terminationReason: "NATURAL_COMPLETION", rawScore: 1, pointsAwarded: ACCEPTANCE_CLEAR_REWARD, scoringPolicy: "level-clear-points-v1" });
+    expect(info.points).toEqual({ total: ACCEPTANCE_CLEAR_REWARD, rank: 1 });
     expect(info.wristbands.find((band) => band.uid === uid)?.remainingSeconds).toBeGreaterThan(0);
 
     const admin = this.adminPage;
     await admin.getByTestId("admin-nav-members").click();
     const memberRow = admin.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone });
     await expect(memberRow).toBeVisible();
-    await expect(memberRow.getByTestId("admin-member-points")).toHaveText("1");
+    await expect(memberRow.getByTestId("admin-member-points")).toHaveText(String(ACCEPTANCE_CLEAR_REWARD));
     await expect(memberRow.getByTestId("admin-member-rank")).toHaveText("#1");
     await admin.getByTestId("admin-nav-rooms").click();
     const room = admin.locator('[data-testid^="admin-room-"]').first();
@@ -850,8 +905,8 @@ export class StoreAcceptanceHarness {
     await expect(playRecord).toBeVisible();
     await expect(playRecord).toHaveAttribute("data-status", "COMPLETED");
     await expect(playRecord.getByTestId("admin-play-raw-score")).toHaveText("1");
-    await expect(playRecord.getByTestId("admin-play-points")).toContainText("1");
-    await expect(playRecord.getByTestId("admin-play-points")).toContainText("raw-score-v1");
+    await expect(playRecord.getByTestId("admin-play-points")).toContainText(String(ACCEPTANCE_CLEAR_REWARD));
+    await expect(playRecord.getByTestId("admin-play-points")).toContainText("level-clear-points-v1");
     await expect(playRecord.getByTestId("admin-play-termination")).toContainText("NATURAL_COMPLETION");
 
     const kiosk = this.kioskPage;
@@ -861,12 +916,12 @@ export class StoreAcceptanceHarness {
     await kiosk.getByTestId("kiosk-info-submit").click();
     await expect(kiosk.getByTestId("kiosk-info-result")).toBeVisible();
     await expect(kiosk.getByTestId(`kiosk-info-wristband-${uid}`)).toBeVisible();
-    await expect(kiosk.getByTestId("kiosk-info-points-total")).toHaveText("1");
+    await expect(kiosk.getByTestId("kiosk-info-points-total")).toHaveText(String(ACCEPTANCE_CLEAR_REWARD));
     await expect(kiosk.getByTestId("kiosk-info-rank")).toHaveText("#1");
     const kioskPlay = kiosk.locator('article[data-testid^="kiosk-info-play-"]').first();
     await expect(kioskPlay).toHaveAttribute("data-status", "COMPLETED");
     await expect(kioskPlay.getByTestId("kiosk-info-play-raw-score")).toHaveText("1");
-    await expect(kioskPlay.getByTestId("kiosk-info-play-points")).toHaveText("+1");
+    await expect(kioskPlay.getByTestId("kiosk-info-play-points")).toHaveText(`+${ACCEPTANCE_CLEAR_REWARD}`);
   }
 
   async assertMultiplayerNaturalState(
@@ -989,8 +1044,7 @@ export class StoreAcceptanceHarness {
   }
 
   async #gamePlayRecords(): Promise<GamePlaySnapshot[]> {
-    const response = await fetch(`${this.platformBaseUrl}/api/game-plays`);
-    if (!response.ok) throw new Error(`Game play query failed with HTTP ${response.status}: ${await response.text()}`);
+    const response = await this.#adminRequest("/api/game-plays");
     return response.json() as Promise<GamePlaySnapshot[]>;
   }
 
@@ -1048,13 +1102,25 @@ export class StoreAcceptanceHarness {
     for (const process of this.#children) {
       await this.#testInfo.attach(`${prefix}-${processNameInChinese(process.label)}-日志末尾`, { body: Buffer.from(process.log.text()), contentType: "text/plain" });
     }
+    if (this.#memberAdminElectron) {
+      const windows = await Promise.all(this.#memberAdminElectron.windows().map(async (page) => ({
+        url: page.url(),
+        text: await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "窗口已关闭或不可读"),
+      })));
+      await this.#testInfo.attach(`${prefix}-会员管理桌面窗口`, { body: Buffer.from(JSON.stringify(windows, null, 2)), contentType: "application/json" });
+      const log = await readFile(path.join(this.#runDirectory, "electron-user-data", "member-admin", "logs", "server.log"), "utf8").catch(() => "未生成后端日志");
+      await this.#testInfo.attach(`${prefix}-会员管理桌面后端日志末尾`, { body: Buffer.from(log.split("\n").slice(-200).join("\n")), contentType: "text/plain" });
+    }
   }
 
   async stop(passed: boolean): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
-    if (!passed) await this.#attachDiagnostics("测试失败");
     const failures: unknown[] = [];
+    // 诊断附件失败不能阻止进程和临时目录清理。
+    if (!passed) {
+      try { await this.#attachDiagnostics("测试失败"); } catch (error) { failures.push(error); }
+    }
     try { await this.#electronApp?.close(); } catch (error) { failures.push(error); }
     try { await this.#registrationElectron?.close(); } catch (error) { failures.push(error); }
     try { await this.#memberAdminElectron?.close(); } catch (error) { failures.push(error); }
@@ -1065,6 +1131,7 @@ export class StoreAcceptanceHarness {
     } else {
       try { await removeOwnedRunDirectory(this.#runDirectory, runtimeBase); } catch (error) { failures.push(error); }
     }
-    if (failures.length && passed) throw new AggregateError(failures, "Acceptance cleanup failed");
+    if (failures.length && passed) throw new AggregateError(failures,
+      `Acceptance cleanup failed:\n${failures.map(error => error instanceof Error ? error.stack || error.message : String(error)).join("\n")}`);
   }
 }
