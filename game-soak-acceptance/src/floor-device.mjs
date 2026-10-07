@@ -44,6 +44,10 @@ export class FloorDevice {
       }
       else if (this.#phase === 'UNKNOWN'
         || (this.#phase === 'STOPPED' && length === 16 * 16 * 3)
+        // FloorStandbyRuntime emits a 16x36 rainbow while idle/preparing, even
+        // before preparation selects a game and state reports its field size.
+        // Count this separately; never relax the RUNNING dimension check.
+        || (['IDLE', 'PREPARING', 'STOPPED'].includes(this.#phase) && length === 16 * 36 * 3)
         || (this.now() < this.#transitionUntil && length === this.#previousBytes)) this.transitionFrames++;
       else { this.rejectedFrames++; this.lastError = `尺寸不匹配：阶段 ${this.#phase}，期望 ${this.payloadBytes}，收到 ${length}`; }
       this.#buffer = this.#buffer.subarray(5 + length);

@@ -32,3 +32,23 @@ test('idle size is legitimate, transition grace is bounded, wrong running size f
   assert.equal(device.snapshot().rejectedFrames, 1);
   assert.equal(device.snapshot().transitionFrames, 2);
 });
+
+test('16x36 rainbow standby during preparation is transition evidence, never accepted as a wrong running frame', () => {
+  let at = 0; const device = new FloorDevice(8, 8, () => at);
+  const frame = (size) => { const data = Buffer.alloc(size + 5); data[0] = 0x67; data.writeUInt32BE(size, 1); return data; };
+  // Preparation before game selection reports the legacy fallback size, but actual standby is 16x36.
+  device.observeState({ engineState: 'PREPARING', width: 16, height: 16 });
+  at = 2000; device.consume(frame(16 * 36 * 3));
+  assert.equal(device.snapshot().transitionFrames, 1);
+  assert.equal(device.snapshot().rejectedFrames, 0);
+  device.observeState({ engineState: 'RUNNING', width: 8, height: 8 });
+  at = 4000; device.consume(frame(16 * 36 * 3));
+  assert.equal(device.snapshot().rejectedFrames, 1);
+  assert.equal(device.snapshot().runningFrames, 0);
+  device.consume(frame(8 * 8 * 3));
+  assert.equal(device.snapshot().runningFrames, 1);
+  device.observeState({ engineState: 'STOPPED', width: 8, height: 8 });
+  at = 6000; device.consume(frame(16 * 36 * 3));
+  assert.equal(device.snapshot().transitionFrames, 2);
+  assert.equal(device.snapshot().rejectedFrames, 1);
+});

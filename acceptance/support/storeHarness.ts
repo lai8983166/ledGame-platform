@@ -342,7 +342,11 @@ export class StoreAcceptanceHarness {
           ],
         },
       }),
-    } : {};
+    } : {
+      SPRING_APPLICATION_JSON: JSON.stringify({led:{outputs:[
+        {name:"debug-panel",enabled:true,host:"127.0.0.1",port:this.#ports.debugTcp},
+      ]}}),
+    };
     this.#gameBackendProcess = this.#startChild(label, "mvn", ["-q", "spring-boot:run"], gameBackendRoot, {
       SPRING_PROFILES_ACTIVE: "acceptance",
       ACCEPTANCE_GAME_DATABASE_URL: `jdbc:h2:file:${databasePath};MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE`,
@@ -402,6 +406,8 @@ export class StoreAcceptanceHarness {
   }
 
   get platformBaseUrl(): string { return `http://127.0.0.1:${this.#ports.platform}`; }
+  get mainPage(): Page { if (!this.#mainPage) throw new Error("游戏主窗口尚未启动"); return this.#mainPage; }
+  get gameWindows(): Page[] { return this.#electronApp?.windows() ?? []; }
   get gameBaseUrl(): string { return `http://127.0.0.1:${this.#ports.game}`; }
   get adminPage(): Page { if (!this.#adminPage) throw new Error("Member Admin is not started"); return this.#adminPage; }
   get kioskPage(): Page { if (!this.#kioskPage) throw new Error("Registration Kiosk is not started"); return this.#kioskPage; }
@@ -702,7 +708,13 @@ export class StoreAcceptanceHarness {
     const needsDebugPanel = this.#options.runtimeMode === "SIMULATION";
     if (!this.#touchPage || (needsDebugPanel && !this.#debugPage)) {
       await this.#mainPage.getByTestId("game-enter-flow").click();
-      await expect.poll(() => this.#electronApp!.windows().length, { timeout: 20_000 }).toBeGreaterThanOrEqual(needsDebugPanel ? 3 : 2);
+      // A secondary display can open automatically; window count alone can
+      // become sufficient before Touch/DebugPanel have actually loaded.
+      await expect.poll(() => {
+        const urls=this.#electronApp!.windows().map(page=>page.url());
+        return urls.some(url=>url.includes("window=touch"))
+          && (!needsDebugPanel || urls.some(url=>url.includes("window=debug")));
+      }, { timeout: 20_000 }).toBe(true);
       const windows = this.#electronApp.windows();
       this.#touchPage = windows.find((page) => page.url().includes("window=touch")) ?? null;
       this.#debugPage = windows.find((page) => page.url().includes("window=debug")) ?? null;
