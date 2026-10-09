@@ -75,3 +75,17 @@ pnpm exec electron-builder --config electron-builder.json --config.electronDist=
 ```
 
 该参数仅用于本次构建，不修改永久打包配置。两种交付产物已逐文件校验。会员管理端和自助注册端不需重新打包；本次未提交 Git、未归档 Change。
+
+## 2026-10-09 追加：首页卡片上封面、下名称
+
+分类卡片内部从左右排布改为上封面、下名称，删除额外进入提示。整体仍为约 2:1；长名称允许换行，右侧为编辑按钮预留空间。拖动柄、编辑、进入分类、持久化与游戏卡片逻辑未改。
+
+- 先增加真实组件上下位置断言，旧布局在“名称必须位于封面下方”断言失败；修改后通过。
+- `pnpm test`：381 项全量通过，含 i18n 检查。
+- `node scripts/test-catalog-library-ui.mjs`：14 组通过；1366×768、1920×1080、2560×1440 验证上下排布、比例、编辑按钮不重叠、长名称换行及无横向溢出，已查看 1366px 截图。
+- `pnpm build`：通过；后端无改动，沿用已准备的 JRE、后端和媒体资源，未重跑后端全量。
+- `node scripts/test-catalog-library-packaged.mjs`：9 项隔离验收通过，包含三种窗口尺寸上下布局，以及真实排序/封面保存、语言草稿、四色精灵、关闭重启持久化；证据：`F:/project/ledGame/.build/catalog-packaged-U8KfUP/results.json`。
+- 原 `release/win-unpacked` 和 `release/LED Game-0.1.0-win.zip` 已覆盖更新。EXE、app.asar、后端 JAR、conf.json、wiring.json 五项 SHA-256 一致。
+- OpenSpec 严格校验与 `git diff --check` 通过。本次不访问实际人工游戏/会员数据库，不连接真实硬件；未提交或归档。
+
+旧版符号灯仅做源码分析，结果见 `docs/旧版符号灯运行逻辑分析.md`。未向新版本移植外围灯倒计时、点击或生命业务。
