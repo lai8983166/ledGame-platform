@@ -1,5 +1,9 @@
 # Design
 
+## 2026-10-13 空 MAC 网卡修正
+
+Java 网卡枚举和运行时快照允许 MAC 缺失，但旧 NetworkInterface.validate 强制要求 MAC，导致 UDP 创建前抛出 hardwareAddress: must not be blank。MAC 仅用于 IP 不匹配时的可选网卡定位回退；UDP 实际使用本机 IPv4 绑定，故移除 MAC 必填，保留其余校验和网卡解析规则，不伪造 MAC、不修改搜索/RGB 协议。网卡无法定位和 UDP 绑定失败分别提供中文提示，只有有效搜索无回复显示未连接设备弹窗。
+
 ## Context
 
 参见 proposal.md。现有 SimpleGameEditorView.startGame 与 RankGameEditorView.startTest 都以 SIMULATION 启动，随后调用 enterGameFlow 打开 DebugPanel/Touch；App 的调试窗口分支负责帧解码与状态监听，DemoView 使用 DebugLedCanvas。主窗口采用 activeView 切换，没有必要为了一个调试页面引入路由框架。
