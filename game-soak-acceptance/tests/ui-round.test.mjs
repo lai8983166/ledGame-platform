@@ -21,6 +21,8 @@ function fixture(fault) {
   if (fault === 'stopping') states.splice(3, 0, { ...stopped, engineState: 'STOPPING' });
   const page = {
     isClosed: () => false,
+    locator: () => ({ count:async()=>fault==='categorized'?1:0,
+      first:()=>({click:async()=>{clicks.push('category');}}) }),
     getByTestId: (id) => ({
       isVisible: async () => false,
       getAttribute: async (attr) => {
@@ -30,7 +32,7 @@ function fixture(fault) {
       },
       click: async () => {
         clicks.push(id);
-        if (id === 'game-player-next') step = 'game';
+        if (id === 'game-player-count-1') step = 'game';
         if (id === 'game-game-next') step = 'level';
         if (id === 'game-return-idle' && fault === 'end-page-stuck') throw new Error('结束页按钮无响应');
       },
@@ -45,13 +47,20 @@ function fixture(fault) {
 
 test('UI driver performs navigation contract without debug or direct start calls', async () => {
   const f = fixture(); assert.equal((await f.execute()).terminationReason, 'NATURAL_SUCCESS');
-  assert.deepEqual(f.clicks, ['game-touch-idle', 'game-player-count-1', 'game-player-next', 'game-game-next', 'game-level-0', 'game-start', 'game-return-idle']);
+  assert.deepEqual(f.clicks, ['game-touch-idle', 'game-player-count-1', 'game-game-next', 'game-level-0', 'game-start', 'game-return-idle']);
 });
 
 test('UI driver waits through normal STOPPING transition before validating STOPPED', async () => {
   const f = fixture('stopping');
   assert.equal((await f.execute()).terminationReason, 'NATURAL_SUCCESS');
   assert.equal(f.clicks.at(-1), 'game-return-idle');
+});
+
+test('UI driver selects the target category before browsing its carousel', async () => {
+  const f=fixture('categorized');
+  await f.execute();
+  assert.ok(f.clicks.indexOf('category')>f.clicks.indexOf('game-player-count-1'));
+  assert.ok(f.clicks.indexOf('category')<f.clicks.indexOf('game-game-next'));
 });
 
 for (const fault of ['manual', 'queue', 'no-running', 'wrong-game', 'step-returned-idle', 'end-page-stuck']) {

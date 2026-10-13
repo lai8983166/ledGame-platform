@@ -40,8 +40,9 @@ export async function playUiRound(page, target, {
   const sessionId = preparing.preparation?.sessionId;
   if (!sessionId) throw new Error('缺少准备会话证据');
   await click(`game-player-count-${target.playerCount}`);
-  await click('game-player-next');
   await step('game');
+  const category = page.locator(`[data-testid^="game-category-"][data-game-ids~="${target.gameId}"]`);
+  if (await category.count()) await category.first().click({ timeout: actionMillis });
   let selected = false;
   for (let index = 0; index < gameCount; index++) {
     if (await page.getByTestId('game-carousel').getAttribute('data-selected-game-id') === String(target.gameId)) { selected = true; break; }
