@@ -14,7 +14,7 @@ describe("authoritative points projections", () => {
     expect(members).toContain('data-testid="admin-member-rank"');
     expect(members).toContain("item.pointsTotal");
     expect(members).toContain("item.rank");
-    expect(members).toContain('data-testid="admin-members-refresh"');
+    expect(members).toContain('@keydown.enter="loadMembers"');
   });
 
   it("distinguishes raw score, awarded points, policy and terminal reason", () => {

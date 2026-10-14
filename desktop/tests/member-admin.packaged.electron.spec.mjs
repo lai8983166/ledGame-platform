@@ -202,16 +202,19 @@ test("final package shows the startup check, creates a TEST backup, enforces IPC
     await expect(page.getByTestId("admin-nav-rooms")).toBeVisible();
     await expect(page.getByTestId("admin-nav-records")).toBeVisible();
     await expect(page.getByTestId("admin-nav-ranking")).toBeVisible();
-    await expect(page.getByTestId("admin-nav-wristbands")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-wristbands")).toHaveCount(0);
     await expect(page.getByTestId("admin-nav-members")).toBeVisible();
     await expect(page.getByTestId("admin-nav-settings")).toBeVisible();
     await page.getByTestId("operator-logout").click();
     await loginUi(page, "packaged-operator", "operator-password");
     await expect(page.getByTestId("admin-nav-overview")).toHaveCount(0);
-    await expect(page.getByTestId("admin-nav-rooms")).toHaveCount(0);
+    await expect(page.getByTestId("admin-nav-rooms")).toBeVisible();
+    await expect(page.getByTestId("admin-card-issue")).toBeVisible();
+    await expect(page.getByTestId("admin-card-return")).toBeVisible();
+    await expect(page.locator(".room-card")).toHaveCount(0);
     await expect(page.getByTestId("admin-nav-records")).toHaveCount(0);
     await expect(page.getByTestId("admin-nav-ranking")).toHaveCount(0);
-    await expect(page.getByTestId("admin-nav-wristbands")).toBeVisible();
+    await expect(page.getByTestId("admin-nav-wristbands")).toHaveCount(0);
     await expect(page.getByTestId("admin-nav-members")).toBeVisible();
     await expect(page.getByTestId("admin-nav-settings")).toBeVisible();
 

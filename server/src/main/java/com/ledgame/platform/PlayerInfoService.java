@@ -124,6 +124,7 @@ public class PlayerInfoService {
 
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("profile", profile);
+        result.put("account", accessService.memberAccount(memberId));
         result.put("points", Map.of("total", total, "rank", rank));
         result.put("wristbands", wristbands);
         result.put("recentPlays", recentPlays);

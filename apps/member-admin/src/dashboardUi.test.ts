@@ -6,13 +6,13 @@ const appSource = readFileSync(new URL("./App.vue", import.meta.url), "utf8");
 const desktopSource = readFileSync(new URL("../../../desktop/member-admin/main.cjs", import.meta.url), "utf8");
 
 describe("real member admin dashboard", () => {
-  it("loads real overview metrics and rooms with refresh, error and empty states", () => {
+  it("loads real overview metrics with refresh and error, without fetching or displaying rooms", () => {
     expect(source).toContain("platformApi.getDashboardOverview");
-    expect(source).toContain("platformApi.listRooms");
+    expect(source).not.toContain("platformApi.listRooms");
     expect(source).toContain('data-testid="admin-dashboard-refresh"');
     expect(source).toContain('data-testid="admin-dashboard-error"');
-    expect(source).toContain('data-testid="admin-dashboard-empty-rooms"');
-    expect(source).toContain("mapRoomStatus");
+    expect(source).not.toContain("room-summary");
+    expect(source).not.toContain("dashboardRoomStatus");
     expect(source).not.toContain("createRooms");
   });
 

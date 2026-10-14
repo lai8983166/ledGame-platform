@@ -23,8 +23,7 @@ test('编辑器单页调试：真实多人准入、暂停、重新准入、自�
   rankDoc.wiringData={runtimeEnabled:true,width:rankDoc.siteSizeWidth,height:rankDoc.siteSizeHeight,mode:'SINGLE_COL_PRIORITY',maxPointsPerChannel:64,lines:[[[1,0],[0,0]]]};
   await request(`/rank-game-editor/${rank.gameId}`,'PUT',rankDoc);
   for(const [index,uid] of ['810000001','810000002'].entries()){
-    await store.chargeWristband(uid,60);
-    await store.registerAndBind({phone:`1396000000${index}`,name:`调试验收玩家${index+1}`,uid});
+    await store.issueMemberCard({phone:`1396000000${index}`,name:`调试验收玩家${index+1}`,uid},60);
   }
   const button=(name:string)=>page.getByRole('button',{name,exact:true});
   const workspace=page.locator('.editor-debug-workspace');

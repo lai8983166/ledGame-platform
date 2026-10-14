@@ -37,7 +37,8 @@ describe("operator UI capability boundaries", () => {
   });
 
   it("keeps daily actions while conditionally hiding only protected controls", () => {
-    expect(members).toContain('data-testid="admin-member-create"');
+    expect(rooms).toContain('data-testid="admin-card-issue"');
+    expect(rooms).toContain('data-testid="admin-card-return"');
     expect(wristbands).toContain('data-testid="admin-charge-start"');
     expect(wristbands).toContain('data-testid="admin-wristband-reclaim-card"');
     expect(wristbands).toContain('v-if="canClearBalances"');

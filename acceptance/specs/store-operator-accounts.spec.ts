@@ -23,12 +23,12 @@ test("出厂管理员创建店员后，店员可操作日常业务但不能查�
   await page.getByTestId("operator-login-submit").click();
   await expect(page.getByTestId("current-operator-name")).toHaveText("验收前台");
   await expect(page.getByTestId("admin-nav-settings")).toBeVisible();
-  for (const tab of ["overview", "rooms", "records", "ranking"]) {
+  for (const tab of ["overview", "records", "ranking"]) {
     await expect(page.getByTestId(`admin-nav-${tab}`)).toHaveCount(0);
   }
   await expect(page.getByTestId("admin-nav-members")).toBeVisible();
-  await expect(page.getByTestId("admin-charge-start")).toBeVisible();
-  await expect(page.getByTestId("admin-wristband-clear-card")).toBeVisible();
+  await expect(page.getByTestId("admin-card-issue")).toBeVisible();
+  await expect(page.getByTestId("admin-card-return")).toBeVisible();
 
   await store.chargeWristband("2283055799", 30);
   await page.getByTestId("admin-nav-settings").click();
@@ -51,11 +51,18 @@ test("出厂管理员创建店员后，店员可操作日常业务但不能查�
     expect(response.status, apiPath).toBe(403);
   }
 
+  await page.getByTestId("admin-nav-rooms").click();
+  await page.getByTestId("admin-card-issue").click();
+  await page.getByTestId("card-member-name").fill("店员创建的验收会员");
+  await page.getByTestId("card-member-phone").fill("13800000799");
+  await page.getByTestId("card-member-next").click();
+  await expect(page.getByTestId("card-scan-prompt")).toBeVisible();
+  await page.keyboard.type("2283055799");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("card-confirmation")).toBeVisible();
+  await page.getByTestId("card-submit").click();
+  await expect(page.getByTestId("card-confirmation")).toHaveCount(0);
   await page.getByTestId("admin-nav-members").click();
-  await page.getByTestId("admin-member-create").click();
-  await page.getByTestId("admin-member-name-input").fill("店员创建的验收会员");
-  await page.getByTestId("admin-member-phone-input").fill("13800000799");
-  await page.getByTestId("admin-member-save").click();
   const memberRow = page.locator('tr[data-testid^="admin-member-"]').filter({ hasText: "13800000799" });
   await expect(memberRow).toBeVisible();
   await memberRow.getByRole("button").first().click();
@@ -66,7 +73,7 @@ test("出厂管理员创建店员后，店员可操作日常业务但不能查�
   });
   expect(deletion.status).toBe(403);
   await page.getByRole("button", { name: "关闭详情", exact: true }).click();
-  await page.getByTestId("admin-nav-wristbands").click();
+  await page.getByTestId("admin-nav-members").click();
 
   await page.getByTestId("operator-logout").click();
   await page.getByTestId("operator-login-username").fill(ACCEPTANCE_FACTORY_USERNAME);

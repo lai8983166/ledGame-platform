@@ -57,6 +57,9 @@ export interface Member {
   avatarId?: string | null;
   birthday?: string | null;
   gender?: string | null;
+  remainingSeconds?: number;
+  consuming?: boolean;
+  wristbandUid?: string | null;
 }
 
 export type WristbandState = "empty" | "charged" | "ready" | "active" | "expired";

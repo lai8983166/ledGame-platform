@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "./components/AppIcon.vue";
 import ToastMessage from "./components/ToastMessage.vue";
-import WristbandsView from "./views/WristbandsView.vue";
 import DashboardView from "./views/DashboardView.vue";
 import LeaderboardView from "./views/LeaderboardView.vue";
 import MembersView from "./views/MembersView.vue";
@@ -30,7 +29,7 @@ import {
 } from "./localization";
 import { localeFlagUrls } from "./localeFlags";
 
-const activePage = ref<PageId>("wristbands");
+const activePage = ref<PageId>("rooms");
 const isSecondaryDisplay = new URLSearchParams(window.location.search).get("secondary") === "1";
 const mobileNavOpen = ref(false);
 const languageOpen = ref(false);
@@ -47,9 +46,8 @@ const diskFreePercent = ref<number | null>(null);
 const copy = computed(() => memberAdminCatalogs[locale.value]);
 const text = (key: MemberAdminMessageKey) => copy.value[key];
 const navDefinitions: Array<{ id: PageId; labelKey: MemberAdminMessageKey; icon: string }> = [
-  { id: "wristbands", labelKey: "navWristbands", icon: "card" },
-  { id: "overview", labelKey: "navOverview", icon: "overview" },
   { id: "rooms", labelKey: "navRooms", icon: "rooms" },
+  { id: "overview", labelKey: "navOverview", icon: "overview" },
   { id: "members", labelKey: "navMembers", icon: "members" },
   { id: "records", labelKey: "navRecords", icon: "records" },
   { id: "ranking", labelKey: "navRanking", icon: "ranking" },
@@ -68,7 +66,7 @@ const maintenanceMode = computed(() => backupStatus.value?.state === "MAINTENANC
 const navItems = computed(() => navDefinitions
   .filter((item) => !maintenanceMode.value || item.id === "settings")
   .filter((item) => {
-    if (["overview", "rooms", "records", "ranking"].includes(item.id)) {
+    if (["overview", "records", "ranking"].includes(item.id)) {
       return canUseOperatorCapability(currentOperator.value, "operationsView");
     }
     return true;
@@ -120,13 +118,13 @@ const refreshDesktopDiagnostics = async () => {
 const completeLogin = async (profile: OperatorProfile) => {
   operatorSession.login(profile);
   await refreshBackupStatus();
-  activePage.value = maintenanceMode.value ? "settings" : "wristbands";
+  activePage.value = maintenanceMode.value ? "settings" : "rooms";
   mobileNavOpen.value = false;
   languageOpen.value = false;
 };
 
 const logout = () => {
-  activePage.value = "wristbands";
+  activePage.value = "rooms";
   mobileNavOpen.value = false;
   languageOpen.value = false;
   toastMessage.value = "";
@@ -219,7 +217,7 @@ onBeforeUnmount(() => {
           </button>
           <div>
             <h1>{{ currentMeta.title }}</h1>
-            <p>{{ currentMeta.description }}</p>
+            <p v-if="activePage !== 'members' && activePage !== 'rooms'">{{ currentMeta.description }}</p>
           </div>
         </div>
         <div class="topbar__actions">
@@ -269,8 +267,7 @@ onBeforeUnmount(() => {
         <section v-if="maintenanceMode && currentOperator.accountType !== 'FACTORY_ADMIN'" class="settings-card glass-panel">
           <div class="notice-bar notice-bar--warning"><AppIcon name="alert" :size="18" /><div><strong>{{ text('maintenanceOnlyTitle') }}</strong><p>{{ text('maintenanceOnlyBody') }}</p></div></div>
         </section>
-        <WristbandsView v-else-if="activePage === 'wristbands'" :locale="locale" @toast="showToast" />
-        <DashboardView v-else-if="activePage === 'overview'" :locale="locale" @navigate="navigate" />
+        <DashboardView v-else-if="activePage === 'overview'" :locale="locale" />
         <RoomsView v-else-if="activePage === 'rooms'" :locale="locale" @toast="showToast" />
         <MembersView v-else-if="activePage === 'members'" :locale="locale" @toast="showToast" />
         <RecordsView v-else-if="activePage === 'records'" :locale="locale" />

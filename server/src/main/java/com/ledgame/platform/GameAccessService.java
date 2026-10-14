@@ -22,9 +22,10 @@ public class GameAccessService {
                b.duration_minutes AS bindingDurationMinutes, b.bound_at AS boundAt,
                b.started_at AS startedAt, b.ended_at AS endedAt,
                m.phone, m.name AS memberName, m.status AS memberStatus,
-               m.deleted_at AS memberDeletedAt
+               m.deleted_at AS memberDeletedAt, m.time_balance_seconds AS accountSeconds,
+               m.consumption_started_at AS consumptionStartedAt
           FROM wristbands w
-          LEFT JOIN wristband_bindings b ON b.wristband_id = w.id AND b.status IN ('READY', 'ACTIVE')
+          LEFT JOIN wristband_bindings b ON b.id=(SELECT MAX(b2.id) FROM wristband_bindings b2 WHERE b2.wristband_id=w.id AND b2.status IN ('READY','ACTIVE','EXPIRED'))
           LEFT JOIN members m ON m.id = b.member_id
          WHERE w.card_uid_lookup_hash = ? OR (w.card_uid_lookup_hash IS NULL AND w.card_uid = ?)
         """;
@@ -53,6 +54,7 @@ public class GameAccessService {
                 "UPDATE wristband_bindings SET status='ACTIVE', started_at=? WHERE id=? AND status='READY'",
                 now, number(row.get("bindingId")));
             if (bindingUpdated == 1) {
+                jdbc.update("UPDATE members SET consumption_started_at=? WHERE id=? AND consumption_started_at IS NULL", now, number(row.get("memberId")));
                 jdbc.update("UPDATE wristbands SET status='ACTIVE', updated_at=? WHERE id=?", now, number(row.get("id")));
             }
             row = findRaw(uid);
@@ -94,6 +96,7 @@ public class GameAccessService {
             if (bindingUpdated != 1) {
                 throw error(HttpStatus.CONFLICT, "WRISTBAND_STATE_CHANGED", "手环状态已变化，请重新刷卡");
             }
+            jdbc.update("UPDATE members SET consumption_started_at=? WHERE id=? AND consumption_started_at IS NULL", now, number(row.get("memberId")));
             jdbc.update("UPDATE wristbands SET status='ACTIVE', updated_at=? WHERE id=? AND status='READY'",
                     now, number(row.get("id")));
         }
@@ -123,6 +126,109 @@ public class GameAccessService {
         return jdbc.queryForList("SELECT card_uid AS uid FROM wristbands ORDER BY id").stream()
             .map(row -> getWristband(protectedData.decryptField("wristbands", "card_uid", row.get("uid"))))
             .toList();
+    }
+
+    public Map<String, Object> memberAccount(long memberId) {
+        Map<String, Object> row = jdbc.queryForMap("SELECT time_balance_seconds AS accountSeconds, consumption_started_at AS consumptionStartedAt FROM members WHERE id=?", memberId);
+        long remaining = remainingSeconds(row);
+        return Map.of("remainingSeconds", remaining, "consuming", row.get("consumptionStartedAt") != null && remaining > 0);
+    }
+
+    long remainingSeconds(Map<String, Object> row) {
+        long seconds = row.get("accountSeconds") instanceof Number value ? value.longValue() : 0;
+        Instant start = parseInstant(row.get("consumptionStartedAt"));
+        return start == null ? seconds : Math.max(0, Duration.between(clock.instant(), start.plusSeconds(seconds)).getSeconds());
+    }
+
+    @Transactional
+    public Map<String, Object> issue(String rawUid, long memberId, int minutes, String requestId,
+            OperatorAuthorizationService.AuthorizedOperator operator) {
+        String uid = normalizeUid(rawUid);
+        if (minutes < 0 || minutes > 1440) throw error(HttpStatus.BAD_REQUEST, "INVALID_DURATION", "分钟数必须是 0 到 1440 的整数");
+        if (requestId == null || !requestId.matches("[A-Za-z0-9_-]{1,100}")) throw error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST_ID", "发卡请求无效，请重新打开办理窗口");
+        List<Map<String, Object>> previous = jdbc.queryForList("SELECT b.id, b.member_id, b.issued_credit_minutes, b.status, w.card_uid FROM wristband_bindings b JOIN wristbands w ON w.id=b.wristband_id WHERE b.issue_request_id=?", requestId);
+        if (!previous.isEmpty()) {
+            Map<String, Object> binding = previous.get(0);
+            if (number(binding.get("member_id")) != memberId || number(binding.get("issued_credit_minutes")) != minutes
+                    || !uid.equals(protectedData.decryptField("wristbands", "card_uid", binding.get("card_uid")))) {
+                throw error(HttpStatus.CONFLICT, "ISSUE_REQUEST_CONFLICT", "发卡请求内容已经变化，请重新办理");
+            }
+            return issueReceipt(uid, number(binding.get("id")), memberId, text(binding.get("status")));
+        }
+        return bindAccount(uid, memberId, minutes, requestId, operator);
+    }
+
+    @Transactional
+    public Map<String, Object> bindCharged(String rawUid, long memberId) {
+        String uid = normalizeUid(rawUid);
+        Map<String, Object> band = findRaw(uid);
+        if (!"CHARGED".equals(band.get("status"))) {
+            throw error(HttpStatus.CONFLICT, "WRISTBAND_ALREADY_BOUND", "此手环已绑定");
+        }
+        return bindAccount(uid, memberId, 0, null, null);
+    }
+
+    private Map<String, Object> bindAccount(String uid, long memberId, int minutes, String requestId,
+            OperatorAuthorizationService.AuthorizedOperator operator) {
+        List<Map<String, Object>> members = jdbc.queryForList("SELECT id FROM members WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL", memberId);
+        if (members.isEmpty()) throw error(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "会员不存在或已冻结");
+        if (!jdbc.queryForList("SELECT id FROM wristband_bindings WHERE member_id=? AND status IN ('READY','ACTIVE','EXPIRED')", memberId).isEmpty()) {
+            throw error(HttpStatus.CONFLICT, "MEMBER_HAS_WRISTBAND", "此会员已发卡，请先还卡");
+        }
+        String hash = protectedData.wristbandLookupHash(uid), now = now();
+        List<Map<String, Object>> bands = jdbc.queryForList("SELECT id,status,duration_minutes FROM wristbands WHERE card_uid_lookup_hash=? OR (card_uid_lookup_hash IS NULL AND card_uid=?)", hash, uid);
+        if (bands.isEmpty()) {
+            jdbc.update("INSERT INTO wristbands(card_uid,card_uid_lookup_hash,status,created_at,updated_at) VALUES (?,?,'IN_STOCK',?,?)", protectedData.encryptField("wristbands", "card_uid", uid), hash, now, now);
+            bands = jdbc.queryForList("SELECT id,status,duration_minutes FROM wristbands WHERE card_uid_lookup_hash=?", hash);
+        }
+        Map<String, Object> band = bands.get(0);
+        if (!List.of("IN_STOCK", "CHARGED").contains(text(band.get("status")))) throw error(HttpStatus.CONFLICT, "WRISTBAND_ALREADY_BOUND", "此手环已绑定，请先还卡");
+        long bandId = number(band.get("id"));
+        long pending = "CHARGED".equals(band.get("status")) ? number(band.get("duration_minutes")) * 60L : 0;
+        long available = number(memberAccount(memberId).get("remainingSeconds")) + pending + minutes * 60L;
+        if (available <= 0) throw error(HttpStatus.CONFLICT, "MEMBER_INSUFFICIENT_TIME", "会员余额不足，请输入充值分钟数");
+        jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL,updated_at=? WHERE id=?", available, now, memberId);
+        jdbc.update("INSERT INTO wristband_bindings(wristband_id,member_id,status,duration_minutes,bound_at,issue_request_id,issued_credit_minutes,issued_by_operator_id) VALUES (?,?,'READY',?,?,?,?,?)",
+                bandId, memberId, (available + 59L) / 60L, now, requestId, minutes, operator == null ? null : operator.id());
+        long bindingId = jdbc.queryForObject("SELECT last_insert_rowid()", Long.class);
+        if (pending > 0) jdbc.update("UPDATE wristband_charge_records SET member_id=? WHERE id=(SELECT MAX(id) FROM wristband_charge_records WHERE wristband_id=?) AND member_id IS NULL", memberId, bandId);
+        if (minutes > 0 && operator != null) {
+            int price = jdbc.queryForObject("SELECT unit_price_cents FROM store_settings WHERE id=1", Integer.class);
+            jdbc.update("INSERT INTO wristband_charge_records(wristband_id,wristband_uid,member_id,duration_minutes,unit_price_cents,amount_cents,issued_at,charged_at,operator_id,operator_username,operator_display_name) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    bandId, protectedData.encryptField("wristband_charge_records", "wristband_uid", uid), memberId, minutes, price, minutes * price, now, now, operator.id(),
+                    protectedData.encryptField("wristband_charge_records", "operator_username", operator.username()), protectedData.encryptField("wristband_charge_records", "operator_display_name", operator.displayName()));
+        }
+        jdbc.update("UPDATE wristbands SET status='READY',duration_minutes=NULL,charged_at=NULL,updated_at=? WHERE id=?", now, bandId);
+        return getWristband(uid);
+    }
+
+    private Map<String, Object> issueReceipt(String uid, long bindingId, long memberId, String status) {
+        return Map.of("uid", uid, "bindingId", bindingId, "memberId", memberId, "status", status,
+                "remainingSeconds", memberAccount(memberId).get("remainingSeconds"));
+    }
+
+    @Transactional
+    public Map<String, Object> returnCard(String rawUid, long expectedBindingId) {
+        String uid = normalizeUid(rawUid);
+        List<Map<String, Object>> bindings = jdbc.queryForList("SELECT b.id,b.member_id,b.status FROM wristband_bindings b JOIN wristbands w ON w.id=b.wristband_id WHERE b.id=? AND (w.card_uid_lookup_hash=? OR (w.card_uid_lookup_hash IS NULL AND w.card_uid=?))", expectedBindingId, protectedData.wristbandLookupHash(uid), uid);
+        if (bindings.isEmpty()) throw error(HttpStatus.CONFLICT, "BINDING_CHANGED", "手环绑定已经变化，请重新刷卡");
+        Map<String, Object> binding = bindings.get(0);
+        long memberId = number(binding.get("member_id"));
+        if ("RETURNED".equals(binding.get("status"))) return issueReceipt(uid, expectedBindingId, memberId, "RETURNED");
+        Map<String, Object> current = findRaw(uid);
+        if (current.get("bindingId") == null || number(current.get("bindingId")) != expectedBindingId) throw error(HttpStatus.CONFLICT, "BINDING_CHANGED", "手环绑定已经变化，请重新刷卡");
+        if (!jdbc.queryForList("SELECT id FROM game_play_records WHERE member_id=? AND status='RUNNING'", memberId).isEmpty()) throw error(HttpStatus.CONFLICT, "MEMBER_HAS_RUNNING_GAME", "会员正在游戏中，请先结束游戏再还卡");
+        long remaining = number(memberAccount(memberId).get("remainingSeconds"));
+        String now = now();
+        jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL,updated_at=? WHERE id=?", remaining, now, memberId);
+        jdbc.update("UPDATE wristband_bindings SET status='RETURNED',ended_at=? WHERE id=?", now, expectedBindingId);
+        jdbc.update("UPDATE wristbands SET status='IN_STOCK',duration_minutes=NULL,charged_at=NULL,updated_at=? WHERE id=?", now, number(current.get("id")));
+        // Legacy data may have several open cards. Pausing the shared account must pause all of them.
+        String pausedStatus = remaining > 0 ? "READY" : "EXPIRED";
+        jdbc.update("UPDATE wristbands SET status=?,updated_at=? WHERE id IN (SELECT wristband_id FROM wristband_bindings WHERE member_id=? AND status='ACTIVE')",
+                pausedStatus, now, memberId);
+        jdbc.update("UPDATE wristband_bindings SET status=?,started_at=NULL WHERE member_id=? AND status='ACTIVE'", pausedStatus, memberId);
+        return issueReceipt(uid, expectedBindingId, memberId, "RETURNED");
     }
 
     @Transactional(noRollbackFor = PlatformApiException.class)
@@ -166,16 +272,16 @@ public class GameAccessService {
 
         result.put("durationMinutes", durationMinutes);
         result.put("expiresAt", null);
-        result.put("remainingSeconds", durationMinutes == null ? 0 : durationMinutes.longValue() * 60L);
+        long remaining = source.get("memberId") == null ? (durationMinutes == null ? 0 : durationMinutes.longValue() * 60L) : remainingSeconds(source);
+        result.put("remainingSeconds", remaining);
 
         if ("ACTIVE".equals(status)) {
-            Instant startedAt = parseInstant(source.get("startedAt"));
-            if (startedAt == null || durationMinutes == null) {
+            Instant startedAt = parseInstant(source.get("consumptionStartedAt"));
+            if (remaining > 0 && (startedAt == null || durationMinutes == null)) {
                 throw error(HttpStatus.CONFLICT, "WRISTBAND_STATE_INVALID", "手环计时状态不完整，请联系店员处理");
             }
-            Instant expiresAt = startedAt.plus(Duration.ofMinutes(durationMinutes));
-            long remaining = Math.max(0, Duration.between(clock.instant(), expiresAt).getSeconds());
-            result.put("startedAt", startedAt.toString());
+            Instant expiresAt = startedAt == null ? clock.instant() : startedAt.plusSeconds(number(source.get("accountSeconds")));
+            result.put("startedAt", startedAt == null ? source.get("startedAt") : startedAt.toString());
             result.put("expiresAt", expiresAt.toString());
             result.put("remainingSeconds", remaining);
             if (!clock.instant().isBefore(expiresAt)) {
@@ -212,6 +318,7 @@ public class GameAccessService {
     }
 
     private void expire(Map<String, Object> row, String endedAt) {
+        jdbc.update("UPDATE members SET time_balance_seconds=0, consumption_started_at=NULL WHERE id=?", number(row.get("memberId")));
         jdbc.update("UPDATE wristband_bindings SET status='EXPIRED', ended_at=? WHERE id=? AND status='ACTIVE'", endedAt, number(row.get("bindingId")));
         jdbc.update("UPDATE wristbands SET status='EXPIRED', updated_at=? WHERE id=? AND status='ACTIVE'", now(), number(row.get("id")));
     }

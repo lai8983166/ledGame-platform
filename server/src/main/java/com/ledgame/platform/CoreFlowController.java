@@ -65,6 +65,8 @@ public class CoreFlowController {
             WITH totals AS (
                 SELECT m.id, m.phone, m.name, m.avatar_id AS avatarId, m.birthday, m.gender,
                        m.status, m.created_at AS createdAt,
+                       m.time_balance_seconds AS accountSeconds, m.consumption_started_at AS consumptionStartedAt,
+                       (SELECT w.card_uid FROM wristband_bindings b JOIN wristbands w ON w.id=b.wristband_id WHERE b.member_id=m.id AND b.status IN ('READY','ACTIVE','EXPIRED') ORDER BY b.id DESC LIMIT 1) AS wristbandUid,
                        COALESCE(SUM(CASE WHEN g.status IN ('COMPLETED', 'LEGACY_SETTLED') THEN g.points_awarded ELSE 0 END), 0) AS pointsTotal
                   FROM members m
                   LEFT JOIN game_play_records g ON g.member_id=m.id
@@ -251,10 +253,7 @@ public class CoreFlowController {
                    c.operator_id AS operatorId, c.operator_username AS operatorUsername,
                    c.operator_display_name AS operatorDisplayName
               FROM wristband_charge_records c
-             WHERE EXISTS (
-                 SELECT 1 FROM wristband_bindings b
-                  WHERE b.wristband_id=c.wristband_id AND b.member_id=?
-             )
+             WHERE c.member_id=?
              ORDER BY c.charged_at DESC, c.id DESC
              LIMIT 100
             """, id);
@@ -294,15 +293,19 @@ public class CoreFlowController {
                    m.phone, m.name AS memberName, b.status,
                    b.duration_minutes AS durationMinutes, b.bound_at AS boundAt,
                    b.started_at AS startedAt, b.ended_at AS endedAt,
-                   c.issued_at AS issuedAt, c.charged_at AS chargedAt,
-                   c.operator_id AS operatorId, c.operator_username AS operatorUsername,
-                   c.operator_display_name AS operatorDisplayName
+                   CASE WHEN b.issue_request_id IS NOT NULL THEN b.bound_at ELSE c.issued_at END AS issuedAt,
+                   c.charged_at AS chargedAt, COALESCE(b.issued_by_operator_id,c.operator_id) AS operatorId,
+                   COALESCE(o.username,c.operator_username) AS operatorUsername,
+                   COALESCE(o.display_name,c.operator_display_name) AS operatorDisplayName
               FROM wristband_bindings b
               JOIN wristbands w ON w.id=b.wristband_id
               JOIN members m ON m.id=b.member_id
+              LEFT JOIN operator_accounts o ON o.id=b.issued_by_operator_id
               LEFT JOIN wristband_charge_records c ON c.id=(
                   SELECT c2.id FROM wristband_charge_records c2
-                   WHERE c2.wristband_id=b.wristband_id ORDER BY c2.id DESC LIMIT 1)
+                   WHERE c2.wristband_id=b.wristband_id AND c2.charged_at<=b.bound_at
+                     AND (c2.member_id=b.member_id OR c2.member_id IS NULL)
+                   ORDER BY c2.charged_at DESC,c2.id DESC LIMIT 1)
             """;
         if (uid != null) sql += " WHERE w.card_uid_lookup_hash=?";
         sql += " ORDER BY b.bound_at DESC, b.id DESC";
@@ -382,18 +385,32 @@ public class CoreFlowController {
     public Map<String, Object> bind(@RequestBody BindRequest request) {
         String uid = normalizeUid(request.uid());
         if (request.memberId() == null) throw badRequest("缺少会员 ID");
-        Map<String, Object> wristband = findWristband(uid);
-        if (!String.valueOf(wristband.get("status")).equals("CHARGED")) {
-            if (String.valueOf(wristband.get("status")).equals("READY") || String.valueOf(wristband.get("status")).equals("ACTIVE")) throw conflict("此手环已绑定");
-            throw conflict("该手环当前不能绑定，状态为 " + wristband.get("status"));
-        }
-        Integer memberCount = jdbc.queryForObject("SELECT COUNT(*) FROM members WHERE id = ? AND status = 'ACTIVE' AND deleted_at IS NULL", Integer.class, request.memberId());
-        if (memberCount == null || memberCount == 0) throw badRequest("会员不存在或已冻结");
-        Number wristbandId = (Number) wristband.get("id");
-        String now = now();
-        jdbc.update("INSERT INTO wristband_bindings(wristband_id, member_id, status, duration_minutes, bound_at) VALUES (?, ?, 'READY', ?, ?)", wristbandId.longValue(), request.memberId(), wristband.get("durationMinutes"), now);
-        jdbc.update("UPDATE wristbands SET status='READY', updated_at=? WHERE id=?", now, wristbandId.longValue());
-        return findWristband(uid);
+        return gameAccessService.bindCharged(uid, request.memberId());
+    }
+
+    @PostMapping("/wristbands/issue")
+    @Transactional
+    public Map<String, Object> issue(@RequestBody IssueRequest request,
+            @RequestHeader(value="X-Operator-Id", required=false) Long operatorId,
+            jakarta.servlet.http.HttpServletRequest httpRequest) {
+        var operator = authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
+        if (request.memberId() == null) throw badRequest("缺少会员 ID");
+        Map<String, Object> result = gameAccessService.issue(request.uid(), request.memberId(),
+                request.durationMinutes() == null ? 0 : request.durationMinutes(), request.requestId(), operator);
+        httpRequest.setAttribute(OperatorAuditInterceptor.TARGET_ID_ATTRIBUTE, String.valueOf(result.get("bindingId")));
+        return result;
+    }
+
+    @PostMapping("/wristbands/return")
+    @Transactional
+    public Map<String, Object> returnCard(@RequestBody ReturnRequest request,
+            @RequestHeader(value="X-Operator-Id", required=false) Long operatorId,
+            jakarta.servlet.http.HttpServletRequest httpRequest) {
+        authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
+        if (request.bindingId() == null || request.bindingId() <= 0) throw badRequest("请重新刷手环确认绑定");
+        Map<String, Object> result = gameAccessService.returnCard(request.uid(), request.bindingId());
+        httpRequest.setAttribute(OperatorAuditInterceptor.TARGET_ID_ATTRIBUTE, String.valueOf(request.bindingId()));
+        return result;
     }
 
     @PostMapping("/wristbands/clear")
@@ -418,7 +435,8 @@ public class CoreFlowController {
         if (!String.valueOf(wristband.get("status")).equals("EXPIRED")) {
             throw conflict("只有已到期的手环可以回收");
         }
-        jdbc.update("UPDATE wristbands SET status='IN_STOCK', duration_minutes=NULL, charged_at=NULL, updated_at=? WHERE card_uid_lookup_hash=? AND status='EXPIRED'", now(), protectedData.wristbandLookupHash(uid));
+        if (wristband.get("bindingId") != null) gameAccessService.returnCard(uid, ((Number) wristband.get("bindingId")).longValue());
+        else jdbc.update("UPDATE wristbands SET status='IN_STOCK', duration_minutes=NULL, charged_at=NULL, updated_at=? WHERE card_uid_lookup_hash=? AND status='EXPIRED'", now(), protectedData.wristbandLookupHash(uid));
         return gameAccessService.getWristband(uid);
     }
 
@@ -428,13 +446,10 @@ public class CoreFlowController {
             @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
         authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
         String uid = normalizeUid(request.uid());
-        Map<String, Object> wristband = findWristband(uid);
+        Map<String, Object> wristband = gameAccessService.getWristband(uid);
         if (!String.valueOf(wristband.get("status")).equals("READY")) throw conflict("只有待游戏手环可以解除绑定");
-        Number wristbandId = (Number) wristband.get("id");
-        String now = now();
-        jdbc.update("UPDATE wristband_bindings SET status='RETURNED', ended_at=? WHERE wristband_id=? AND status='READY'", now, wristbandId.longValue());
-        jdbc.update("UPDATE wristbands SET status='IN_STOCK', duration_minutes=NULL, charged_at=NULL, updated_at=? WHERE id=?", now, wristbandId.longValue());
-        return findWristband(uid);
+        gameAccessService.returnCard(uid, ((Number) wristband.get("bindingId")).longValue());
+        return gameAccessService.getWristband(uid);
     }
 
     private Map<String, Object> findWristband(String rawUid) {
@@ -455,6 +470,12 @@ public class CoreFlowController {
         }
         decryptInto(row, "birthday", "members", "birthday");
         decryptInto(row, "gender", "members", "gender");
+        decryptInto(row, "wristbandUid", "wristbands", "card_uid");
+        if (row.containsKey("accountSeconds")) {
+            long remaining = gameAccessService.remainingSeconds(row);
+            row.put("remainingSeconds", remaining);
+            row.put("consuming", row.get("consumptionStartedAt") != null && remaining > 0);
+        }
         return row;
     }
 
@@ -531,6 +552,8 @@ public class CoreFlowController {
     }
 
     public record ChargeRequest(String uid, Integer durationMinutes) {}
+    public record IssueRequest(String uid, Long memberId, Integer durationMinutes, String requestId) {}
+    public record ReturnRequest(String uid, Long bindingId) {}
     public record BindRequest(String uid, Long memberId) {}
     public record UidRequest(String uid) {}
     public record MemberRequest(String phone, String name, String avatarId, String birthday, String gender, String createdBy,

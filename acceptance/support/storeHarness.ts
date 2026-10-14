@@ -198,7 +198,7 @@ export class StoreAcceptanceHarness {
       ]);
     }
     await this.#loginMemberAdmin();
-    await expect(this.#adminPage.getByTestId("admin-page-wristbands")).toBeVisible();
+    await expect(this.#adminPage.getByTestId("admin-page-rooms")).toBeVisible();
     await expect(this.#kioskPage.getByTestId("kiosk-screen-home")).toBeVisible();
 
     const { ELECTRON_RUN_AS_NODE: _electronRunAsNode, ...electronEnvironment } = process.env;
@@ -414,36 +414,54 @@ export class StoreAcceptanceHarness {
   get touchPage(): Page { if (!this.#touchPage) throw new Error("Game Touch is not started"); return this.#touchPage; }
   get debugPage(): Page { if (!this.#debugPage) throw new Error("Debug Panel is not started"); return this.#debugPage; }
 
-  async chargeWristband(uid: string, minutes: number): Promise<void> {
+  // Legacy fixtures keep exercising kiosk charge/bind compatibility; the counter UI has its own packaged acceptance.
+  async issueMemberCard(member: MemberFixture, minutes: number): Promise<void> {
     const page = this.adminPage;
-    await page.getByTestId("admin-charge-start").click();
-    await expect(page.getByTestId("admin-charge-dialog")).toBeVisible();
-    await page.keyboard.type(uid);
+    await page.getByTestId("admin-nav-rooms").click();
+    await page.getByTestId("admin-card-issue").click();
+    await page.getByTestId("card-member-phone").fill(member.phone);
+    await page.getByTestId("card-member-name").fill(member.name);
+    await page.getByTestId("card-member-next").click();
+    await expect(page.getByTestId("card-scan-prompt")).toBeVisible();
+    await page.keyboard.type(member.uid);
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId("admin-charge-scanned-uid")).toHaveText(uid);
-    await page.getByTestId("admin-charge-minutes").fill(String(minutes));
-    await page.getByTestId("admin-charge-submit").click();
-    await expect(page.getByTestId("admin-charge-dialog")).toHaveCount(0);
-    const row = page.getByTestId(`admin-wristband-${uid}`);
-    await expect(row).toBeVisible();
-    await expect(row.getByTestId("admin-wristband-status")).toHaveAttribute("data-status", "charged");
+    await expect(page.getByTestId("card-confirmation")).toBeVisible();
+    await page.getByTestId("card-minutes").fill(String(minutes));
+    await page.getByTestId("card-submit").click();
+    await expect(page.getByTestId("card-confirmation")).toHaveCount(0);
+    await page.getByTestId("admin-nav-members").click();
+    await expect(page.getByTestId("admin-member-wristband").filter({ hasText: member.uid })).toBeVisible();
+  }
+
+  async chargeWristband(uid: string, minutes: number): Promise<void> {
+    const response = await fetch(`${this.platformBaseUrl}/api/wristbands/charge`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Operator-Id": String(this.#operatorId) },
+      body: JSON.stringify({ uid, durationMinutes: minutes }),
+    });
+    expect(response.ok).toBe(true);
+    expect(await response.json()).toMatchObject({ status: "CHARGED" });
   }
 
   async assertChargeCancellationHasNoWrite(uid: string): Promise<void> {
     const page = this.adminPage;
-    await page.getByTestId("admin-charge-start").click();
-    await expect(page.getByTestId("admin-charge-dialog")).toBeVisible();
-    await page.getByTestId("admin-charge-cancel").click();
-    await expect(page.getByTestId("admin-charge-dialog")).toHaveCount(0);
+    await page.getByTestId("admin-card-issue").click();
+    await page.getByTestId("card-cancel").click();
     expect((await fetch(`${this.platformBaseUrl}/api/wristbands/${uid}`)).status).toBe(404);
-
-    await page.getByTestId("admin-charge-start").click();
+    await page.getByTestId("admin-card-issue").click();
+    await page.getByTestId("card-member-phone").fill("13800000099");
+    await page.getByTestId("card-member-name").fill("取消发卡测试会员");
+    await page.getByTestId("card-member-next").click();
+    await expect(page.getByTestId("card-scan-prompt")).toBeVisible();
     await page.keyboard.type(uid);
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId("admin-charge-scanned-uid")).toHaveText(uid);
-    await page.getByTestId("admin-charge-cancel").click();
-    await expect(page.getByTestId("admin-charge-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("card-confirmation")).toBeVisible();
+    await page.getByTestId("card-cancel").click();
     expect((await fetch(`${this.platformBaseUrl}/api/wristbands/${uid}`)).status).toBe(404);
+    const member = await this.#playerInfo("13800000099");
+    const removed = await fetch(`${this.platformBaseUrl}/api/members/${member.profile.id}`, {
+      method: "DELETE", headers: { "X-Operator-Id": String(this.#operatorId) },
+    });
+    expect(removed.ok).toBe(true);
   }
 
   async assertDashboardOverview(expected: { totalMembers: number; newMembersToday: number; chargesToday: number; revenueTodayCents: number }): Promise<void> {
@@ -462,7 +480,7 @@ export class StoreAcceptanceHarness {
     await expect(page.getByTestId("admin-dashboard-new-members-today")).toContainText(String(expected.newMembersToday));
     await expect(page.getByTestId("admin-dashboard-wristbands-charged-today")).toContainText(String(expected.chargesToday));
     await expect(page.getByTestId("admin-dashboard-revenue-today")).toContainText(String(expected.revenueTodayCents / 100));
-    await expect(page.getByText("Acceptance Room")).toBeVisible();
+    await expect(page.locator(".room-summary")).toHaveCount(0);
   }
 
   async assertMemberDeletionReregistrationFlows(): Promise<void> {
@@ -488,11 +506,15 @@ export class StoreAcceptanceHarness {
 
   async #createMemberThroughAdmin(phone: string, name: string): Promise<number> {
     const page = this.adminPage;
+    await page.getByTestId("admin-nav-rooms").click();
+    await page.getByTestId("admin-card-issue").click();
+    await page.getByTestId("card-member-name").fill(name);
+    await page.getByTestId("card-member-phone").fill(phone);
+    await page.getByTestId("card-member-next").click();
+    await expect(page.getByTestId("card-scan-prompt")).toBeVisible();
+    await page.getByTestId("card-cancel").click();
     await page.getByTestId("admin-nav-members").click();
-    await page.getByTestId("admin-member-create").click();
-    await page.getByTestId("admin-member-name-input").fill(name);
-    await page.getByTestId("admin-member-phone-input").fill(phone);
-    await page.getByTestId("admin-member-save").click();
+    await page.getByRole("textbox", { name: "查询会员" }).press("Enter");
     const row = page.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone });
     await expect(row).toBeVisible();
     const testId = await row.getAttribute("data-testid");
@@ -502,7 +524,7 @@ export class StoreAcceptanceHarness {
   async #deleteMemberThroughAdmin(phone: string): Promise<void> {
     const page = this.adminPage;
     await page.getByTestId("admin-nav-members").click();
-    await page.getByTestId("admin-members-refresh").click();
+    await page.getByRole("textbox", { name: "查询会员" }).press("Enter");
     const row = page.locator('tr[data-testid^="admin-member-"]').filter({ hasText: phone });
     await expect(row).toBeVisible();
     await row.getByRole("button").first().click();

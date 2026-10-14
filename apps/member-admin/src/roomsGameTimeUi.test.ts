@@ -15,6 +15,6 @@ describe("RoomsView game time UI", () => {
     expect(source).toContain("selectedRoomId");
     expect(source).toMatch(/selectedRoom\s*=\s*computed\(\(\)\s*=>\s*rooms\.value\.find/);
     expect(source).toContain("roomTimeText(room)");
-    expect(source).toContain("roomTimeText(selectedRoom)");
+    expect(source).not.toContain("roomTimeText(selectedRoom)");
   });
 });

@@ -130,6 +130,103 @@ class CoreFlowApiIntegrationTest {
     }
 
     @Test
+    void issueFailureRollsBackCreditAndNewCardAndDoesNotReuseChangedRequest() {
+        long member = number(post("/api/members", Map.of("name", "原子发卡", "phone", "13800138906")).getBody().get("id"));
+        assertError(post("/api/wristbands/issue", Map.of("uid", "2283055696", "memberId", member, "durationMinutes", 0, "requestId", "no-credit")),
+                HttpStatus.CONFLICT, "MEMBER_INSUFFICIENT_TIME");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristbands", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=?", Long.class, member)).isZero();
+        jdbc.execute("CREATE TRIGGER fail_issue BEFORE INSERT ON wristband_bindings BEGIN SELECT RAISE(ABORT,'test rollback'); END");
+        try {
+            assertThat(post("/api/wristbands/issue", Map.of("uid", "2283055696", "memberId", member, "durationMinutes", 30, "requestId", "rollback-credit")).getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=?", Long.class, member)).isZero();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristbands", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristband_charge_records", Integer.class)).isZero();
+        } finally { jdbc.execute("DROP TRIGGER fail_issue"); }
+        assertThat(post("/api/wristbands/issue", Map.of("uid", "2283055696", "memberId", member, "durationMinutes", 30, "requestId", "rollback-credit")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(post("/api/wristbands/issue", Map.of("uid", "2283055696", "memberId", member, "durationMinutes", 60, "requestId", "rollback-credit")),
+                HttpStatus.CONFLICT, "ISSUE_REQUEST_CONFLICT");
+        assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=?", Long.class, member)).isEqualTo(1800);
+    }
+
+    @Test
+    void concurrentIssueRetriesCreditOnlyOnceAndChargeHistoryStaysWithTheMember() {
+        long memberId = number(post("/api/members", Map.of("name", "并发会员", "phone", "13800138904")).getBody().get("id"));
+        Map<String, Object> request = Map.of("uid", "2283055621", "memberId", memberId, "durationMinutes", 60, "requestId", "concurrent-issue");
+        var calls = java.util.stream.IntStream.range(0, 8).mapToObj(i -> java.util.concurrent.CompletableFuture.supplyAsync(() -> post("/api/wristbands/issue", request))).toList();
+        for (var call : calls) assertThat(call.join().getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristband_bindings", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=?", Long.class, memberId)).isEqualTo(3600);
+        long bindingId = jdbc.queryForObject("SELECT id FROM wristband_bindings", Long.class);
+        post("/api/wristbands/return", Map.of("uid", "2283055621", "bindingId", bindingId));
+        String firstIssuedAt = clock.instant().toString();
+        clock.advance(Duration.ofSeconds(10));
+        long other = number(post("/api/members", Map.of("name", "其他会员", "phone", "13800138905")).getBody().get("id"));
+        post("/api/wristbands/issue", Map.of("uid", "2283055621", "memberId", other, "durationMinutes", 10, "requestId", "next-holder"));
+        assertThat(maps(get("/api/members/" + memberId + "/history").getBody().get("charges"))).hasSize(1);
+        assertThat(number(maps(get("/api/members/" + memberId + "/history").getBody().get("charges")).get(0).get("durationMinutes"))).isEqualTo(60);
+        assertThat(number(maps(get("/api/members/" + other + "/history").getBody().get("charges")).get(0).get("durationMinutes"))).isEqualTo(10);
+        assertThat(getList("/api/records/wristband-bindings").getBody())
+                .anySatisfy(record -> {
+                    assertThat(number(record.get("id"))).isEqualTo(bindingId);
+                    assertThat(record.get("issuedAt")).isEqualTo(firstIssuedAt);
+                    assertThat(record.get("chargedAt")).isEqualTo(firstIssuedAt);
+                });
+        assertThat(jdbc.queryForList("SELECT target_id FROM operator_action_logs WHERE action='WRISTBAND_RETURNED'", String.class))
+                .anySatisfy(value -> assertThat(protectedData.decryptField("operator_action_logs", "target_id", value)).isEqualTo(String.valueOf(bindingId)));
+        assertError(post("/api/wristbands/issue", Map.of("uid", "2283055622", "memberId", other, "durationMinutes", 30, "requestId", "duplicate-holder")), HttpStatus.CONFLICT, "MEMBER_HAS_WRISTBAND");
+        assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=?", Long.class, other)).isEqualTo(600);
+        ResponseEntity<Map> unauthenticated = http.postForEntity("/api/wristbands/return", Map.of("uid", "2283055621", "bindingId", bindingId), Map.class);
+        assertThat(unauthenticated.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void memberAccountReturnPreservesBalanceAndReissueResumesWithAnotherCard() {
+        long memberId = number(post("/api/members", Map.of("name", "账户测试", "phone", "13800138901")).getBody().get("id"));
+        Map<String, Object> issue = Map.of("uid", "2283055618", "memberId", memberId, "durationMinutes", 30, "requestId", "member-issue-1");
+        ResponseEntity<Map<String, Object>> issued = post("/api/wristbands/issue", issue);
+        assertThat(issued.getStatusCode()).isEqualTo(HttpStatus.OK);
+        long binding = number(issued.getBody().get("bindingId"));
+        assertThat(number(issued.getBody().get("remainingSeconds"))).isEqualTo(1800);
+        assertThat(post("/api/wristbands/issue", issue).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(getList("/api/members").getBody().get(0).get("remainingSeconds"))).isEqualTo(1800);
+        clock.advance(Duration.ofMinutes(2));
+        assertThat(number(get("/api/wristbands/2283055618").getBody().get("remainingSeconds"))).isEqualTo(1800);
+        assertThat(post("/api/game-access/activate", Map.of("uid", "2283055618")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        clock.advance(Duration.ofMinutes(5));
+        assertThat(post("/api/wristbands/return", Map.of("uid", "2283055618", "bindingId", binding)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        clock.advance(Duration.ofHours(1));
+        assertThat(number(getList("/api/members").getBody().get(0).get("remainingSeconds"))).isEqualTo(1500);
+        assertThat(number(map(get("/api/player-info?phone=13800138901").getBody().get("account")).get("remainingSeconds"))).isEqualTo(1500);
+        ResponseEntity<Map<String, Object>> next = post("/api/wristbands/issue", Map.of("uid", "2283055619", "memberId", memberId, "durationMinutes", 0, "requestId", "member-issue-2"));
+        assertThat(next.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(next.getBody().get("remainingSeconds"))).isEqualTo(1500);
+        assertError(post("/api/game-access/activate", Map.of("uid", "2283055618")), HttpStatus.CONFLICT, "WRISTBAND_NOT_BOUND");
+        post("/api/game-access/activate", Map.of("uid", "2283055619"));
+        clock.advance(Duration.ofSeconds(17));
+        assertThat(number(map(post("/api/game-access/activate", Map.of("uid", "2283055619")).getBody().get("access")).get("remainingSeconds"))).isEqualTo(1483);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristband_charge_records", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void lateReturnNeverReleasesTheNewHolderAndRunningGameBlocksReturn() {
+        long first = number(post("/api/members", Map.of("name", "第一会员", "phone", "13800138902")).getBody().get("id"));
+        long second = number(post("/api/members", Map.of("name", "第二会员", "phone", "13800138903")).getBody().get("id"));
+        Map<String, Object> issued = post("/api/wristbands/issue", Map.of("uid", "2283055620", "memberId", first, "durationMinutes", 30, "requestId", "holder-1")).getBody();
+        assertThat(issued).containsKey("bindingId");
+        long oldBinding = number(issued.get("bindingId"));
+        assertThat(post("/api/wristbands/return", Map.of("uid", "2283055620", "bindingId", oldBinding)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> next = post("/api/wristbands/issue", Map.of("uid", "2283055620", "memberId", second, "durationMinutes", 10, "requestId", "holder-2")).getBody();
+        long nextBinding = number(next.get("bindingId"));
+        assertThat(post("/api/wristbands/return", Map.of("uid", "2283055620", "bindingId", oldBinding)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(get("/api/wristbands/2283055620").getBody().get("memberId"))).isEqualTo(second);
+        post("/api/game-access/activate", Map.of("uid", "2283055620"));
+        assertThat(startPlay("2283055620", "return-room", "return-play", "simple").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(post("/api/wristbands/return", Map.of("uid", "2283055620", "bindingId", nextBinding)), HttpStatus.CONFLICT, "MEMBER_HAS_RUNNING_GAME");
+        assertThat(number(get("/api/wristbands/2283055620").getBody().get("bindingId"))).isEqualTo(nextBinding);
+    }
+
+    @Test
     void createsAndFindsMemberAndRejectsDuplicateActivePhone() {
         ResponseEntity<Map<String, Object>> created = post("/api/members", Map.of(
                 "phone", "138 0013 8000",
@@ -342,7 +439,7 @@ class CoreFlowApiIntegrationTest {
         assertThat(reclaimed.getBody()).containsEntry("status", "IN_STOCK");
         assertThat(reclaimed.getBody().get("durationMinutes")).isNull();
         assertThat(jdbc.queryForObject("SELECT status FROM wristband_bindings WHERE member_id=?", String.class, memberId))
-                .isEqualTo("EXPIRED");
+                .isEqualTo("RETURNED");
 
         ResponseEntity<Map<String, Object>> chargedAgain = post("/api/wristbands/charge", Map.of(
                 "uid", "2283055618", "durationMinutes", 45));
@@ -962,7 +1059,14 @@ class CoreFlowApiIntegrationTest {
                 "SELECT COUNT(*) FROM game_play_records WHERE external_session_id=?",
                 Integer.class, "atomic-session-002")).isZero();
 
-        chargeAndBind("2283055713", firstMember, 60);
+        post("/api/wristbands/charge", Map.of("uid", "2283055713", "durationMinutes", 60));
+        assertError(post("/api/wristbands/bind", Map.of("uid", "2283055713", "memberId", firstMember)),
+                HttpStatus.CONFLICT, "MEMBER_HAS_WRISTBAND");
+        // Old databases could contain several cards for one member. Keep testing the batch guard.
+        long legacyCard = jdbc.queryForObject("SELECT MAX(id) FROM wristbands", Long.class);
+        jdbc.update("INSERT INTO wristband_bindings(wristband_id,member_id,status,duration_minutes,bound_at) VALUES (?,?,'READY',60,?)",
+                legacyCard, firstMember, clock.instant().toString());
+        jdbc.update("UPDATE wristbands SET status='READY' WHERE id=?", legacyCard);
         post("/api/game-access/activate", Map.of(
                 "uid", "2283055713", "deviceId", "atomic-device"));
         ResponseEntity<Map<String, Object>> duplicateMember = post(

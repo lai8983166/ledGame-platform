@@ -2,6 +2,10 @@ package com.ledgame.platform;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -15,16 +19,23 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 5;
+    public static final int CURRENT_SCHEMA_VERSION = 6;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
             "members", "wristbands", "wristband_charge_records", "wristband_bindings",
             "game_play_records", "legacy_game_sessions", "room_settings", "store_feature_settings", "store_settings",
             "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
+    private final Clock clock;
 
     public PlatformSchemaMigration(JdbcTemplate jdbc) {
+        this(jdbc, Clock.systemUTC());
+    }
+
+    @Autowired
+    public PlatformSchemaMigration(JdbcTemplate jdbc, Clock clock) {
         this.jdbc = jdbc;
+        this.clock = clock;
         this.transactions = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
     }
 
@@ -33,6 +44,7 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         migrateOperatorAccounts();
         migrateStoreSettings();
         migrateChargeAuditFields();
+        migrateMemberTimeAccounts();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -193,6 +205,50 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         addColumnIfMissing("wristband_charge_records", "operator_username", "TEXT");
         addColumnIfMissing("wristband_charge_records", "operator_display_name", "TEXT");
         addColumnIfMissing("wristband_charge_records", "issued_at", "TEXT");
+        addColumnIfMissing("wristband_charge_records", "member_id", "INTEGER REFERENCES members(id)");
+    }
+
+    private void migrateMemberTimeAccounts() {
+        if (!tableExists("members")) return;
+        transactions.executeWithoutResult(transaction -> {
+            boolean migrated = jdbc.queryForList("PRAGMA table_info(members)").stream()
+                    .anyMatch(row -> "time_balance_seconds".equals(row.get("name")));
+            addColumnIfMissing("members", "time_balance_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK (time_balance_seconds >= 0)");
+            addColumnIfMissing("members", "consumption_started_at", "TEXT");
+            if (!migrated && tableExists("wristband_bindings")) {
+                Instant now = clock.instant();
+                for (Map<String, Object> member : jdbc.queryForList("SELECT id FROM members")) {
+                    long seconds = 0;
+                    boolean consuming = false;
+                    for (Map<String, Object> binding : jdbc.queryForList("SELECT status, duration_minutes, started_at FROM wristband_bindings WHERE member_id=? AND status IN ('READY','ACTIVE')", member.get("id"))) {
+                        long remaining = ((Number) binding.get("duration_minutes")).longValue() * 60L;
+                        if ("ACTIVE".equals(binding.get("status"))) {
+                            remaining = Math.max(0, Duration.between(now, Instant.parse(String.valueOf(binding.get("started_at"))).plusSeconds(remaining)).getSeconds());
+                            consuming |= remaining > 0;
+                        }
+                        seconds = Math.addExact(seconds, remaining);
+                    }
+                    jdbc.update("UPDATE members SET time_balance_seconds=?, consumption_started_at=? WHERE id=?", seconds,
+                            consuming ? now.toString() : null, member.get("id"));
+                }
+            }
+            if (tableExists("wristband_bindings")) {
+                addColumnIfMissing("wristband_bindings", "issue_request_id", "TEXT");
+                addColumnIfMissing("wristband_bindings", "issued_credit_minutes", "INTEGER NOT NULL DEFAULT 0");
+                addColumnIfMissing("wristband_bindings", "issued_by_operator_id", "INTEGER");
+                jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_binding_issue_request ON wristband_bindings(issue_request_id) WHERE issue_request_id IS NOT NULL");
+                if (!migrated && tableExists("wristband_charge_records")) {
+                    jdbc.update("""
+                        UPDATE wristband_charge_records SET member_id=(
+                          SELECT b.member_id FROM wristband_bindings b
+                           WHERE b.wristband_id=wristband_charge_records.wristband_id
+                             AND b.bound_at>=wristband_charge_records.charged_at
+                           ORDER BY b.bound_at,b.id LIMIT 1)
+                        WHERE member_id IS NULL
+                        """);
+                }
+            }
+        });
     }
 
     private boolean tableExists(String table) {

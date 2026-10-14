@@ -252,7 +252,7 @@ class PlatformSchemaMigrationTest {
                     "jdbc:sqlite:" + database.toAbsolutePath());
             JdbcTemplate jdbc = new JdbcTemplate(dataSource);
             jdbc.execute("CREATE TABLE members(id INTEGER PRIMARY KEY, phone TEXT, name TEXT, status TEXT, deleted_at TEXT)");
-            jdbc.execute("CREATE TABLE wristband_bindings(id INTEGER PRIMARY KEY)");
+            jdbc.execute("CREATE TABLE wristband_bindings(id INTEGER PRIMARY KEY, member_id INTEGER, status TEXT, duration_minutes INTEGER, started_at TEXT)");
             jdbc.execute("""
                 CREATE TABLE game_play_records (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

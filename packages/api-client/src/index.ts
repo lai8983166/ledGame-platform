@@ -161,6 +161,7 @@ export interface PlayerRecentPlay {
 export interface PlayerInfo {
   profile: PlayerProfile;
   points: { total: number; rank: number };
+  account?: { remainingSeconds: number; consuming: boolean };
   wristbands: PlayerWristband[];
   recentPlays: PlayerRecentPlay[];
 }
