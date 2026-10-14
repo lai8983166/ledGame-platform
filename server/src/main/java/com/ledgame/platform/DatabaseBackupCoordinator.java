@@ -81,6 +81,7 @@ public class DatabaseBackupCoordinator {
         targetStateStore = new BackupTargetStateStore(engine.sourceDatabase(), objectMapper);
         lastObservedFingerprint = DatabaseSourceFingerprint.capture(engine.sourceDatabase());
         initialize();
+        if (!automaticBackupAllowed()) return;
         long poll = Math.max(properties.getPollMillis(), 250);
         scheduler.scheduleWithFixedDelay(this::safeTick, poll, poll, TimeUnit.MILLISECONDS);
     }
@@ -111,7 +112,8 @@ public class DatabaseBackupCoordinator {
 
     public boolean flush() {
         if (!started.get()) return true;
-        if (!properties.isEnabled()) return true;
+        if (!automaticBackupAllowed()) return true;
+        if (!gate.businessReady()) return false;
         try {
             DatabaseStateSnapshot source = databaseState.current();
             if (source.revision() <= lastBackedRevision) return true;
@@ -119,6 +121,11 @@ public class DatabaseBackupCoordinator {
         } catch (Exception exception) {
             return false;
         }
+    }
+
+    private boolean automaticBackupAllowed() {
+        return properties.isEnabled() && !engine.inMemoryDatabase()
+                && !("PRODUCTION".equals(properties.getEnvironment()) && engine.ephemeralDatabase());
     }
 
     private void initialize() {
@@ -218,6 +225,16 @@ public class DatabaseBackupCoordinator {
             DatabaseBackupMetadata metadata = engine.readLatestMetadata(target.root());
             if (!engine.acceptsMetadata(metadata)
                     || !engine.acceptsKeyEnvelope(target.root().resolve("latest/data-key.dpapi"), metadata)) {
+                // A confirmed import is authoritative; retain the superseded
+                // legacy generation rather than trapping the restored database.
+                if (source.importedAt() != null && source.importedFromRevision() != null
+                        && metadata != null && properties.getEnvironment().equals(metadata.environment())
+                        && metadata.generatedAt() != null && source.importedAt().isAfter(metadata.generatedAt())) {
+                    if (quarantineLatest("replaced-by-import")) backupNow(source);
+                    else gate.update(StartupGate.degraded(BackupErrorCode.BACKUP_PUBLISH_FAILED,
+                            targetVolume(),lastSuccessfulBackupAt,source.revision(),null));
+                    return;
+                }
                 Path recoveryEnvelope = target.root().resolve("latest/factory-key-envelope.json");
                 if (metadata != null && properties.getEnvironment().equals(metadata.environment())
                         && backup.valid() && Files.isRegularFile(recoveryEnvelope)
@@ -241,6 +258,10 @@ public class DatabaseBackupCoordinator {
             }
             BackupSyncRelation relation = DatabaseVersionComparator.compare(source, backup.state());
             if (relation == BackupSyncRelation.SYNCHRONIZED) {
+                if (!DatabaseBackupEngine.isPlaintext(metadata)) {
+                    backupNow(source);
+                    return;
+                }
                 lastBackedRevision = backup.state().revision();
                 lastSuccessfulBackupAt = metadata.generatedAt();
                 gate.update(StartupGate.protectedStatus(targetVolume(), metadata.generatedAt(),
@@ -285,6 +306,9 @@ public class DatabaseBackupCoordinator {
                     BackupErrorCode.BACKUP_PUBLISH_FAILED.name(), "无法隔离冲突备份，当前数据库和备份均未被覆盖");
         }
         lastBackedRevision = -1;
+        // Explicit factory confirmation, unlike an automatic shutdown flush,
+        // authorizes rebuilding latest after the conflicting copy is retained.
+        gate.update(StartupGate.checking("REBUILDING_BACKUP", "正在重新建立数据库备份", databaseState.current().revision()));
         backupNow(databaseState.current());
         return gate.status();
     }
@@ -294,11 +318,7 @@ public class DatabaseBackupCoordinator {
     }
 
     private void tick() {
-        if (!properties.isEnabled()) return;
-        BackupLifecycleState lifecycle = gate.status().state();
-        if (lifecycle == BackupLifecycleState.BLOCKED
-                || lifecycle == BackupLifecycleState.MAINTENANCE_LOGIN_REQUIRED
-                || lifecycle == BackupLifecycleState.IMPORTING) return;
+        if (!automaticBackupAllowed() || !gate.businessReady()) return;
         long now = System.currentTimeMillis();
         if (target != null && now < nextRetryAt) return;
         if (target == null && now >= nextRetryAt) {
@@ -307,6 +327,9 @@ public class DatabaseBackupCoordinator {
                 targetStateStore.write(found.volume().persistentIdentity());
                 inspectOrCreateLatest(databaseState.current());
             });
+            // Rediscovery can enter conflict maintenance. Do not overwrite the
+            // just-inspected backup later in this same scheduler invocation.
+            if (!gate.businessReady()) return;
             if (target == null) {
                 nextRetryAt = now + Math.max(properties.getRetryMillis(), 1000);
                 return;
@@ -337,7 +360,10 @@ public class DatabaseBackupCoordinator {
         }
     }
 
-    private boolean backupNow(DatabaseStateSnapshot source) {
+    private synchronized boolean backupNow(DatabaseStateSnapshot source) {
+        if (!automaticBackupAllowed()) return false;
+        BackupLifecycleState state = gate.status().state();
+        if (!(gate.businessReady() || state == BackupLifecycleState.CHECKING)) return false;
         if (target == null || !backupRunning.compareAndSet(false, true)) return false;
         try {
             BackupLifecycleState currentState = gate.status().state();
@@ -392,6 +418,8 @@ public class DatabaseBackupCoordinator {
         Path latestMetadata = latestDirectory.resolve("metadata.json");
         Path latestKey = latestDirectory.resolve("data-key.dpapi");
         Path latestRecovery = latestDirectory.resolve("factory-key-envelope.json");
+        Path latestAvatars = latestDirectory.resolve("avatars");
+        Path latestAvatarManifest = latestDirectory.resolve("avatar-manifest.json");
         if (!Files.exists(latestDatabase) && !Files.exists(latestMetadata)) return true;
         Path archive = target.root().resolve("quarantine").resolve(
                 reason + "-" + DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
@@ -400,6 +428,8 @@ public class DatabaseBackupCoordinator {
         Path archivedMetadata = archive.resolve("metadata.json");
         Path archivedKey = archive.resolve("data-key.dpapi");
         Path archivedRecovery = archive.resolve("factory-key-envelope.json");
+        Path archivedAvatars = archive.resolve("avatars");
+        Path archivedAvatarManifest = archive.resolve("avatar-manifest.json");
         try {
             Files.createDirectories(archive);
             if (Files.exists(latestDatabase)) {
@@ -415,6 +445,8 @@ public class DatabaseBackupCoordinator {
                 if (Files.exists(latestRecovery)) {
                     Files.move(latestRecovery, archivedRecovery, StandardCopyOption.REPLACE_EXISTING);
                 }
+                if (Files.exists(latestAvatars)) Files.move(latestAvatars,archivedAvatars);
+                if (Files.exists(latestAvatarManifest)) Files.move(latestAvatarManifest,archivedAvatarManifest);
             } catch (Exception metadataFailure) {
                 if (Files.exists(archivedDatabase)) {
                     Files.move(archivedDatabase, latestDatabase, StandardCopyOption.REPLACE_EXISTING);
@@ -428,6 +460,8 @@ public class DatabaseBackupCoordinator {
                 if (Files.exists(archivedRecovery)) {
                     Files.move(archivedRecovery, latestRecovery, StandardCopyOption.REPLACE_EXISTING);
                 }
+                if (Files.exists(archivedAvatars)) Files.move(archivedAvatars,latestAvatars);
+                if (Files.exists(archivedAvatarManifest)) Files.move(archivedAvatarManifest,latestAvatarManifest);
                 throw metadataFailure;
             }
             LOG.warn("database_backup_quarantined reason={} archive={}", reason, archive);

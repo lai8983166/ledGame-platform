@@ -383,7 +383,7 @@ class CoreFlowApiIntegrationTest {
         assertThat(created.getBody().get("avatarUrl")).isEqualTo(
                 "/api/members/" + created.getBody().get("id") + "/avatar");
         assertThat(jdbc.queryForObject("SELECT avatar_id FROM members WHERE id=?", String.class,
-                number(created.getBody().get("id")))).startsWith("enc:v1:");
+                number(created.getBody().get("id")))).startsWith("uploaded:");
         assertThat(avatarStorage.storedFiles()).hasSize(1);
 
         ResponseEntity<byte[]> avatar = http.exchange(

@@ -46,6 +46,9 @@ class DatabaseBackupControllerAuthorizationTest {
                 .isInstanceOfSatisfying(PlatformApiException.class,
                         error -> assertThat(error.getCode()).isEqualTo("IMPORT_FORBIDDEN"));
         verify(coordinator, never()).keepCurrentDatabase();
+        assertThatThrownBy(() -> controller.export(request, 7L,
+                new DatabaseBackupController.ExternalCandidateRequest("C:/backup.zip"))).isSameAs(forbidden);
+        assertThatThrownBy(() -> controller.location(request, 7L)).isSameAs(forbidden);
     }
 
     @Test
@@ -72,6 +75,8 @@ class DatabaseBackupControllerAuthorizationTest {
         assertThatThrownBy(() -> controller.backupStatus(remote, 1L))
                 .isInstanceOfSatisfying(PlatformApiException.class,
                         error -> assertThat(error.getCode()).isEqualTo("LOCAL_REQUEST_REQUIRED"));
+        assertThatThrownBy(() -> controller.export(remote,1L,new DatabaseBackupController.ExternalCandidateRequest("C:/backup.zip")))
+                .isInstanceOfSatisfying(PlatformApiException.class,error -> assertThat(error.getCode()).isEqualTo("LOCAL_REQUEST_REQUIRED"));
     }
 
     private static HttpServletRequest loopback() {

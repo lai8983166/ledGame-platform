@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
 public class DataProtectionMigration implements ApplicationRunner {
     private static final Logger LOG = LoggerFactory.getLogger(DataProtectionMigration.class);
-    static final int FORMAT_VERSION = 1;
+    static final int FORMAT_VERSION = 2;
 
     private final JdbcTemplate jdbc;
     private final DataProtectionKeyManager keys;
@@ -28,6 +28,7 @@ public class DataProtectionMigration implements ApplicationRunner {
     private final Clock clock;
     private final PlatformTransactionManager transactionManager;
     private final StartupGate startupGate;
+    private final AvatarStorageService avatars;
 
     @Autowired
     public DataProtectionMigration(
@@ -36,13 +37,23 @@ public class DataProtectionMigration implements ApplicationRunner {
             ProtectedDataService protectedData,
             Clock clock,
             PlatformTransactionManager transactionManager,
-            StartupGate startupGate) {
+            StartupGate startupGate,
+            AvatarStorageService avatars) {
         this.jdbc = jdbc;
         this.keys = keys;
         this.protectedData = protectedData;
         this.clock = clock;
-        this.transactionManager = transactionManager;
+        this.transactionManager = transactionManager == null
+                ? new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource())
+                : transactionManager;
         this.startupGate = startupGate;
+        this.avatars = avatars;
+    }
+
+    DataProtectionMigration(JdbcTemplate jdbc, DataProtectionKeyManager keys,
+            ProtectedDataService protectedData, Clock clock,
+            PlatformTransactionManager transactionManager, StartupGate startupGate) {
+        this(jdbc,keys,protectedData,clock,transactionManager,startupGate,null);
     }
 
     DataProtectionMigration(
@@ -56,12 +67,10 @@ public class DataProtectionMigration implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         try {
-            boolean migrated = transactionManager == null
-                    ? migrateInTransaction()
-                    : Boolean.TRUE.equals(new TransactionTemplate(transactionManager)
-                            .execute(status -> migrateInTransaction()));
-            if (migrated) sanitizeLegacyPlaintextResidue();
-            verifyProtectedSamples();
+            boolean alreadyPlain = jdbc.queryForList("SELECT format_version FROM data_protection_state WHERE id=1")
+                    .stream().anyMatch(row -> ((Number) row.get("format_version")).intValue() == FORMAT_VERSION);
+            if (avatars != null && !alreadyPlain) avatars.migrateLegacyFiles();
+            new TransactionTemplate(transactionManager).execute(status -> migrateInTransaction());
         } catch (RuntimeException exception) {
             if (startupGate == null) throw exception;
             BackupErrorCode code = errorFor(exception);
@@ -103,15 +112,17 @@ public class DataProtectionMigration implements ApplicationRunner {
                 """);
         List<Map<String, Object>> states = jdbc.queryForList(
                 "SELECT format_version, key_id, status FROM data_protection_state WHERE id=1");
-        DataKeyMaterial key = states.isEmpty() ? keys.loadOrCreate() : keys.loadExisting();
         if (!states.isEmpty()) {
             Map<String, Object> state = states.get(0);
             String recordedKeyId = String.valueOf(state.get("key_id"));
-            if (!key.keyId().equals(recordedKeyId)) {
-                throw new IllegalStateException("DATA_PROTECTION_KEY_ID_MISMATCH: database="
-                        + recordedKeyId + ", key=" + key.keyId());
+            int format = ((Number) state.get("format_version")).intValue();
+            if (format == 1) {
+                DataKeyMaterial key = keys.loadExisting();
+                if (!key.keyId().equals(recordedKeyId)) throw new IllegalStateException("DATA_PROTECTION_KEY_ID_MISMATCH");
+            } else if (format != FORMAT_VERSION || !ProtectedDataService.PLAINTEXT_KEY_ID.equals(recordedKeyId)) {
+                throw new IllegalStateException("DATA_PROTECTION_STATE_INVALID");
             }
-            if ("COMPLETE".equals(String.valueOf(state.get("status")))) {
+            if (format == FORMAT_VERSION && "COMPLETE".equals(String.valueOf(state.get("status")))) {
                 verifyProtectedSamples();
                 return false;
             }
@@ -119,7 +130,7 @@ public class DataProtectionMigration implements ApplicationRunner {
             jdbc.update("""
                 INSERT INTO data_protection_state(id, format_version, key_id, status, completed_at)
                 VALUES (1, ?, ?, 'MIGRATING', NULL)
-                """, FORMAT_VERSION, key.keyId());
+                """, FORMAT_VERSION, ProtectedDataService.PLAINTEXT_KEY_ID);
         }
 
         protectColumn("members", "phone");
@@ -162,18 +173,8 @@ public class DataProtectionMigration implements ApplicationRunner {
             UPDATE data_protection_state
                SET format_version=?, key_id=?, status='COMPLETE', completed_at=?
              WHERE id=1
-            """, FORMAT_VERSION, key.keyId(), clock.instant().toString());
+            """, FORMAT_VERSION, ProtectedDataService.PLAINTEXT_KEY_ID, clock.instant().toString());
         return true;
-    }
-
-    private void sanitizeLegacyPlaintextResidue() {
-        try {
-            jdbc.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-            jdbc.execute("VACUUM");
-            jdbc.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-        } catch (RuntimeException exception) {
-            throw new IllegalStateException("DATA_PROTECTION_STORAGE_SANITIZE_FAILED", exception);
-        }
     }
 
     private void ensureSchema() {
@@ -208,11 +209,10 @@ public class DataProtectionMigration implements ApplicationRunner {
             long id = ((Number) row.get("id")).longValue();
             String value = String.valueOf(row.get("protected_value"));
             String context = context(table, column, id);
-            if (protectedData.isEncrypted(value)) {
-                protectedData.decrypt(context, value);
-            } else {
+            String plaintext = protectedData.decrypt(context, value);
+            if (!value.equals(plaintext)) {
                 jdbc.update("UPDATE " + table + " SET " + column + "=? WHERE id=?",
-                        protectedData.encrypt(context, value), id);
+                        plaintext, id);
             }
         }
     }
@@ -275,11 +275,11 @@ public class DataProtectionMigration implements ApplicationRunner {
 
     private void verifyColumn(String table, String column) {
         if (!tableExists(table)) return;
-        Integer plaintext = jdbc.queryForObject(
+        Integer ciphertext = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM " + table + " WHERE " + column
-                        + " IS NOT NULL AND " + column + " NOT LIKE 'enc:v1:%'",
+                        + " IS NOT NULL AND " + column + " LIKE 'enc:%'",
                 Integer.class);
-        if (plaintext != null && plaintext > 0) {
+        if (ciphertext != null && ciphertext > 0) {
             throw new IllegalStateException("DATA_PROTECTION_MIGRATION_INCOMPLETE: " + table + "." + column);
         }
         List<Map<String, Object>> rows = jdbc.queryForList(
@@ -288,7 +288,7 @@ public class DataProtectionMigration implements ApplicationRunner {
         for (Map<String, Object> row : rows) {
             long id = ((Number) row.get("id")).longValue();
             String value = String.valueOf(row.get("protected_value"));
-            if (!protectedData.isEncrypted(value)) {
+            if (protectedData.isEncrypted(value)) {
                 throw new IllegalStateException("DATA_PROTECTION_MIGRATION_INCOMPLETE: " + table + "." + column);
             }
             protectedData.decrypt(context(table, column, id), value);
@@ -302,7 +302,7 @@ public class DataProtectionMigration implements ApplicationRunner {
     }
 
     static String context(String table, String column, long id) {
-        // Column-bound AAD lets callers encrypt before INSERT, so plaintext never reaches SQLite/WAL.
+        // Legacy envelopes bind their authenticated context to the column.
         return table + "." + column;
     }
 }

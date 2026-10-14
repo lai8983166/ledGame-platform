@@ -83,29 +83,49 @@ class DatabaseBackupEngineTest {
         assertThat(inspector.inspect(latest).state().revision()).isEqualTo(sourceState.revision());
         Object storedPhone = new JdbcTemplate(new DriverManagerDataSource("jdbc:sqlite:" + latest.toAbsolutePath()))
                 .queryForObject("SELECT phone FROM members", Object.class);
-        assertThat(String.valueOf(storedPhone)).startsWith("enc:v1:").doesNotContain("13800138000");
+        assertThat(String.valueOf(storedPhone)).isEqualTo("13800138000");
         assertThat(protectedData.decryptField("members", "phone", storedPhone)).isEqualTo("13800138000");
         byte[] rawBackup = Files.readAllBytes(latest);
-        assertThat(indexOf(rawBackup, "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
-        assertThat(indexOf(rawBackup, "备份玩家".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
+        assertThat(indexOf(rawBackup, "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isGreaterThanOrEqualTo(0);
+        assertThat(indexOf(rawBackup, "备份玩家".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isGreaterThanOrEqualTo(0);
         assertThat(metadata.sha256()).isEqualTo(inspector.sha256(latest));
         assertThat(metadata.targetDiskIdentity()).isEqualTo("uid:disk-b");
         assertThat(metadata.format()).isEqualTo("ledgame-platform-backup-v2");
         assertThat(metadata.environment()).isEqualTo("TEST");
         assertThat(backupRoot.resolve("latest/metadata.json")).isRegularFile();
-        DataProtectionKeyManager.KeyEnvelope latestEnvelope = new ObjectMapper().readValue(
-                backupRoot.resolve("latest/data-key.dpapi").toFile(), DataProtectionKeyManager.KeyEnvelope.class);
-        assertThat(latestEnvelope.keyId()).isEqualTo(keyManager.loadExisting().keyId());
-        assertThat(metadata.encryptionVersion()).isEqualTo(ProtectedDataService.ENCRYPTION_VERSION);
-        assertThat(metadata.keyId()).isEqualTo(protectedData.keyId());
+        assertThat(backupRoot.resolve("latest/data-key.dpapi")).doesNotExist();
+        assertThat(metadata.encryptionVersion()).isEqualTo(ProtectedDataService.PLAINTEXT_VERSION);
+        assertThat(metadata.keyId()).isEqualTo(ProtectedDataService.PLAINTEXT_KEY_ID);
         Path historyDatabase = historyDatabases().get(0);
         assertThat(indexOf(Files.readAllBytes(historyDatabase),
-                "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(-1);
-        String historyKey = historyDatabase.getFileName().toString()
-                .replace("-platform.db", "-data-key.dpapi");
-        DataProtectionKeyManager.KeyEnvelope historyEnvelope = new ObjectMapper().readValue(
-                historyDatabase.resolveSibling(historyKey).toFile(), DataProtectionKeyManager.KeyEnvelope.class);
-        assertThat(historyEnvelope.keyId()).isEqualTo(keyManager.loadExisting().keyId());
+                "13800138000".getBytes(java.nio.charset.StandardCharsets.UTF_8))).isGreaterThanOrEqualTo(0);
+
+    }
+
+    @Test
+    void memorySourceIsRejectedBeforeAnyTargetDirectoryOrSnapshotIsCreated() {
+        properties.setEnvironment("PRODUCTION");
+        var online = mock(SqliteOnlineBackup.class);
+        var engine = new DatabaseBackupEngine(online,inspector,new ObjectMapper(),properties,clock,
+                "Asia/Shanghai","jdbc:sqlite:file:unsafe-test?mode=memory&cache=shared");
+        Path untouched = root.resolve("untouched-production-backup");
+        assertThatThrownBy(() -> engine.backup(untouched,"target"))
+                .hasMessage("BACKUP_ENVIRONMENT_MISMATCH");
+        assertThat(untouched).doesNotExist();
+        org.mockito.Mockito.verifyNoInteractions(online);
+    }
+
+    @Test
+    void productionEphemeralFileIsRejectedBeforeAnyTargetDirectoryIsCreated() {
+        properties.setEnvironment("PRODUCTION");
+        var online = mock(SqliteOnlineBackup.class);
+        var engine = new DatabaseBackupEngine(online,inspector,new ObjectMapper(),properties,clock,
+                "Asia/Shanghai","jdbc:sqlite:"+root.resolve("ledgame-sqlite-memory-example.db"));
+        Path untouched = root.resolve("untouched-production-backup");
+        assertThatThrownBy(() -> engine.backup(untouched,"target"))
+                .hasMessage("BACKUP_ENVIRONMENT_MISMATCH");
+        assertThat(untouched).doesNotExist();
+        org.mockito.Mockito.verifyNoInteractions(online);
     }
 
     @Test
@@ -119,6 +139,7 @@ class DatabaseBackupEngineTest {
         recoveryProperties.setPublicKeyPath(publicKey.toString());
         DatabaseRecoveryKeyService recovery = new DatabaseRecoveryKeyService(recoveryProperties, new ObjectMapper());
         insertMember("13800138009", "恢复测试");
+        LegacyEncryptedFixture.encrypt(jdbc, keyManager.loadExisting());
 
         DatabaseBackupMetadata metadata = engine(new SqliteOnlineBackup(dataSource), recovery)
                 .backup(backupRoot, "uid:disk-b");
@@ -138,7 +159,7 @@ class DatabaseBackupEngineTest {
     }
 
     @Test
-    void onlineBackupPublishesEncryptedAvatarBundleAndManifestAlongsideDatabase() throws Exception {
+    void onlineBackupPublishesPlainAvatarBundleAndManifestAlongsideDatabase() throws Exception {
         String avatarId = avatarStorage.store(Base64.getEncoder().encodeToString(tinyPng()), "image/png");
         insertMember("13800138001", "带头像玩家", avatarId);
 
@@ -154,7 +175,7 @@ class DatabaseBackupEngineTest {
         }
         Path avatarManifest = backupRoot.resolve("latest/avatar-manifest.json");
         assertThat(Files.readString(avatarManifest)).contains("ledgame-avatar-backup-v1");
-        assertThat(Files.readAllBytes(stored)[0]).isZero();
+        assertThat(Files.readAllBytes(stored)).containsExactly(tinyPng());
     }
 
     @Test
@@ -177,6 +198,7 @@ class DatabaseBackupEngineTest {
 
     @Test
     void mismatchedKeyEnvelopeNeverReplacesPreviousLatest() throws Exception {
+        LegacyEncryptedFixture.encrypt(jdbc, keyManager.loadExisting());
         DatabaseBackupEngine good = engine(new SqliteOnlineBackup(dataSource));
         good.backup(backupRoot, "uid:disk-b");
         String originalHash = inspector.sha256(backupRoot.resolve("latest/platform.db"));

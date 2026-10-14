@@ -167,6 +167,9 @@ test("final package shows the startup check, creates a TEST backup, enforces IPC
     await page.getByTestId("settings-tab-backup").click();
     const management = page.getByTestId("database-backup-management");
     await expect(management).toBeVisible();
+    await expect(page.getByTestId("database-backup-path")).toHaveValue(backupRoot);
+    await expect(management.getByRole("button")).toHaveCount(2);
+    await expect(page.getByTestId("member-desktop-runtime")).toHaveCount(0);
     await expect(management).not.toContainText("未找到可用异盘");
     await expect(management).not.toContainText("最后成功备份暂无");
     await expect.poll(async () => fs.readFile(path.join(backupRoot, "latest/metadata.json"), "utf8")
@@ -195,6 +198,8 @@ test("final package shows the startup check, creates a TEST backup, enforces IPC
       }),
     });
     await expect(page.evaluate((operatorId) => window.memberAdminDesktop.importBackupDatabase("missing", operatorId), created.id))
+      .rejects.toThrow(/IMPORT_FORBIDDEN|OPERATOR_FORBIDDEN|只有出厂账号|没有执行此操作的权限/);
+    await expect(page.evaluate((operatorId) => window.memberAdminDesktop.exportDatabase(operatorId), created.id))
       .rejects.toThrow(/IMPORT_FORBIDDEN|OPERATOR_FORBIDDEN|只有出厂账号|没有执行此操作的权限/);
     await page.getByTestId("operator-logout").click();
     await loginUi(page, "packaged-manager", "manager-password");
@@ -307,12 +312,14 @@ test("a fresh packaged userData imports an existing backup only after factory lo
   const freshUserData = path.join(rootDirectory, "fresh-user-data");
   const backupRoot = path.join(rootDirectory, "isolated-backup");
   const phone = "13990000002";
+  const archivePath = path.join(rootDirectory,"完整备份.zip");
   const sourcePort = await freePort();
   let desktop;
   try {
     desktop = await launchPackaged(environment(sourceUserData, backupRoot, sourcePort));
     const sourcePage = await waitForMemberWindow(desktop);
     const sourceFactory = await loginApi(sourcePage);
+    await loginUi(sourcePage);
     const beforeCreate = await backupStatus(sourcePage, sourceFactory.id);
     await createMember(sourcePage, sourceFactory.id, phone, "重装导入验收会员");
     await expect.poll(async () => {
@@ -321,27 +328,55 @@ test("a fresh packaged userData imports an existing backup only after factory lo
         && value.sourceRevision > beforeCreate.sourceRevision
         && value.backupRevision === value.sourceRevision;
     }, { timeout: 30_000 }).toBe(true);
-    const originalMetadata = JSON.parse(await fs.readFile(path.join(backupRoot, "latest/metadata.json"), "utf8"));
+    let originalMetadata = JSON.parse(await fs.readFile(path.join(backupRoot, "latest/metadata.json"), "utf8"));
+    expect(originalMetadata.encryptionVersion).toBe("plain-v1");
+    await sourcePage.getByTestId("admin-nav-settings").click();
+    await sourcePage.getByTestId("settings-tab-backup").click();
+    await desktop.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = async () => ({ canceled:true });
+    });
+    await sourcePage.getByTestId("database-export").click();
+    await expect(sourcePage.getByTestId("database-export")).toBeEnabled();
+    expect(await fs.stat(archivePath).then(() => true).catch(() => false)).toBe(false);
+    await desktop.evaluate(({ dialog },filePath) => {
+      dialog.showSaveDialog = async () => ({ canceled:false,filePath });
+    },archivePath);
+    await sourcePage.getByTestId("database-export").click();
+    await expect.poll(async () => fs.stat(archivePath).then(info => info.size).catch(() => 0),{ timeout:30000 }).toBeGreaterThan(0);
+    await expect(sourcePage.getByTestId("database-export")).toBeEnabled();
     await closeNormally(desktop, sourcePage, sourcePort);
     desktop = undefined;
+    // Export audit events and normal shutdown flush create a newer snapshot.
+    originalMetadata = JSON.parse(await fs.readFile(path.join(backupRoot,"latest/metadata.json"),"utf8"));
 
     const freshPort = await freePort();
     desktop = await launchPackaged(environment(freshUserData, backupRoot, freshPort));
-    const freshPage = await waitForMemberWindow(desktop);
+    let freshPage = await waitForMemberWindow(desktop);
     const diagnostics = await freshPage.evaluate(() => window.memberAdminDesktop.diagnostics());
     expect(diagnostics.backupState).toBe("MAINTENANCE_LOGIN_REQUIRED");
     const untouchedMetadata = JSON.parse(await fs.readFile(path.join(backupRoot, "latest/metadata.json"), "utf8"));
     expect(untouchedMetadata.sha256).toBe(originalMetadata.sha256);
+
+    // Closing a fresh install in conflict maintenance must not let the
+    // shutdown flush replace the previous store's backup with its empty DB.
+    await closeNormally(desktop,freshPage,freshPort);
+    desktop = undefined;
+    const afterMaintenanceClose = JSON.parse(await fs.readFile(path.join(backupRoot,"latest/metadata.json"),"utf8"));
+    expect(afterMaintenanceClose.sha256).toBe(originalMetadata.sha256);
+    expect(afterMaintenanceClose.instanceId).toBe(originalMetadata.instanceId);
+    desktop = await launchPackaged(environment(freshUserData,backupRoot,freshPort));
+    freshPage = await waitForMemberWindow(desktop);
+    expect((await freshPage.evaluate(() => window.memberAdminDesktop.diagnostics())).backupState).toBe("MAINTENANCE_LOGIN_REQUIRED");
 
     await loginUi(freshPage);
     await freshPage.getByTestId("admin-nav-settings").click();
     await expect(freshPage.getByTestId("settings-tab-backup")).toBeVisible();
     await freshPage.getByTestId("settings-tab-backup").click();
     const management = freshPage.getByTestId("database-backup-management");
-    await management.getByRole("button", { name: "刷新", exact: true }).click();
-    const sourceCandidate = management.locator(".backup-candidate-row")
-      .filter({ hasText: "会员 1 人" })
-      .getByRole("button", { name: "导入此版本", exact: true });
+    await desktop.evaluate(({ dialog },filePath) => {
+      dialog.showOpenDialog = async () => ({ canceled:false,filePaths:[filePath] });
+    },archivePath);
+    const sourceCandidate = management.getByTestId("database-import");
     await expect(sourceCandidate).toBeVisible();
     const freshFactory = await loginApi(freshPage);
 

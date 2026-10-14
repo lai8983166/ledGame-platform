@@ -140,6 +140,7 @@ class DatabaseImportServiceTest {
 
     @Test
     void rejectsTamperedCiphertextBeforeChangingTheCurrentDatabase() {
+        LegacyEncryptedFixture.encrypt(candidateJdbc, keyManager.loadExisting());
         DatabaseBackupCandidate candidate = service.registerExternal(candidateDatabase);
         String encrypted = candidateJdbc.queryForObject("SELECT phone FROM members LIMIT 1", String.class);
         String tampered = encrypted.substring(0, encrypted.length() - 1)
@@ -156,8 +157,8 @@ class DatabaseImportServiceTest {
 
     @Test
     void rejectsCandidateWithoutAUniqueEnabledFactoryAdministrator() {
-        mainJdbc.execute("DELETE FROM operator_accounts");
-        assertThatThrownBy(() -> service.registerExternal(mainDatabase))
+        candidateJdbc.execute("DELETE FROM operator_accounts");
+        assertThatThrownBy(() -> service.registerExternal(candidateDatabase))
                 .isInstanceOfSatisfying(PlatformApiException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo("IMPORT_FACTORY_ACCOUNT_INVALID"));
     }
@@ -283,6 +284,9 @@ class DatabaseImportServiceTest {
                 .run(new DefaultApplicationArguments());
         new DataProtectionMigration(oldInstallJdbc, oldKeys, oldData, fixedClock)
                 .run(new DefaultApplicationArguments());
+        // Explicitly construct legacy installation keys, not production plaintext migration.
+        newKeys.loadOrCreate();
+        oldKeys.loadOrCreate();
         assertThat(newData.keyId()).isNotEqualTo(oldData.keyId());
         oldInstallJdbc.update("""
             INSERT INTO operator_accounts(username, display_name, password_hash, account_type, enabled,
@@ -296,6 +300,7 @@ class DatabaseImportServiceTest {
                 oldData.phoneLookupHash("13800990000"), oldData.encryptField("members", "name", "旧库会员"));
 
         Path backupRoot = root.resolve("previous-backup");
+        LegacyEncryptedFixture.encrypt(oldInstallJdbc, oldKeys.loadExisting());
         Path latest = backupRoot.resolve("latest/platform.db");
         Files.createDirectories(latest.getParent());
         Files.copy(alternateCandidate, latest);

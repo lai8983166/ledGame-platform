@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("memberAdminDesktop", {
   restartBackend: (port) => ipcRenderer.invoke("member-admin:restart-backend", { port }),
   retryBackend: () => ipcRenderer.invoke("member-admin:retry-backend"),
   chooseBackupDatabase: (operatorId) => ipcRenderer.invoke("member-admin:choose-backup-database", { operatorId }),
+  exportDatabase: (operatorId) => ipcRenderer.invoke("member-admin:export-database", { operatorId }),
   importBackupDatabase: (candidateId, operatorId) => ipcRenderer.invoke("member-admin:import-backup-database", { candidateId, operatorId }),
   createDatabaseRecoveryRequest: (operatorId) => ipcRenderer.invoke("member-admin:create-database-recovery-request", { operatorId }),
   cancelDatabaseRecoveryRequest: (requestId, operatorId) => ipcRenderer.invoke("member-admin:cancel-database-recovery-request", { requestId, operatorId }),

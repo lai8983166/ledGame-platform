@@ -73,6 +73,6 @@ class ProtectedDataServiceTest {
         DataProtectionKeyManager keyManager = mock(DataProtectionKeyManager.class);
         when(keyManager.loadOrCreate()).thenReturn(material);
         when(keyManager.loadExisting()).thenReturn(material);
-        return new ProtectedDataService(keyManager);
+        return ProtectedDataService.forKey(material);
     }
 }

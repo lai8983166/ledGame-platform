@@ -20,6 +20,7 @@ ledgame:
     enabled: true
   database-backup:
     enabled: false
+    environment: TEST
 
 logging:
   level:

@@ -28,6 +28,7 @@ declare global {
       restartBackend(port: number): Promise<MemberAdminDiagnostics>;
       retryBackend(): Promise<MemberAdminDiagnostics>;
       chooseBackupDatabase(operatorId: number): Promise<import("@ledgame/platform-api-client").DatabaseBackupCandidate | null>;
+      exportDatabase(operatorId: number): Promise<{ path: string } | null>;
       importBackupDatabase(candidateId: string, operatorId: number): Promise<{ imported: boolean; revision: number; requiresLogin: boolean }>;
       createDatabaseRecoveryRequest(operatorId: number): Promise<{ request: import("@ledgame/platform-api-client").DatabaseRecoveryRequest; path: string } | null>;
       cancelDatabaseRecoveryRequest(requestId: string, operatorId: number): Promise<void>;

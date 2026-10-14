@@ -84,6 +84,11 @@ public class DatabaseImportService {
     /** Registers an external backup using a caller-provided key envelope (used by recovery responses). */
     public DatabaseBackupCandidate registerExternal(Path rawPath, Path keyEnvelopeOverride) {
         Path path = rawPath.toAbsolutePath().normalize();
+        if (path.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+            Path extracted = DatabaseArchiveService.extract(path, engine.sourceDatabase().getParent().resolve("import-staging"));
+            try { return registerExternal(extracted, keyEnvelopeOverride); }
+            catch (RuntimeException exception) { DatabaseArchiveService.deleteTree(extracted.getParent()); throw exception; }
+        }
         InspectedDatabase inspected = requireValid(path);
         ImportSummary summary = requireImportSummary(path);
         String id = UUID.randomUUID().toString();
@@ -92,7 +97,16 @@ public class DatabaseImportService {
                 : keyEnvelopeOverride.toAbsolutePath().normalize();
         RegisteredCandidate registered = new RegisteredCandidate(path, "EXTERNAL", metadata, keyEnvelope,
                 avatarDirectory(path, "EXTERNAL"), avatarManifest(path, "EXTERNAL"));
-        if (metadata != null) verifyMetadata(registered, inspected);
+        verifyDataProtection(path, metadata, verifyMetadata(registered, inspected));
+        if (Files.isDirectory(registered.avatarDirectory())) {
+            try { verifyAvatarManifest(registered.avatarDirectory(), registered.avatarManifest()); }
+            catch (Exception exception) { invalid(); }
+        }
+        verifyCandidateAvatars(registered, verifyMetadata(registered, inspected));
+        if (Files.isDirectory(path.resolveSibling("branding"))) {
+            try { DatabaseArchiveService.verifiedBrandingFile(path,path.getParent()); }
+            catch (Exception exception) { invalid(); }
+        }
         candidates.put(id, registered);
         return toCandidate(id, registered, inspected, summary);
     }
@@ -103,6 +117,7 @@ public class DatabaseImportService {
         requireImportSummary(registered.path());
         ProtectedDataService candidateProtection = verifyMetadata(registered, inspected);
         verifyDataProtection(registered.path(), registered.metadata(), candidateProtection);
+        verifyCandidateAvatars(registered, candidateProtection);
         if (rooms.hasActiveBusiness()) {
             throw new PlatformApiException(HttpStatus.CONFLICT, BackupErrorCode.IMPORT_BUSINESS_ACTIVE.name(),
                     BackupErrorCode.IMPORT_BUSINESS_ACTIVE.defaultMessage());
@@ -118,6 +133,7 @@ public class DatabaseImportService {
         Path preparedKey = stagingDirectory.resolve(prepared.getFileName() + ".data-key.dpapi");
         Path preparedAvatars = stagingDirectory.resolve(prepared.getFileName() + ".avatars");
         Path preparedAvatarManifest = stagingDirectory.resolve(prepared.getFileName() + ".avatar-manifest.json");
+        Path preparedBranding = stagingDirectory.resolve(prepared.getFileName() + ".branding");
         try {
             Files.createDirectories(stagingDirectory);
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(stagingDirectory, "prepared-*")) {
@@ -125,6 +141,12 @@ public class DatabaseImportService {
             }
             Files.copy(registered.path(), prepared, StandardCopyOption.REPLACE_EXISTING);
             copyAvatarBundle(registered.avatarDirectory(), registered.avatarManifest(), preparedAvatars, preparedAvatarManifest);
+            Path icon = null;
+            if (Files.isDirectory(registered.path().resolveSibling("branding"))) {
+                icon = DatabaseArchiveService.verifiedBrandingFile(registered.path(),registered.path().getParent());
+                Files.createDirectories(preparedBranding);
+                if (icon != null) Files.copy(icon,preparedBranding.resolve(icon.getFileName()),StandardCopyOption.REPLACE_EXISTING);
+            }
             String keyEnvelopeSha256 = null;
             if (registered.keyEnvelope() != null && Files.isRegularFile(registered.keyEnvelope())) {
                 Files.copy(registered.keyEnvelope(), preparedKey, StandardCopyOption.REPLACE_EXISTING);
@@ -143,23 +165,29 @@ public class DatabaseImportService {
             }
             InspectedDatabase preparedInspection = requireValid(prepared);
             coordinator.beginImport();
+            releaseCandidate(candidateId);
             return new DatabaseImportManifest(prepared.toString(),
                     Files.isRegularFile(preparedKey) ? preparedKey.toString() : null,
                     keyEnvelopeSha256, preparedInspection.sha256(),
                     Files.isDirectory(preparedAvatars) ? preparedAvatars.toString() : null,
                     Files.isRegularFile(preparedAvatarManifest) ? preparedAvatarManifest.toString() : null,
-                    Files.isRegularFile(preparedAvatarManifest) ? inspector.sha256(preparedAvatarManifest) : null);
+                    Files.isRegularFile(preparedAvatarManifest) ? inspector.sha256(preparedAvatarManifest) : null,
+                    Files.isDirectory(preparedBranding) ? preparedBranding.toString() : null,
+                    icon == null ? null : icon.getFileName().toString(),
+                    icon == null ? null : inspector.sha256(preparedBranding.resolve(icon.getFileName())));
         } catch (PlatformApiException exception) {
             deleteQuietly(prepared);
             deleteQuietly(preparedKey);
             deleteTree(preparedAvatars);
             deleteQuietly(preparedAvatarManifest);
+            deleteTree(preparedBranding);
             throw exception;
         } catch (Exception exception) {
             deleteQuietly(prepared);
             deleteQuietly(preparedKey);
             deleteTree(preparedAvatars);
             deleteQuietly(preparedAvatarManifest);
+            deleteTree(preparedBranding);
             throw new PlatformApiException(HttpStatus.INTERNAL_SERVER_ERROR, BackupErrorCode.IMPORT_FAILED.name(),
                     BackupErrorCode.IMPORT_FAILED.defaultMessage());
         }
@@ -167,6 +195,33 @@ public class DatabaseImportService {
 
     public void cancelImport() {
         coordinator.cancelImport();
+    }
+
+    public void releaseCandidate(String candidateId) {
+        RegisteredCandidate candidate = candidates.remove(candidateId);
+        if (candidate == null) return;
+        Path directory = candidate.path().getParent();
+        Path staging = engine.sourceDatabase().getParent().resolve("import-staging").toAbsolutePath().normalize();
+        if (directory.getParent().equals(staging) && directory.getFileName().toString().startsWith("archive-")) {
+            DatabaseArchiveService.deleteTree(directory);
+        }
+    }
+
+    private void verifyCandidateAvatars(RegisteredCandidate candidate, ProtectedDataService codec) {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + candidate.path());
+             var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT avatar_id FROM members WHERE avatar_id IS NOT NULL")) {
+            while (rows.next()) {
+                String id = codec.decryptField("members", "avatar_id", rows.getString(1));
+                if (id == null || !id.startsWith("uploaded:")) continue;
+                String fileName = id.substring("uploaded:".length()) + ".bin";
+                if (!fileName.matches("[0-9a-fA-F-]{36}\\.bin")) invalid();
+                Path file = candidate.avatarDirectory().resolve(fileName);
+                if (!Files.isRegularFile(file) || Files.size(file) > AvatarStorageService.MAX_BYTES + 1024L) invalid();
+                byte[] image = codec.decryptBytes("members.avatar", Files.readAllBytes(file));
+                if (!ProtectedDataService.isPlainImage(image)) invalid();
+            }
+        } catch (PlatformApiException exception) { throw exception; }
+        catch (Exception exception) { invalid(); }
     }
 
     private void addFixed(List<DatabaseBackupCandidate> output, Path database, Path metadataPath, String sourceType) {
@@ -209,6 +264,9 @@ public class DatabaseImportService {
 
     private InspectedDatabase requireValid(Path path) {
         try {
+            Path wal = Path.of(path + "-wal");
+            if (path.toAbsolutePath().normalize().equals(engine.sourceDatabase().toAbsolutePath().normalize())
+                    || Files.isRegularFile(wal) && Files.size(wal) > 0) invalid();
             InspectedDatabase inspected = inspector.inspect(path);
             if (!inspected.valid() || inspected.schemaVersion() > PlatformSchemaMigration.CURRENT_SCHEMA_VERSION) invalid();
             return inspected;
@@ -231,8 +289,9 @@ public class DatabaseImportService {
                 && metadata.instanceId().equals(inspected.state().instanceId())
                 && metadata.fileSize() == inspected.fileSize()
                 && metadata.sha256().equalsIgnoreCase(inspected.sha256())
-                && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
+                && (DatabaseBackupEngine.isPlaintext(metadata) || ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion()))
                 && metadata.keyId() != null && !metadata.keyId().isBlank();
+        if (valid && DatabaseBackupEngine.isPlaintext(metadata)) return protectedData;
         ProtectedDataService candidateProtection = null;
         if (valid && dataKeys.requiresProtectedEnvelope()) {
             try {
@@ -254,7 +313,7 @@ public class DatabaseImportService {
         return metadata != null
                 && DatabaseBackupEngine.METADATA_FORMAT.equals(metadata.format())
                 && properties.getEnvironment().equals(metadata.environment())
-                && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
+                && (DatabaseBackupEngine.isPlaintext(metadata) || ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion()))
                 && metadata.keyId() != null && !metadata.keyId().isBlank();
     }
 
@@ -267,10 +326,11 @@ public class DatabaseImportService {
                  var state = connection.prepareStatement(
                          "SELECT format_version, key_id, status FROM data_protection_state WHERE id=1");
                  ResultSet stateRows = state.executeQuery()) {
-                if (!stateRows.next()
-                        || stateRows.getInt("format_version") != DataProtectionMigration.FORMAT_VERSION
-                        || !"COMPLETE".equals(stateRows.getString("status"))
-                        || !candidateProtection.keyId().equals(stateRows.getString("key_id"))) invalid();
+                if (!stateRows.next() || !"COMPLETE".equals(stateRows.getString("status"))) invalid();
+                int format = stateRows.getInt("format_version");
+                boolean plain = format == DataProtectionMigration.FORMAT_VERSION;
+                if (plain ? !ProtectedDataService.PLAINTEXT_KEY_ID.equals(stateRows.getString("key_id"))
+                        : format != 1 || !candidateProtection.keyId().equals(stateRows.getString("key_id"))) invalid();
                 if (metadata != null && !stateRows.getString("key_id").equals(metadata.keyId())) invalid();
                 verifyColumn(connection, candidateProtection, "members", "phone");
                 verifyColumn(connection, candidateProtection, "members", "name");
@@ -279,6 +339,8 @@ public class DatabaseImportService {
                 verifyColumn(connection, candidateProtection, "members", "gender");
                 verifyColumn(connection, candidateProtection, "wristbands", "card_uid");
                 verifyColumn(connection, candidateProtection, "wristband_charge_records", "wristband_uid");
+                verifyColumn(connection, candidateProtection, "wristband_charge_records", "operator_username");
+                verifyColumn(connection, candidateProtection, "wristband_charge_records", "operator_display_name");
                 verifyColumn(connection, candidateProtection, "game_play_records", "wristband_uid");
                 verifyColumn(connection, candidateProtection, "game_play_records", "result_json");
                 verifyColumn(connection, candidateProtection, "operator_action_logs", "operator_username");
@@ -295,22 +357,27 @@ public class DatabaseImportService {
 
     private void verifyColumn(java.sql.Connection connection, ProtectedDataService candidateProtection,
             String table, String column) throws Exception {
-        try (var plaintext = connection.createStatement();
-             var rows = plaintext.executeQuery("SELECT COUNT(*) FROM " + table
-                     + " WHERE " + column + " IS NOT NULL AND " + column + " NOT LIKE 'enc:v1:%'")) {
-            if (rows.next() && rows.getLong(1) != 0) invalid();
+        boolean plain;
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT format_version FROM data_protection_state WHERE id=1")) {
+            plain = rows.next() && rows.getInt(1) == DataProtectionMigration.FORMAT_VERSION;
         }
         try (var statement = connection.prepareStatement(
-                "SELECT " + column + " FROM " + table + " WHERE " + column + " IS NOT NULL LIMIT 50");
+                "SELECT " + column + " FROM " + table + " WHERE " + column + " IS NOT NULL");
              ResultSet rows = statement.executeQuery()) {
-            while (rows.next()) candidateProtection.decryptField(table, column, rows.getString(1));
+            while (rows.next()) {
+                String value = rows.getString(1);
+                if (plain ? value.startsWith("enc:") : !candidateProtection.isEncrypted(value)) invalid();
+                candidateProtection.decryptField(table, column, value);
+            }
         }
     }
 
     private DatabaseBackupMetadata readAdjacentMetadata(Path database) {
         Path metadata = database.getFileName().toString().equals("platform.db")
                 ? database.resolveSibling("metadata.json")
-                : Path.of(database.toString().replace("-platform.db", "-platform.json"));
+                : database.getFileName().toString().endsWith("-platform.db")
+                ? Path.of(database.toString().replace("-platform.db", "-platform.json"))
+                : database.resolveSibling(database.getFileName() + ".metadata.json");
         if (!Files.isRegularFile(metadata)) return null;
         try { return objectMapper.readValue(metadata.toFile(), DatabaseBackupMetadata.class); }
         catch (Exception exception) { invalid(); return null; }

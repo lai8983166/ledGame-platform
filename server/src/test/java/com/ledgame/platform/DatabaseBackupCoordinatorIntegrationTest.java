@@ -85,6 +85,35 @@ class DatabaseBackupCoordinatorIntegrationTest {
     }
 
     @Test
+    void plaintextMigrationRefreshesLegacyLatestEvenWhenBusinessRevisionIsUnchanged() throws Exception {
+        coordinator.close();
+        var properties = new DatabaseBackupProperties();
+        properties.setEnvironment("TEST");
+        properties.setRootOverride(backupRoot.toString());
+        properties.setMinimumFreeBytes(1);
+        var mapper = new ObjectMapper().findAndRegisterModules();
+        var keys = mock(DataProtectionKeyManager.class);
+        var key = DataProtectionKeyManager.material(new byte[32]);
+        org.mockito.Mockito.when(keys.loadExisting()).thenReturn(key);
+        var storage = new ProtectedDataService(keys);
+        var clock = Clock.systemUTC();
+        new DataProtectionMigration(jdbc,keys,storage,clock).run(new DefaultApplicationArguments());
+        jdbc.update("INSERT INTO members(phone,name,status,created_at,updated_at,created_by) VALUES ('13800138000','旧备份','ACTIVE','now','now','test')");
+        LegacyEncryptedFixture.encrypt(jdbc,key);
+        var engine = new DatabaseBackupEngine(new SqliteOnlineBackup(dataSource),inspector,mapper,properties,clock,"Asia/Shanghai","jdbc:sqlite:"+source,keys,storage);
+        var old = engine.backup(backupRoot,"test-disk");
+        assertThat(old.encryptionVersion()).isEqualTo("v1");
+        new DataProtectionMigration(jdbc,keys,storage,clock).run(new DefaultApplicationArguments());
+        assertThat(new DatabaseStateService(jdbc).current().revision()).isEqualTo(old.revision());
+        coordinator = new DatabaseBackupCoordinator(properties,mock(DiskTopologyProvider.class),engine,inspector,new DatabaseStateService(jdbc),new StartupGate(),mapper,clock,"Asia/Shanghai");
+        coordinator.run(new DefaultApplicationArguments());
+        assertThat(coordinator.status().state()).isEqualTo(BackupLifecycleState.READY_PROTECTED);
+        assertThat(engine.readLatestMetadata(backupRoot).encryptionVersion()).isEqualTo("plain-v1");
+        assertThat(engine.readLatestMetadata(backupRoot).revision()).isEqualTo(old.revision());
+        assertThat(new JdbcTemplate(new DriverManagerDataSource("jdbc:sqlite:"+backupRoot.resolve("latest/platform.db"))).queryForObject("SELECT phone FROM members",String.class)).isEqualTo("13800138000");
+    }
+
+    @Test
     void fileFingerprintCatchesFutureWritesEvenWithoutRevisionTrigger() throws Exception {
         coordinator.run(new DefaultApplicationArguments(new String[0]));
         long revision = coordinator.status().backupRevision();

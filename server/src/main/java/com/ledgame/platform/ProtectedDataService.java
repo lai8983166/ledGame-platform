@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class ProtectedDataService {
     public static final String ENCRYPTION_VERSION = "v1";
+    public static final String PLAINTEXT_VERSION = "plain-v1";
+    public static final String PLAINTEXT_KEY_ID = "none";
     private static final String PREFIX = "enc:" + ENCRYPTION_VERSION + ":";
     private final DataProtectionKeyManager keys;
     private final DataKeyMaterial fixedKey;
@@ -41,6 +43,9 @@ public class ProtectedDataService {
 
     public String encrypt(String context, String plaintext) {
         if (plaintext == null) return null;
+        // Production writes are plaintext. A fixed-key codec exists only to
+        // read/sign legacy recovery material and construct compatibility fixtures.
+        if (fixedKey == null) return plaintext;
         if (isEncrypted(plaintext)) return plaintext;
         DataKeyMaterial material = key(true);
         try {
@@ -88,6 +93,7 @@ public class ProtectedDataService {
      * material and authenticated context used for protected database fields. */
     public byte[] encryptBytes(String context, byte[] plaintext) {
         if (plaintext == null) return null;
+        if (fixedKey == null) return plaintext;
         DataKeyMaterial material = key(true);
         try {
             byte[] nonce = new byte[12];
@@ -113,6 +119,7 @@ public class ProtectedDataService {
 
     public byte[] decryptBytes(String context, byte[] envelope) {
         if (envelope == null) return null;
+        if (isPlainImage(envelope)) return envelope;
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(envelope))) {
             if (!("ledgame-bytes-" + ENCRYPTION_VERSION).equals(input.readUTF())) throw invalid();
             String envelopeKeyId = input.readUTF();
@@ -139,6 +146,12 @@ public class ProtectedDataService {
     public String lookupHash(String context, String normalizedValue) {
         if (normalizedValue == null) return null;
         try {
+            if (fixedKey == null) {
+                var digest = java.security.MessageDigest.getInstance("SHA-256");
+                digest.update(context.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                return HexFormat.of().formatHex(digest.digest(normalizedValue.getBytes(StandardCharsets.UTF_8)));
+            }
             DataKeyMaterial material = key(true);
             Mac derivation = Mac.getInstance("HmacSHA256");
             derivation.init(new SecretKeySpec(material.key(), "HmacSHA256"));
@@ -161,7 +174,13 @@ public class ProtectedDataService {
         return lookupHash("wristbands.card_uid", normalizedUid);
     }
 
-    public String keyId() { return key(true).keyId(); }
+    public String keyId() { return key(false).keyId(); }
+    static boolean isPlainImage(byte[] bytes) {
+        return bytes.length >= 8 && ((bytes[0] == (byte) 0x89 && bytes[1] == 0x50
+                && bytes[2] == 0x4e && bytes[3] == 0x47 && bytes[4] == 0x0d
+                && bytes[5] == 0x0a && bytes[6] == 0x1a && bytes[7] == 0x0a)
+                || (bytes[0] == (byte) 0xff && bytes[1] == (byte) 0xd8));
+    }
     public boolean isEncrypted(String value) { return value != null && value.startsWith(PREFIX); }
 
     private static IllegalStateException invalid() {

@@ -20,15 +20,31 @@ class AvatarStorageServiceTest {
     @TempDir Path temp;
 
     @Test
-    void storesEncryptedPhotoWithOpaqueIdentifierAndReadsItBack() throws Exception {
+    void storesPlainPhotoWithOpaqueIdentifierAndReadsItBack() throws Exception {
         ProtectedDataService protection = service();
         AvatarStorageService avatars = new AvatarStorageService(protection, "jdbc:sqlite:" + temp.resolve("platform.db"));
         byte[] image = image("jpg", 8, 4);
         String id = avatars.store(Base64.getEncoder().encodeToString(image), "image/jpeg");
         assertThat(id).startsWith("uploaded:").doesNotContain(temp.toString());
         Path stored = avatars.storedFiles().get(0);
-        assertThat(Files.readAllBytes(stored)[0]).isZero();
+        assertThat(Files.readAllBytes(stored)).containsExactly(image);
         assertThat(avatars.read(id)).containsExactly(image);
+    }
+
+    @Test
+    void legacyEncryptedPhotosMigrateAndRemainReadableAfterRestartWithoutKey() throws Exception {
+        var key = DataProtectionKeyManager.material(new byte[32]);
+        var manager = mock(DataProtectionKeyManager.class);
+        when(manager.loadExisting()).thenReturn(key);
+        var avatars = new AvatarStorageService(new ProtectedDataService(manager), "jdbc:sqlite:" + temp.resolve("platform.db"));
+        byte[] image = image("png", 3, 2);
+        String id = avatars.store(Base64.getEncoder().encodeToString(image), "image/png");
+        Files.write(avatars.storedFiles().get(0), ProtectedDataService.forKey(key).encryptBytes("members.avatar", image));
+        assertThat(avatars.read(id)).containsExactly(image);
+        avatars.migrateLegacyFiles();
+        assertThat(Files.readAllBytes(avatars.storedFiles().get(0))).containsExactly(image);
+        var restarted = new AvatarStorageService(new ProtectedDataService(mock(DataProtectionKeyManager.class)), "jdbc:sqlite:" + temp.resolve("platform.db"));
+        assertThat(restarted.read(id)).containsExactly(image);
     }
 
     @Test

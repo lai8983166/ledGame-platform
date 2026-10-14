@@ -60,6 +60,10 @@ function restoreRollback(databasePath, state) {
     fs.rmSync(path.join(dataDirectory, "avatar-manifest.json"), { force: true });
     moveIfExists(path.join(rollbackDirectory, "avatar-manifest.json"), path.join(dataDirectory, "avatar-manifest.json"));
   }
+  if (state.replaceBranding && state.brandingBackedUp) {
+    fs.rmSync(path.join(dataDirectory, "branding"), { recursive: true, force: true });
+    moveIfExists(path.join(rollbackDirectory, "branding"), path.join(dataDirectory, "branding"));
+  }
   if (state.staging) fs.rmSync(state.staging, { force: true });
   if (state.stagingKey) fs.rmSync(state.stagingKey, { force: true });
   fs.rmSync(statePath(databasePath), { force: true });
@@ -111,7 +115,18 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
       || sha256(sourceAvatarManifest) !== expectedAvatarManifestHash)) {
     throw new Error("IMPORT_PREPARED_AVATAR_MANIFEST_MISMATCH");
   }
+  if (sourceAvatars && sourceAvatarManifest) verifyAvatarBundle(sourceAvatars,sourceAvatarManifest);
   const dataDirectory = path.dirname(path.resolve(databasePath));
+  const sourceBranding = manifest?.preparedBrandingDirectoryPath
+    ? path.resolve(String(manifest.preparedBrandingDirectoryPath)) : null;
+  const brandingName = manifest?.brandingFileName;
+  if (sourceBranding) {
+    if (!fs.statSync(sourceBranding).isDirectory()) throw new Error("IMPORT_INVALID_BRANDING_DIRECTORY");
+    const entries = fs.readdirSync(sourceBranding);
+    if (brandingName ? !/^app-icon\.(png|jpg|webp)$/.test(brandingName) || entries.length !== 1
+        || entries[0] !== brandingName || sha256(path.join(sourceBranding, brandingName)) !== manifest.brandingFileSha256
+      : entries.length !== 0) throw new Error("IMPORT_BRANDING_HASH_MISMATCH");
+  }
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const rollbackDirectory = path.join(dataDirectory, "pre-import", stamp);
   const staging = path.join(dataDirectory, `platform.db.importing-${process.pid}-${Date.now()}`);
@@ -120,7 +135,8 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
   const stagingAvatars = path.join(dataDirectory, `avatars.importing-${process.pid}-${Date.now()}`);
   const state = { phase: "PREPARED", rollbackDirectory, staging,
     preparedDatabasePath: source, expectedHash, replaceKeyEnvelope: Boolean(sourceKeyEnvelope), stagingKey,
-    replaceAvatars: Boolean(sourceAvatars), sourceAvatars, sourceAvatarManifest, expectedAvatarManifestHash, stagingAvatars };
+    replaceAvatars: Boolean(sourceAvatars), sourceAvatars, sourceAvatarManifest, expectedAvatarManifestHash, stagingAvatars,
+    replaceBranding: Boolean(sourceBranding) };
   fs.mkdirSync(rollbackDirectory, { recursive: true });
   writeState(databasePath, state);
   try {
@@ -132,6 +148,10 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
       moveIfExists(path.join(dataDirectory, "avatars"), path.join(rollbackDirectory, "avatars"));
       moveIfExists(path.join(dataDirectory, "avatar-manifest.json"), path.join(rollbackDirectory, "avatar-manifest.json"));
       state.avatarsBackedUp = true;
+    }
+    if (sourceBranding) {
+      moveIfExists(path.join(dataDirectory, "branding"),path.join(rollbackDirectory,"branding"));
+      state.brandingBackedUp = true;
     }
     state.phase = "BACKED_UP";
     writeState(databasePath, state);
@@ -146,9 +166,14 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
     }
     if (sourceAvatars) {
       copyDirectory(sourceAvatars, stagingAvatars);
+      if (sourceAvatarManifest) verifyAvatarBundle(stagingAvatars,sourceAvatarManifest);
       if (sourceAvatarManifest) fs.copyFileSync(sourceAvatarManifest, path.join(dataDirectory, "avatar-manifest.json.importing"));
       fs.renameSync(stagingAvatars, path.join(dataDirectory, "avatars"));
       if (sourceAvatarManifest) fs.renameSync(path.join(dataDirectory, "avatar-manifest.json.importing"), path.join(dataDirectory, "avatar-manifest.json"));
+    }
+    if (sourceBranding) {
+      fs.mkdirSync(path.join(dataDirectory,"branding"),{ recursive:true });
+      if (brandingName) fs.copyFileSync(path.join(sourceBranding,brandingName),path.join(dataDirectory,"branding",brandingName));
     }
     state.phase = "REPLACED";
     writeState(databasePath, state);
@@ -161,6 +186,20 @@ function replaceDatabase(databasePath, manifest, now = new Date()) {
     restoreRollback(databasePath, state);
     throw error;
   }
+}
+
+function verifyAvatarBundle(directory,manifestPath) {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath,"utf8"));
+  if (manifest.format !== "ledgame-avatar-backup-v1" || !Array.isArray(manifest.files)) throw new Error("IMPORT_INVALID_AVATAR_MANIFEST");
+  const names = new Set();
+  for (const entry of manifest.files) {
+    if (!/^[0-9a-fA-F-]{36}\.bin$/.test(entry.name) || names.has(entry.name)) throw new Error("IMPORT_INVALID_AVATAR_FILE");
+    names.add(entry.name);
+    const file = path.join(directory,entry.name);
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.size !== entry.size || sha256(file) !== entry.sha256) throw new Error("IMPORT_AVATAR_HASH_MISMATCH");
+  }
+  if (fs.readdirSync(directory).length !== names.size) throw new Error("IMPORT_INVALID_AVATAR_FILE");
 }
 
 function copyDirectory(source, target) {

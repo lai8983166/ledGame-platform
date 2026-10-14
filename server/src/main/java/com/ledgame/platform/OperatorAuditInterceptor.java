@@ -92,6 +92,8 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         if (method.equals("POST") && path.equals("/api/database-recovery/request")) {
             return action("DATABASE_RECOVERY_REQUEST_CREATED", "DATABASE_RECOVERY", null);
         }
+        if (method.equals("POST") && path.equals("/api/database-backup/export")) return action("DATABASE_EXPORTED", "DATABASE", "1");
+        if (method.equals("POST") && path.matches("/api/database-backup/candidates/[^/]+/prepare")) return action("DATABASE_IMPORT_PREPARED", "DATABASE", segment(path, 4));
         if (method.equals("POST") && path.equals("/api/database-recovery/response/import")) {
             return action("DATABASE_RECOVERY_RESPONSE_IMPORTED", "DATABASE_RECOVERY", null);
         }

@@ -30,6 +30,51 @@ function fixture() {
 }
 
 describe("member admin atomic database import", () => {
+  it("rejects an avatar changed after server preparation before touching the main database", () => {
+    const files = fixture();
+    const directory = path.join(path.dirname(files.preparedDatabasePath),"avatars");
+    const name = "11111111-1111-1111-1111-111111111111.bin";
+    fs.mkdirSync(directory,{recursive:true});
+    fs.writeFileSync(path.join(directory,name),"tampered");
+    const manifest = path.join(path.dirname(files.preparedDatabasePath),"avatars.json");
+    fs.writeFileSync(manifest,JSON.stringify({format:"ledgame-avatar-backup-v1",files:[{name,size:8,sha256:"0".repeat(64)}]}));
+    expect(() => replaceDatabase(files.databasePath,{
+      preparedDatabasePath:files.preparedDatabasePath,sha256:sha256(files.preparedDatabasePath),
+      preparedAvatarDirectoryPath:directory,preparedAvatarManifestPath:manifest,avatarManifestSha256:sha256(manifest),
+    })).toThrow("IMPORT_AVATAR_HASH_MISMATCH");
+    expect(fs.readFileSync(files.databasePath,"utf8")).toBe("old-database");
+  });
+  it("restores branding with the database and rolls it back when verification fails", () => {
+    const files = fixture();
+    const data = path.dirname(files.databasePath);
+    const branding = path.join(data,"branding");
+    const preparedBranding = path.join(data,"import-staging","branding");
+    fs.mkdirSync(branding,{ recursive:true });
+    fs.mkdirSync(preparedBranding,{ recursive:true });
+    fs.writeFileSync(path.join(branding,"app-icon.png"),"old-icon");
+    fs.writeFileSync(path.join(preparedBranding,"app-icon.jpg"),"new-icon");
+    const state = replaceDatabase(files.databasePath,{
+      preparedDatabasePath:files.preparedDatabasePath,sha256:sha256(files.preparedDatabasePath),
+      preparedBrandingDirectoryPath:preparedBranding,brandingFileName:"app-icon.jpg",
+      brandingFileSha256:sha256(path.join(preparedBranding,"app-icon.jpg")),
+    });
+    expect(fs.readFileSync(path.join(branding,"app-icon.jpg"),"utf8")).toBe("new-icon");
+    restoreRollback(files.databasePath,state);
+    expect(fs.readFileSync(path.join(branding,"app-icon.png"),"utf8")).toBe("old-icon");
+    expect(fs.existsSync(path.join(branding,"app-icon.jpg"))).toBe(false);
+  });
+
+  it("rejects tampered branding before moving the existing database", () => {
+    const files = fixture();
+    const branding = path.join(path.dirname(files.preparedDatabasePath),"branding");
+    fs.mkdirSync(branding,{recursive:true});
+    fs.writeFileSync(path.join(branding,"app-icon.png"),"tampered");
+    expect(() => replaceDatabase(files.databasePath,{
+      preparedDatabasePath:files.preparedDatabasePath,sha256:sha256(files.preparedDatabasePath),
+      preparedBrandingDirectoryPath:branding,brandingFileName:"app-icon.png",brandingFileSha256:"0".repeat(64),
+    })).toThrow("IMPORT_BRANDING_HASH_MISMATCH");
+    expect(fs.readFileSync(files.databasePath,"utf8")).toBe("old-database");
+  });
   it("keeps a pre-import copy, verifies the staged hash and publishes the candidate", () => {
     const files = fixture();
     const state = replaceDatabase(files.databasePath, {

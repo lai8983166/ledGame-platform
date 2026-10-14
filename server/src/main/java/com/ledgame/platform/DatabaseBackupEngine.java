@@ -136,9 +136,10 @@ public class DatabaseBackupEngine {
         boolean shapeValid = metadata != null
                 && METADATA_FORMAT.equals(metadata.format())
                 && properties.getEnvironment().equals(metadata.environment())
-                && ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion())
+                && (isPlaintext(metadata) || ProtectedDataService.ENCRYPTION_VERSION.equals(metadata.encryptionVersion()))
                 && metadata.keyId() != null && !metadata.keyId().isBlank();
         if (!shapeValid) return false;
+        if (isPlaintext(metadata)) return true;
         if (dataKeys == null) return true;
         try {
             // TEST runs have no DPAPI file, but the fixed test key still has a
@@ -152,6 +153,7 @@ public class DatabaseBackupEngine {
 
     public boolean acceptsKeyEnvelope(Path envelopePath, DatabaseBackupMetadata metadata) {
         if (!acceptsMetadata(metadata)) return false;
+        if (isPlaintext(metadata)) return true;
         if (dataKeys == null || !dataKeys.requiresProtectedEnvelope()) return true;
         try {
             return metadata.keyId().equals(dataKeys.loadEnvelope(envelopePath).keyId());
@@ -161,6 +163,11 @@ public class DatabaseBackupEngine {
     }
 
     public DatabaseBackupMetadata backup(Path root, String targetDiskIdentity) {
+        // Last line of defence for any caller, not only the coordinator's
+        // startup path. Reject before even creating the target lock directory.
+        if (inMemoryDatabase || ("PRODUCTION".equals(properties.getEnvironment()) && ephemeralDatabase())) {
+            throw new IllegalStateException(BackupErrorCode.BACKUP_ENVIRONMENT_MISMATCH.name());
+        }
         Path normalizedRoot = root.toAbsolutePath().normalize();
         try (BackupTargetLock ignored = BackupTargetLock.acquire(normalizedRoot)) {
             return backupLocked(normalizedRoot, targetDiskIdentity);
@@ -169,6 +176,11 @@ public class DatabaseBackupEngine {
         } catch (Exception exception) {
             throw new IllegalStateException(BackupErrorCode.BACKUP_PUBLISH_FAILED.name(), exception);
         }
+    }
+
+    public static boolean isPlaintext(DatabaseBackupMetadata metadata) {
+        return metadata != null && ProtectedDataService.PLAINTEXT_VERSION.equals(metadata.encryptionVersion())
+                && ProtectedDataService.PLAINTEXT_KEY_ID.equals(metadata.keyId());
     }
 
     private DatabaseBackupMetadata backupLocked(Path normalizedRoot, String targetDiskIdentity) {
@@ -191,14 +203,15 @@ public class DatabaseBackupEngine {
             if (!inspected.valid()) throw new IllegalStateException(BackupErrorCode.BACKUP_INTEGRITY_FAILED.name());
             verifyProtectedDatabase(candidate);
 
-            DataKeyMaterial storeKey = dataKeys == null ? null : dataKeys.loadExisting();
-            String keyId = protectedData == null
-                    ? (storeKey == null ? "test-key" : storeKey.keyId()) : protectedData.keyId();
+            boolean plaintext = plaintextDatabase(candidate);
+            DataKeyMaterial storeKey = plaintext || dataKeys == null ? null : dataKeys.loadExisting();
+            String keyId = plaintext ? ProtectedDataService.PLAINTEXT_KEY_ID : protectedData.keyId();
             if (storeKey != null && !storeKey.keyId().equals(keyId)) {
                 throw new IllegalStateException("DATA_PROTECTION_BACKUP_KEY_MISMATCH");
             }
-            stageKeyEnvelope(candidateKey, storeKey);
+            if (!plaintext) stageKeyEnvelope(candidateKey, storeKey);
             stageAvatars(candidateAvatars, candidateAvatarManifest);
+            verifyReferencedAvatars(candidate, candidateAvatars);
             DatabaseRecoveryEnvelope recoveryEnvelope = null;
             if (recoveryKeys != null && recoveryKeys.enabled() && storeKey != null) {
                 recoveryEnvelope = recoveryKeys.wrap(storeKey);
@@ -211,7 +224,7 @@ public class DatabaseBackupEngine {
                     state.instanceId(), state.revision(),
                     state.lastBusinessModifiedAt(), state.importedFromRevision(), state.importedAt(), generatedAt,
                     sourceDatabase.toString(), targetDiskIdentity, inspected.fileSize(), inspected.sha256(),
-                    inspected.integrityResult(), ProtectedDataService.ENCRYPTION_VERSION, keyId,
+                    inspected.integrityResult(), plaintext ? ProtectedDataService.PLAINTEXT_VERSION : ProtectedDataService.ENCRYPTION_VERSION, keyId,
                     recoveryEnvelope == null ? null : recoveryEnvelope.recoveryKeyId(),
                     recoveryEnvelope == null ? null : recoveryEnvelope.format(),
                     recoveryEnvelope == null ? null : inspector.sha256(candidateRecovery));
@@ -334,9 +347,10 @@ public class DatabaseBackupEngine {
                          "SELECT format_version, key_id, status FROM data_protection_state WHERE id=1");
                  var rows = state.executeQuery()) {
                 if (!rows.next()
-                        || rows.getInt("format_version") != DataProtectionMigration.FORMAT_VERSION
+                        || (rows.getInt("format_version") != DataProtectionMigration.FORMAT_VERSION && rows.getInt("format_version") != 1)
                         || !"COMPLETE".equals(rows.getString("status"))
-                        || !protectedData.keyId().equals(rows.getString("key_id"))) {
+                        || !(rows.getInt("format_version") == DataProtectionMigration.FORMAT_VERSION
+                            ? ProtectedDataService.PLAINTEXT_KEY_ID : protectedData.keyId()).equals(rows.getString("key_id"))) {
                     throw new IllegalStateException("DATA_PROTECTION_BACKUP_STATE_INVALID");
                 }
                 verifyColumn(connection, "members", "phone");
@@ -346,6 +360,8 @@ public class DatabaseBackupEngine {
                 verifyColumn(connection, "members", "gender");
                 verifyColumn(connection, "wristbands", "card_uid");
                 verifyColumn(connection, "wristband_charge_records", "wristband_uid");
+                verifyColumn(connection, "wristband_charge_records", "operator_username");
+                verifyColumn(connection, "wristband_charge_records", "operator_display_name");
                 verifyColumn(connection, "game_play_records", "wristband_uid");
                 verifyColumn(connection, "game_play_records", "result_json");
                 verifyColumn(connection, "operator_action_logs", "operator_username");
@@ -361,29 +377,55 @@ public class DatabaseBackupEngine {
     }
 
     private void verifyColumn(java.sql.Connection connection, String table, String column) throws Exception {
+        boolean plain;
+        try (var query = connection.createStatement(); var rows = query.executeQuery("SELECT format_version FROM data_protection_state WHERE id=1")) {
+            plain = rows.next() && rows.getInt(1) == DataProtectionMigration.FORMAT_VERSION;
+        }
         try (var plaintext = connection.createStatement();
              var rows = plaintext.executeQuery("SELECT COUNT(*) FROM " + table
-                     + " WHERE " + column + " IS NOT NULL AND " + column + " NOT LIKE 'enc:v1:%'")) {
+                     + " WHERE " + column + " IS NOT NULL AND " + column + (plain ? " LIKE 'enc:%'" : " NOT LIKE 'enc:v1:%'"))) {
             if (rows.next() && rows.getLong(1) != 0) {
-                throw new IllegalStateException("DATA_PROTECTION_BACKUP_PLAINTEXT_FOUND: " + table + "." + column);
+                throw new IllegalStateException("DATA_PROTECTION_BACKUP_CIPHERTEXT_FOUND: " + table + "." + column);
             }
         }
         try (var statement = connection.prepareStatement(
-                "SELECT " + column + " FROM " + table + " WHERE " + column + " IS NOT NULL LIMIT 50");
+                "SELECT " + column + " FROM " + table + " WHERE " + column + " IS NOT NULL");
              var rows = statement.executeQuery()) {
             while (rows.next()) {
                 String value = rows.getString(1);
-                if (!protectedData.isEncrypted(value)) {
-                    throw new IllegalStateException("DATA_PROTECTION_BACKUP_PLAINTEXT_FOUND: " + table + "." + column);
+                if (plain ? protectedData.isEncrypted(value) : !protectedData.isEncrypted(value)) {
+                    throw new IllegalStateException("DATA_PROTECTION_BACKUP_CIPHERTEXT_FOUND: " + table + "." + column);
                 }
                 protectedData.decryptField(table, column, value);
             }
         }
     }
 
+    private boolean plaintextDatabase(Path database) {
+        if (protectedData == null) return true;
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var query = connection.createStatement(); var rows = query.executeQuery("SELECT format_version FROM data_protection_state WHERE id=1")) {
+            return rows.next() && rows.getInt(1) == DataProtectionMigration.FORMAT_VERSION;
+        } catch (Exception exception) { throw new IllegalStateException("DATA_PROTECTION_BACKUP_STATE_INVALID", exception); }
+    }
+
     private Instant modified(Path path) {
         try { return Files.getLastModifiedTime(path).toInstant(); }
         catch (IOException exception) { return Instant.EPOCH; }
+    }
+
+    void verifyReferencedAvatars(Path database, Path avatarDirectory) {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var query = connection.createStatement();
+             var rows = query.executeQuery("SELECT avatar_id FROM members WHERE avatar_id LIKE 'uploaded:%'")) {
+            while (rows.next()) {
+                String id = rows.getString(1).substring("uploaded:".length());
+                if (!id.matches("[0-9a-fA-F-]{36}") || !Files.isRegularFile(avatarDirectory.resolve(id + ".bin"))) {
+                    throw new IllegalStateException("BACKUP_AVATAR_MISSING");
+                }
+            }
+        } catch (IllegalStateException exception) { throw exception; }
+        catch (Exception exception) { throw new IllegalStateException("BACKUP_AVATAR_VERIFY_FAILED", exception); }
     }
 
     private void cleanupStaging(Path stagingDirectory) throws IOException {

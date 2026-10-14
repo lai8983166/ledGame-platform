@@ -79,7 +79,7 @@ class DataProtectionMigrationTest {
                 .run(new DefaultApplicationArguments());
 
         Map<String, Object> member = jdbc.queryForMap("SELECT * FROM members WHERE id=7");
-        assertThat(String.valueOf(member.get("phone"))).startsWith("enc:v1:").doesNotContain("13800138000");
+        assertThat(member.get("phone")).isEqualTo("13800138000");
         assertThat(member.get("phone_lookup_hash")).isEqualTo(protectedData.phoneLookupHash("13800138000"));
         assertThat(protectedData.decryptField("members", "name", member.get("name"))).isEqualTo("测试会员甲");
         assertThat(jdbc.queryForObject("SELECT member_id FROM wristband_bindings WHERE id=9", Long.class)).isEqualTo(7);
@@ -96,7 +96,7 @@ class DataProtectionMigrationTest {
                 .isEqualTo("$2a$hash-kept");
         assertThat(jdbc.queryForObject("SELECT status FROM data_protection_state WHERE id=1", String.class))
                 .isEqualTo("COMPLETE");
-        assertFilesDoNotContain(root.resolve("migration.db"),
+        assertFilesContainAtLeastOnce(root.resolve("migration.db"),
                 "13800138000", "测试会员甲", "2283055618", "{\"phone\":\"13800138000\"}");
     }
 
@@ -133,7 +133,7 @@ class DataProtectionMigrationTest {
         assertThat(jdbc.queryForObject("SELECT status FROM data_protection_state WHERE id=1", String.class))
                 .isEqualTo("COMPLETE");
         assertThat(jdbc.queryForList("SELECT phone FROM members"))
-                .allSatisfy(row -> assertThat(String.valueOf(row.get("phone"))).startsWith("enc:v1:"));
+                .allSatisfy(row -> assertThat(String.valueOf(row.get("phone"))).doesNotStartWith("enc:"));
     }
 
     @Test
@@ -214,9 +214,7 @@ class DataProtectionMigrationTest {
             INSERT INTO members(phone, name, status, created_at, updated_at, created_by)
             VALUES ('13800139999', '待篡改会员', 'ACTIVE', 'now', 'now', 'test')
             """);
-        new DataProtectionMigration(jdbc, keyManager, protectedData, Clock.systemUTC(),
-                new DataSourceTransactionManager(dataSource), null).run(new DefaultApplicationArguments());
-        String encrypted = jdbc.queryForObject("SELECT phone FROM members", String.class);
+        String encrypted = ProtectedDataService.forKey(key).encryptField("members", "phone", "13800139999");
         jdbc.update("UPDATE members SET phone=?", encrypted.substring(0, encrypted.length() - 1)
                 + (encrypted.endsWith("A") ? "B" : "A"));
         StartupGate gate = new StartupGate();
@@ -226,6 +224,44 @@ class DataProtectionMigrationTest {
 
         assertThat(gate.status().state()).isEqualTo(BackupLifecycleState.BLOCKED);
         assertThat(gate.status().errorCode()).isEqualTo("DATA_PROTECTION_INTEGRITY_FAILED");
+    }
+
+    @Test
+    void freshPlaintextDatabaseNeverAccessesAKey() throws Exception {
+        var dataSource = initialized("plaintext.db");
+        var jdbc = new JdbcTemplate(dataSource);
+        var keys = mock(DataProtectionKeyManager.class);
+        var storage = new ProtectedDataService(keys);
+        jdbc.update("INSERT INTO members(phone,name,status,created_at,updated_at,created_by) VALUES ('13800138000','会员','ACTIVE','now','now','test')");
+        new DataProtectionMigration(jdbc, keys, storage, Clock.systemUTC()).run(new DefaultApplicationArguments());
+        assertThat(storage.encryptField("members", "phone", "13800138000")).isEqualTo("13800138000");
+        assertThat(storage.encryptBytes("members.avatar", new byte[] {1,2,3})).containsExactly(1,2,3);
+        assertThat(storage.phoneLookupHash("13800138000")).isNotBlank();
+        org.mockito.Mockito.verifyNoInteractions(keys);
+    }
+
+    @Test
+    void decryptsLegacyFieldsAndPreservesBusinessRevisionAndLookup() throws Exception {
+        var dataSource = initialized("legacy.db");
+        var jdbc = new JdbcTemplate(dataSource);
+        var key = DataProtectionKeyManager.material(new byte[32]);
+        var keys = mock(DataProtectionKeyManager.class);
+        when(keys.loadExisting()).thenReturn(key);
+        var legacy = ProtectedDataService.forKey(key);
+        jdbc.update("INSERT INTO members(id,phone,name,status,created_at,updated_at,created_by) VALUES (7,?,?,'ACTIVE','now','now','test')",
+                legacy.encryptField("members","phone","13800138000"), legacy.encryptField("members","name","旧会员"));
+        jdbc.update("UPDATE members SET phone_lookup_hash=? WHERE id=7",legacy.phoneLookupHash("13800138000"));
+        jdbc.update("INSERT INTO data_protection_state(id,format_version,key_id,status) VALUES (1,1,?,'COMPLETE')", key.keyId());
+        var before = jdbc.queryForMap("SELECT * FROM database_state");
+        var storage = new ProtectedDataService(keys);
+        assertThat(storage.phoneLookupHash("13800138000")).isNotEqualTo(legacy.phoneLookupHash("13800138000"));
+        new DataProtectionMigration(jdbc, keys, storage, Clock.systemUTC()).run(new DefaultApplicationArguments());
+        assertThat(jdbc.queryForMap("SELECT phone,name,phone_lookup_hash FROM members WHERE id=7"))
+                .containsEntry("phone","13800138000").containsEntry("name","旧会员")
+                .containsEntry("phone_lookup_hash",storage.phoneLookupHash("13800138000"));
+        assertThat(jdbc.queryForMap("SELECT * FROM database_state")).isEqualTo(before);
+        new DataProtectionMigration(jdbc, keys, storage, Clock.systemUTC()).run(new DefaultApplicationArguments());
+        assertThat(jdbc.queryForMap("SELECT * FROM database_state")).isEqualTo(before);
     }
 
     private DriverManagerDataSource initialized(String name) throws Exception {

@@ -70,6 +70,23 @@ class DatabaseBackupCoordinatorStartupTest {
     }
 
     @Test
+    void confirmedPlaintextImportSupersedesUnreadableLegacyBackupWithoutLosingItsAvatars() throws Exception {
+        var imported = new DatabaseStateSnapshot("restored",10,Instant.parse("2026-09-03T00:00:00Z"),4L,Instant.parse("2026-09-03T00:00:01Z"));
+        Fixture fixture = fixture(imported,state("old-store",4),true,"ledgame-platform-backup-v2","PRODUCTION",true);
+        when(fixture.engine.acceptsKeyEnvelope(any(),any())).thenReturn(false);
+        Files.createDirectories(fixture.backupRoot.resolve("latest/avatars"));
+        Files.writeString(fixture.backupRoot.resolve("latest/avatars/old-photo.bin"),"original photo");
+        Files.writeString(fixture.backupRoot.resolve("latest/avatar-manifest.json"),"manifest");
+        fixture.start();
+        assertThat(fixture.coordinator.status().state()).isEqualTo(BackupLifecycleState.READY_PROTECTED);
+        verify(fixture.engine).backup(any(),anyString());
+        try (var paths = Files.walk(fixture.backupRoot.resolve("quarantine"))) {
+            assertThat(paths.filter(path -> path.getFileName().toString().equals("old-photo.bin")).findFirst()).isPresent();
+        }
+        fixture.close();
+    }
+
+    @Test
     void factoryCanKeepCurrentDatabaseAfterRecoveryBackupIsDetected() throws Exception {
         Fixture fixture = fixture(state("store-a", 4), state("store-a", 4), true,
                 "ledgame-platform-backup-v2", "PRODUCTION", true);

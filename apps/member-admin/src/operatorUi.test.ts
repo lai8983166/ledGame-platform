@@ -61,7 +61,8 @@ describe("operator UI capability boundaries", () => {
     expect(settings).toContain("最后修改时间为 {{ formatBackupTime(pendingImport.lastBusinessModifiedAt) }}");
     expect(settings).toContain("text('importOverwriteTitle')");
     expect(app).toContain('data-testid="database-backup-warning"');
-    expect(settings).toContain('data-testid="database-keep-current"');
+    expect(settings).not.toContain('data-testid="database-keep-current"');
+    expect(settings).toContain('data-testid="database-export"');
     expect(settings).toContain("pendingImport.factoryAdminUsername");
     expect(settings).toContain("pendingImport.memberCount");
   });

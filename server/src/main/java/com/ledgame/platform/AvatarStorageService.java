@@ -16,7 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-/** Stores optional registration photos outside SQLite as authenticated binary files. */
+/** Plain image storage with read compatibility for legacy encrypted photos. */
 @Service
 public class AvatarStorageService {
     public static final int MAX_BYTES = 256 * 1024;
@@ -94,6 +94,33 @@ public class AvatarStorageService {
     }
 
     public Path root() { return root; }
+
+    public void migrateLegacyFiles() {
+        // Validate the complete set before replacing anything. Each atomic
+        // replacement remains readable if the process stops between files.
+        var files = storedFiles();
+        try {
+            for (Path file : files) {
+                if (Files.size(file) > MAX_BYTES + 1024L) throw new IllegalStateException("DATA_PROTECTION_INTEGRITY_FAILED");
+                byte[] original = Files.readAllBytes(file);
+                byte[] image = protectedData.decryptBytes(CONTEXT, original);
+                if (image.length == 0) throw new IllegalStateException("DATA_PROTECTION_INTEGRITY_FAILED");
+                validateImage(image, image[0] == (byte) 0x89 ? "image/png" : "image/jpeg");
+            }
+            for (Path file : files) {
+                byte[] original = Files.readAllBytes(file);
+                if (ProtectedDataService.isPlainImage(original)) continue;
+                byte[] image = protectedData.decryptBytes(CONTEXT, original);
+                Path temporary = file.resolveSibling(file.getFileName() + ".writing");
+                try {
+                    Files.write(temporary, image);
+                    move(temporary, file);
+                } finally { deleteQuietly(temporary); }
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("DATA_PROTECTION_MIGRATION_FAILED", exception);
+        }
+    }
 
     public List<Path> storedFiles() {
         if (!Files.isDirectory(root)) return List.of();

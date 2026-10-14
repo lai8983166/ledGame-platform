@@ -91,6 +91,7 @@ class DatabaseRecoveryIsolatedE2ETest {
                 Clock.fixed(Instant.parse("2026-09-15T08:01:00Z"), ZoneOffset.UTC), "Asia/Shanghai",
                 "jdbc:sqlite:" + source.toAbsolutePath(), keys, protectedData, null, recoveryKeys);
 
+        LegacyEncryptedFixture.encrypt(jdbc, storeKey);
         DatabaseBackupMetadata metadata = engine.backup(isolatedBackup, "isolated-test-disk");
         Path latest = isolatedBackup.resolve("latest");
         assertThat(metadata.environment()).isEqualTo("PRODUCTION");

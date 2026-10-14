@@ -29,6 +29,7 @@ let settings = { port: 8090 };
 let status = { state: "starting", phase: "STARTING", message: "正在启动本机服务", concurrencyTestRunId, concurrencyTestMode: Boolean(concurrencyTestRunId) };
 let backendReady = Promise.resolve();
 let transport;
+let maintenanceTransport;
 let quitting = false;
 const backend = createManagedProcess();
 
@@ -293,7 +294,7 @@ function parseApiResponse(response) {
 
 async function importBackupDatabase(candidateId, operatorId) {
   try {
-    const prepared = parseApiResponse(await transport({
+    const prepared = parseApiResponse(await maintenanceTransport({
       path: `/api/database-backup/candidates/${encodeURIComponent(String(candidateId || ""))}/prepare`,
       method: "POST",
       headers: { "X-Operator-Id": operatorId },
@@ -350,6 +351,7 @@ function registerIpc() {
     || event.sender.id === secondaryWindow?.webContents.id;
   const fromStartup = (event) => event.sender.id === startupWindow?.webContents.id;
   transport = createApiTransport(async () => `http://127.0.0.1:${settings.port}`);
+  maintenanceTransport = createApiTransport(async () => `http://127.0.0.1:${settings.port}`, { timeoutMs: 300000 });
   ipcMain.handle("member-admin:activation", async (event, code) => {
     if (!fromStartup(event)) throw new Error("UNAUTHORIZED_WINDOW");
     await backendReady;
@@ -417,21 +419,41 @@ function registerIpc() {
   });
   ipcMain.handle("member-admin:choose-backup-database", async (event, input) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    await backendReady;
+    parseApiResponse(await transport({ path: "/api/database-backup/location", headers: { "X-Operator-Id": input?.operatorId } }));
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "选择要导入的数据库备份",
       properties: ["openFile"],
-      filters: [{ name: "SQLite 数据库", extensions: ["db", "sqlite", "sqlite3"] }],
+      filters: [{ name: "数据库备份", extensions: ["zip", "db", "sqlite", "sqlite3"] }],
     });
     mainWindow.show();
     mainWindow.focus();
     mainWindow.webContents.focus();
     if (result.canceled || result.filePaths.length === 0) return null;
-    return parseApiResponse(await transport({
+    return parseApiResponse(await maintenanceTransport({
       path: "/api/database-backup/candidates/external",
       method: "POST",
       headers: { "X-Operator-Id": input?.operatorId },
       body: JSON.stringify({ path: result.filePaths[0] }),
     }));
+  });
+  ipcMain.handle("member-admin:export-database", async (event, input) => {
+    if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");
+    await backendReady;
+    parseApiResponse(await transport({ path: "/api/database-backup/location", headers: { "X-Operator-Id": input?.operatorId } }));
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: "导出数据库",
+        defaultPath: `会员数据库备份-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`,
+        filters: [{ name: "完整数据库备份", extensions: ["zip"] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      return parseApiResponse(await maintenanceTransport({
+        path: "/api/database-backup/export", method: "POST",
+        headers: { "X-Operator-Id": input?.operatorId },
+        body: JSON.stringify({ path: result.filePath }),
+      }));
+    } finally { refocusMainWindow(); }
   });
   ipcMain.handle("member-admin:import-backup-database", async (event, input) => {
     if (!fromMainWindow(event)) throw new Error("UNAUTHORIZED_WINDOW");

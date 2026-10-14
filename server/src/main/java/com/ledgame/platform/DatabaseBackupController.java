@@ -17,6 +17,8 @@ public class DatabaseBackupController {
     private final DatabaseBackupCoordinator coordinator;
     private final OperatorAuthorizationService authorization;
     private final DatabaseImportService imports;
+    @org.springframework.beans.factory.annotation.Autowired
+    private DatabaseArchiveService archives;
 
     public DatabaseBackupController(
             DatabaseBackupCoordinator coordinator,
@@ -40,6 +42,24 @@ public class DatabaseBackupController {
         requireLoopback(request);
         authorization.requireFactory(operatorId);
         return coordinator.status();
+    }
+
+    @GetMapping("/database-backup/location")
+    public Map<String, String> location(HttpServletRequest request,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        requireLoopback(request);
+        authorization.requireFactory(operatorId);
+        Path root = coordinator.backupRoot();
+        return Map.of("path", root == null ? "" : root.toString());
+    }
+
+    @PostMapping("/database-backup/export")
+    public Map<String, String> export(HttpServletRequest servletRequest,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId,
+            @org.springframework.web.bind.annotation.RequestBody ExternalCandidateRequest request) {
+        requireLoopback(servletRequest);
+        authorization.requireFactory(operatorId);
+        return Map.of("path", archives.export(Path.of(request.path())));
     }
 
     @PostMapping("/system/database-backup/flush")
@@ -85,6 +105,16 @@ public class DatabaseBackupController {
         authorization.requireFactory(operatorId);
         imports.cancelImport();
         return Map.of("cancelled", true);
+    }
+
+    @PostMapping("/database-backup/candidates/{candidateId}/cancel")
+    public Map<String, Object> releaseCandidate(HttpServletRequest request,
+            @org.springframework.web.bind.annotation.PathVariable String candidateId,
+            @RequestHeader(value = "X-Operator-Id", required = false) Long operatorId) {
+        requireLoopback(request);
+        authorization.requireFactory(operatorId);
+        imports.releaseCandidate(candidateId);
+        return Map.of("cancelled",true);
     }
 
     @PostMapping("/database-backup/conflicts/use-current")
