@@ -578,7 +578,10 @@ async function createWindow() {
       webSecurity: true,
     },
   });
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.maximize();
+    mainWindow.show();
+  });
   mainWindow.on("closed", () => {
     mainWindow = undefined;
     if (!quitting) app.quit();

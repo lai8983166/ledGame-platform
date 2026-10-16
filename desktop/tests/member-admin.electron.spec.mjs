@@ -84,10 +84,13 @@ test("member admin owns an isolated backend, SQLite and restartable dynamic port
       env: desktopEnv,
     });
     const page = await waitForMemberWindow(desktop);
+    const mainWindow = await desktop.browserWindow(page);
+    await expect.poll(() => mainWindow.evaluate((window) => window.isMaximized())).toBe(true);
     await expect(page.locator("#app")).toBeVisible();
     await expect.poll(async () => (await page.evaluate(() => window.memberAdminDesktop?.diagnostics())).state, { timeout: 45000 }).toBe("online");
     await login(page);
-    await expect(page.getByTestId("admin-platform-connection")).toContainText(/已连接本机后端|connected/i, { timeout: 45000 });
+    await expect.poll(async () => fetch(`http://127.0.0.1:${firstPort}/api/health`)
+      .then((response) => response.ok).catch(() => false), { timeout: 45000 }).toBe(true);
     await page.getByTestId("operator-logout").click();
     await expect(page.getByTestId("operator-login-page")).toBeVisible();
     await login(page);
@@ -122,7 +125,9 @@ test("member admin owns an isolated backend, SQLite and restartable dynamic port
     await expect.poll(async () => fetch(`http://127.0.0.1:${firstPort}/api/health`).then(() => true).catch(() => false)).toBe(false);
 
     await page.getByTestId("admin-nav-settings").click();
-    await expect(page.getByTestId("member-desktop-runtime")).toContainText(String(secondPort));
+    await expect(page.getByTestId("member-desktop-runtime")).toContainText("本机 IP");
+    await expect(page.getByTestId("member-desktop-runtime")).not.toContainText(String(secondPort));
+    await expect(page.getByTestId("member-desktop-runtime").locator("input, button")).toHaveCount(0);
     await page.getByTestId("settings-tab-backup").click();
     await expect(page.getByTestId("database-backup-management")).toBeVisible();
     await expect.poll(async () => fs.readFile(path.join(backupRoot, "latest/metadata.json"), "utf8")

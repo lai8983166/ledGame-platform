@@ -161,9 +161,27 @@ test("final package shows the startup check, creates a TEST backup, enforces IPC
     expect(startupText).not.toContain("candidate");
 
     const page = await waitForMemberWindow(desktop);
+    const mainWindow = await desktop.browserWindow(page);
+    await expect.poll(() => mainWindow.evaluate((window) => window.isMaximized())).toBe(true);
     await loginUi(page);
     const factory = await loginApi(page);
     await page.getByTestId("admin-nav-settings").click();
+    const runtime = page.getByTestId("member-desktop-runtime");
+    await expect(runtime).toContainText("本机 IP");
+    await expect(runtime).not.toContainText(/http:|本机服务与局域网连接|SQLite|8090/);
+    await expect(runtime.locator("input, button")).toHaveCount(0);
+    await page.getByTestId("settings-tab-basic").click();
+    const secondaryCreated = desktop.waitForEvent("window");
+    await page.getByTestId("secondary-display-toggle").click();
+    const secondary = await secondaryCreated;
+    const screen = secondary.getByTestId("secondary-leaderboard-screen");
+    await expect(screen).toBeVisible();
+    for (const heading of ["今日榜", "本月榜", "年度榜"]) {
+      await expect(screen.getByRole("heading", { name: heading })).toBeVisible();
+    }
+    await expect(screen.locator(".secondary-leaderboard-column header small")).toHaveCount(0);
+    await expect(screen).not.toContainText("更新时间");
+    await page.getByTestId("secondary-display-toggle").click();
     await page.getByTestId("settings-tab-backup").click();
     const management = page.getByTestId("database-backup-management");
     await expect(management).toBeVisible();

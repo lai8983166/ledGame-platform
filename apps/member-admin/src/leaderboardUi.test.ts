@@ -46,4 +46,12 @@ describe("real leaderboard and explicit kiosk scan UI", () => {
     expect(style).toContain("grid-template-rows: auto minmax(0, 1fr)");
     expect(style).toContain("font-size: clamp(24px, 2vw, 44px)");
   });
+
+  it("retains period headings without date or update-time subtitles", () => {
+    for (const label of ["今日榜", "本月榜", "年度榜"]) expect(secondary).toContain(label);
+    expect(secondary).not.toContain("periodStart");
+    expect(secondary).not.toContain("updatedAt");
+    expect(secondary).not.toContain("更新时间");
+    expect(secondary).toContain("window.setInterval");
+  });
 });
