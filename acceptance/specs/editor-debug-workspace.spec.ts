@@ -1,7 +1,7 @@
 import {expect} from '@playwright/test';
 import {test} from '../support/storeTest';
 
-test('编辑器单页调试：真实多人准入、暂停、重新准入、自然结算与两类编辑器返回', async ({store}, testInfo) => {
+test('游戏卡片单页调试：真实多人准入、暂停、重新准入、自然结算与两类游戏列表返回', async ({store}, testInfo) => {
   test.setTimeout(240_000);
   const page=store.mainPage;
   const request=async (route:string,method='GET',body?:unknown)=>{
@@ -31,9 +31,8 @@ test('编辑器单页调试：真实多人准入、暂停、重新准入、自�
   async function enter(id:number){
     await page.getByTestId('game-menu-button').click();
     await page.getByRole('menuitem',{name:'游戏列表',exact:true}).click();
-    await page.locator(`.game-card[data-id="${id}"] .game-card-main`).click();
-    await button('启动游戏').click();
-    if(await page.getByRole('dialog').count())await button('使用已保存版本').click();
+    const card=page.locator(`.game-card[data-id="${id}"]`);
+    await card.hover();await card.getByRole('button',{name:'调试游戏',exact:true}).click();
     await workspace.waitFor();
     expect(store.gameWindows.filter(w=>/window=(touch|debug)/.test(w.url()))).toHaveLength(0);
   }
@@ -69,11 +68,9 @@ test('编辑器单页调试：真实多人准入、暂停、重新准入、自�
     return info.points.total;
   }).toBe(3);
   await page.screenshot({path:testInfo.outputPath('多人调试自然结算.png')});
-  await button('退出调试，返回编辑').click();await button('启动游戏').waitFor();
-  await button('启动游戏').click();if(await page.getByRole('dialog').count())await button('使用已保存版本').click();
+  await button('退出调试，返回游戏列表').click();await enter(simple.gameId);
   await workspace.waitFor();await workspace.locator('select').first().selectOption('debug');await button('启动游戏').click();
-  await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');await button('退出调试，返回编辑').click();
-  await page.getByRole('button',{name:'返回列表',exact:true}).click();
+  await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');await button('退出调试，返回游戏列表').click();
   await enter(rank.gameId);await button('启动游戏').click();
   // Real seeded startup voice/animation must finish; do not apply the 15s UI-action timeout to media playback.
   await expect.poll(async()=> (await state()).engineState,{timeout:60_000}).toBe('RUNNING');
@@ -86,7 +83,8 @@ test('编辑器单页调试：真实多人准入、暂停、重新准入、自�
     : rankPaused.gameplay.remainingMillis;
   await expect(workspace.locator('dl dd').nth(4)).toHaveText(String(Math.ceil(rankRemaining/1000)));
   await page.screenshot({path:testInfo.outputPath('Rank调试暂停.png')});
-  await button('退出调试，返回编辑').click();await expect(workspace).toHaveCount(0);await button('启动游戏').waitFor();
+  await button('退出调试，返回游戏列表').click();await expect(workspace).toHaveCount(0);
+  await expect(page.locator(`.game-card[data-id="${rank.gameId}"]`)).toBeVisible();
   await expect.poll(async()=> (await state()).engineState).toBe('STOPPED');
   expect((await request(`/game-editor/${simple.gameId}`)).wiringData.lines).toEqual([[[0,0],[1,0]]]);
   expect((await request(`/rank-game-editor/${rank.gameId}`)).wiringData.lines).toEqual([[[1,0],[0,0]]]);
