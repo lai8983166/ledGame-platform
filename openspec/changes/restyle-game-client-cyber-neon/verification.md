@@ -34,3 +34,13 @@
 2026-09-27 已更新原位置 `release/win-unpacked` 与 `release/LED Game-0.1.0-win.zip`（933,676,729 字节）。`portable:dist` 已完成后端资源准备和前端生产构建，但打包器重命名 Electron 临时目录时遇到 EPERM；随后以命令行 `--config.electronDist=node_modules/electron/dist` 使用相同版本的本地 Electron 完成 dir/zip 打包，没有修改仓库正式打包配置。
 
 新 EXE 使用隔离数据目录启动成功，内嵌后端可返回 5 个游戏；断开浏览器网络后重新加载本地页面，主题样式正常且无页面异常。ZIP 与 `win-unpacked` 中 EXE、`resources/app.asar` 的 SHA-256 一致。未重打包会员管理端、自助注册端；未连接真实控制器做硬件测试。
+
+## 2026-10-19 主窗口背景对齐
+
+按 Vue 参考项目的实际 CSS 对齐：保留 `#0a0118`，去除自定义左右光晕，增加淡扫描线、60px 网格及径向遮罩。仅修改主窗口 `.app-shell`，装饰层在内容之后、不可接收鼠标事件；没有修改业务代码、图片或待机动画，也没有给 Touch、DebugPanel、副屏增加这些背景层。
+
+- `node scripts/test-main-background-ui.mjs`：1280×720、1920×1080 和 125% DPI 共三组通过。读取参考项目真实 CSS，检查装饰参数一致；背景像素允许独立图层透明混合产生最多 2/255 的通道舍入差、差异通道少于 2%，图片与矩阵像素必须完全相同；点击、输入和其他窗口隔离通过。证据位于游戏仓库 `.build/main-background/`。
+- `pnpm test`：431 项全部通过，国际化检查通过；此前初版报告中的旧失败不代表本次状态。
+- `node scripts/test-game-ui-followup.mjs`：五组交互回归通过，覆盖精灵颜色/筛选、旋转、配置、副屏与 Touch。
+- 生产构建及原位置 `win-unpacked`、`LED Game-0.1.0-win.zip` 更新成功，仅有既有的大 JS 包提示；两份产物 914 个文件逐项 SHA-256 一致。
+- `node scripts/test-editor-flash-packaged.mjs`：真实 EXE 背景检查及八项原编辑器回归通过，页面错误为空；证据在 `.build/editor-flash-packaged-nywtME/`。`node scripts/test-settings-touch-packaged.mjs --settings-only` 五组通过，证据在 `.build/settings-touch-packaged-wUqUvO/`。两者均使用隔离数据库，未操作实际用户数据，未连接硬件。

@@ -12,6 +12,10 @@
 - **WHEN** 用户切换上述页面或打开现有弹窗
 - **THEN** 页面和控件采用一致的赛博霓虹视觉规则，原有功能入口仍然可见并可操作
 
+#### Scenario: Main background matches Vue reference
+- **WHEN** 主窗口显示分类首页、列表或其他管理页面
+- **THEN** 基础底色为#0a0118，使用Vue参考的淡扫描线及60px网格和径向遮罩，不附加自定义左右光晕；装饰在内容后面且不拦截点击，不附加到Touch、DebugPanel和副屏
+
 ### Requirement: Preserve business behavior
 
 此次样式修改 MUST 保持现有数据来源、字段、事件语义、校验规则、保存行为、窗口职责及所有业务操作不变，不改变启动、刷卡、触屏、排队、计时、积分、结算、SDK 或通信逻辑。
