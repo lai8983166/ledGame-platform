@@ -12,9 +12,9 @@
 - **WHEN** 用户切换上述页面或打开现有弹窗
 - **THEN** 页面和控件采用一致的赛博霓虹视觉规则，原有功能入口仍然可见并可操作
 
-#### Scenario: Main background matches Vue reference
+#### Scenario: Main background matches updated full-page reference
 - **WHEN** 主窗口显示分类首页、列表或其他管理页面
-- **THEN** 基础底色为#0a0118，使用Vue参考的淡扫描线及60px网格和径向遮罩，不附加自定义左右光晕；装饰在内容后面且不拦截点击，不附加到Touch、DebugPanel和副屏
+- **THEN** 基础底色为#0a0118，按game清单/style-a-neon.html原参数叠加顶部紫色18%、左下青色10%、右下品红12%的径向渐变，保留淡扫描线及60px网格和径向遮罩；装饰在内容后面且不拦截点击，不附加到Touch、DebugPanel和副屏
 
 ### Requirement: Preserve business behavior
 

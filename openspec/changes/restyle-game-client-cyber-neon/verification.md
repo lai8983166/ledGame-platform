@@ -44,3 +44,13 @@
 - `node scripts/test-game-ui-followup.mjs`：五组交互回归通过，覆盖精灵颜色/筛选、旋转、配置、副屏与 Touch。
 - 生产构建及原位置 `win-unpacked`、`LED Game-0.1.0-win.zip` 更新成功，仅有既有的大 JS 包提示；两份产物 914 个文件逐项 SHA-256 一致。
 - `node scripts/test-editor-flash-packaged.mjs`：真实 EXE 背景检查及八项原编辑器回归通过，页面错误为空；证据在 `.build/editor-flash-packaged-nywtME/`。`node scripts/test-settings-touch-packaged.mjs --settings-only` 五组通过，证据在 `.build/settings-touch-packaged-wUqUvO/`。两者均使用隔离数据库，未操作实际用户数据，未连接硬件。
+
+## 2026-10-20 新版完整页面背景
+
+按客户新增的`game清单/style-a-neon.html`替代上次Vue纯色基准：#0a0118上叠加顶部紫色18%、左下青色10%、右下品红12%三层原参数静态渐变。保留扫描线与60px网格，并按新参考让扫描线位于网格上方；均仅限主窗口、位于内容后方。不修改Vue业务、图片、矩阵或其他窗口，不新增动画、计时器或运行时外部路径依赖。
+
+- 背景专项三组通过：1280×720、1920×1080、125% DPI。实际读取新参考CSS，渐变及装饰参数一致；纯渐变允许1/255合成舍入差，含透明装饰允许2/255，图片/矩阵像素须完全一致。验证顶部/左右/底部区域、点击、输入、其他窗口隔离，截图已查看。125% DPI裁剪边界使用整物理像素，避免截图越过视口边缘造成假差异；证据`.build/main-background/`。
+- 前端432项测试及国际化检查通过，`test-game-ui-followup.mjs`五组交互通过；生产构建通过，只有既有大JS包提示。
+- 已更新真实EXE背景检查脚本。检测到原位置游戏端仍在运行，未覆盖release；待用户保存并关闭后打包并执行真实EXE/ZIP一致性验收。本段不代表已完成打包。
+
+用户确认关闭后已完成上述交付：原位置`release/win-unpacked`和`release/LED Game-0.1.0-win.zip`均已覆盖更新，914个文件逐项SHA-256一致。真实EXE背景检查和编辑器回归全部通过，页面错误为空，已查看`主窗口背景.png`；隔离证据`.build/editor-flash-packaged-JV3yEr/验收结果.json`。未操作实际用户数据库、未重打其他客户端、未提交Git。本Change25项任务完成。
