@@ -89,8 +89,21 @@ public class CoreFlowController {
     public Map<String, Object> createMember(
             @RequestBody MemberRequest request,
             @RequestAttribute(value = OperatorAuditInterceptor.OPERATOR_ATTRIBUTE, required = false)
-            OperatorSnapshot operator) {
+            OperatorSnapshot operator,
+            @RequestHeader(value="X-Operator-Id", required=false) Long operatorId) {
         String phone = normalizePhone(request.phone());
+        int initial = request.initialDurationMinutes() == null ? 0 : request.initialDurationMinutes();
+        if (initial < 0 || initial > 1440) throw badRequest("初始充值分钟数必须是 0 到 1440 的整数");
+        if (initial == 0 && request.amountCents() != null) throw badRequest("填写收款时请同时填写初始充值分钟数");
+        var rechargeOperator = initial > 0 ? authorization.requireCapability(operatorId, OperatorCapability.MEMBER_MANAGE) : null;
+        if (initial > 0 && request.requestId() != null) {
+            List<Map<String,Object>> previous = jdbc.queryForList("SELECT m.id,m.phone FROM member_recharge_records c JOIN members m ON m.id=c.member_id WHERE c.request_id=?", request.requestId());
+            if (!previous.isEmpty()) {
+                if (!phone.equals(protectedData.decryptField("members", "phone", previous.get(0).get("phone")))) throw conflict("初始充值请求内容已变化");
+                gameAccessService.recharge(((Number)previous.get(0).get("id")).longValue(), initial, request.amountCents(), request.requestId(), rechargeOperator);
+                return findMembers(phone).get(0);
+            }
+        }
         if (!phone.matches("\\d{7,15}")) throw badRequest("手机号格式不正确");
         if (request.name() == null || request.name().trim().length() < 2) throw badRequest("会员姓名至少需要 2 个字符");
         String phoneHash = protectedData.phoneLookupHash(phone);
@@ -108,11 +121,23 @@ public class CoreFlowController {
                     protectedData.encryptField("members", "avatar_id", storedAvatarId),
                     protectedData.encryptField("members", "birthday", request.birthday()),
                     protectedData.encryptField("members", "gender", request.gender()), now, now, createdBy);
+            if (initial > 0) {
+                long id = jdbc.queryForObject("SELECT last_insert_rowid()", Long.class);
+                gameAccessService.recharge(id, initial, request.amountCents(), request.requestId(), rechargeOperator);
+            }
             return findMembers(phone).get(0);
         } catch (RuntimeException exception) {
             if (avatars.isUploaded(storedAvatarId)) avatars.delete(storedAvatarId);
             throw exception;
         }
+    }
+
+    @PostMapping("/members/{id}/recharge")
+    @Transactional
+    public Map<String,Object> rechargeMember(@PathVariable Long id, @RequestBody MemberRechargeRequest request,
+            @RequestHeader(value="X-Operator-Id", required=false) Long operatorId) {
+        var operator = authorization.requireCapability(operatorId, OperatorCapability.MEMBER_MANAGE);
+        return gameAccessService.recharge(id, request.durationMinutes() == null ? 0 : request.durationMinutes(), request.amountCents(), request.requestId(), operator);
     }
 
     @GetMapping("/members/{id}/avatar")
@@ -273,7 +298,10 @@ public class CoreFlowController {
             """, id);
 
         Map<String, Object> response = new java.util.LinkedHashMap<>();
-        response.put("charges", chargeRows.stream().map(this::decryptChargeRow).toList());
+        List<Map<String,Object>> charges = new java.util.ArrayList<>(chargeRows.stream().map(this::decryptChargeRow).toList());
+        charges.addAll(memberRecharges(id));
+        charges.sort(java.util.Comparator.comparing(row -> String.valueOf(row.get("chargedAt")), java.util.Comparator.reverseOrder()));
+        response.put("charges", charges);
         response.put("plays", playRows.stream().map(this::decryptMemberPlayRow).toList());
         return response;
     }
@@ -334,7 +362,29 @@ public class CoreFlowController {
         List<Map<String, Object>> rows = uid == null ? jdbc.queryForList(sql)
                 : jdbc.queryForList(sql.replace("w.card_uid_lookup_hash=?", "(w.card_uid_lookup_hash=? OR (w.card_uid_lookup_hash IS NULL AND w.card_uid=?))"),
                         protectedData.wristbandLookupHash(normalizeUid(uid)), normalizeUid(uid));
-        return rows.stream().map(this::decryptChargeRow).toList();
+        List<Map<String,Object>> result = new java.util.ArrayList<>(rows.stream().map(this::decryptChargeRow).toList());
+        if (uid == null) result.addAll(memberRecharges(null));
+        result.sort(java.util.Comparator.comparing(row -> String.valueOf(row.get("chargedAt")), java.util.Comparator.reverseOrder()));
+        return result;
+    }
+
+    private List<Map<String,Object>> memberRecharges(Long memberId) {
+        String sql = """
+            SELECT 'member-'||c.id AS id,c.member_id AS memberId,m.name AS memberName,m.phone,
+                   NULL AS uid,c.duration_minutes AS durationMinutes,NULL AS unitPriceCents,
+                   c.amount_cents AS amountCents,NULL AS issuedAt,c.charged_at AS chargedAt,
+                   c.operator_id AS operatorId,c.operator_username AS operatorUsername,
+                   c.operator_display_name AS operatorDisplayName,c.operator_display_name AS operatorLabel
+              FROM member_recharge_records c JOIN members m ON m.id=c.member_id
+            """;
+        List<Map<String,Object>> rows = memberId == null ? jdbc.queryForList(sql)
+                : jdbc.queryForList(sql + " WHERE c.member_id=?", memberId);
+        return rows.stream().map(row -> {
+            Map<String,Object> value = new java.util.LinkedHashMap<>(row);
+            decryptInto(value, "memberName", "members", "name");
+            decryptInto(value, "phone", "members", "phone");
+            return value;
+        }).toList();
     }
 
     @GetMapping("/wristbands/{uid}")
@@ -447,7 +497,7 @@ public class CoreFlowController {
         authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
         String uid = normalizeUid(request.uid());
         Map<String, Object> wristband = gameAccessService.getWristband(uid);
-        if (!String.valueOf(wristband.get("status")).equals("READY")) throw conflict("只有待游戏手环可以解除绑定");
+        if (!List.of("READY", "ACTIVE", "EXPIRED").contains(String.valueOf(wristband.get("status")))) throw conflict("手环没有待归还的绑定");
         gameAccessService.returnCard(uid, ((Number) wristband.get("bindingId")).longValue());
         return gameAccessService.getWristband(uid);
     }
@@ -557,7 +607,8 @@ public class CoreFlowController {
     public record BindRequest(String uid, Long memberId) {}
     public record UidRequest(String uid) {}
     public record MemberRequest(String phone, String name, String avatarId, String birthday, String gender, String createdBy,
-            String avatarImageBase64, String avatarImageMimeType) {}
+            String avatarImageBase64, String avatarImageMimeType, Integer initialDurationMinutes, Long amountCents, String requestId) {}
+    public record MemberRechargeRequest(Integer durationMinutes, Long amountCents, String requestId) {}
     public record MemberUpdateRequest(String phone, String name, String avatarId, String birthday, String gender,
             String avatarImageBase64, String avatarImageMimeType) {}
 }

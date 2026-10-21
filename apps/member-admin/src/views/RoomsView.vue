@@ -30,6 +30,12 @@ const editingRoom = ref<Room | null>(null);
 const editName = ref("");
 const editError = ref("");
 const cardAction = ref<"issue" | "return" | null>(null);
+const completeCard = (receipt: { returnedSeconds?: number; accountRemainingSeconds?: number }) => {
+  const action = cardAction.value;
+  cardAction.value = null;
+  const format = (seconds = 0) => `${Math.floor(seconds/60)}分${seconds%60}秒`;
+  emit("toast", action === "return" ? `还卡成功，退回${format(receipt.returnedSeconds)}，账户余额${format(receipt.accountRemainingSeconds)}` : "发卡成功");
+};
 const canViewRooms = computed(() => canUseOperatorCapability(operatorSession.current.value, "operationsView"));
 const canRenameRooms = computed(() => canUseOperatorCapability(operatorSession.current.value, "renameRoom"));
 
@@ -127,7 +133,7 @@ const saveRoomName = async () => {
     <div v-else class="empty-state glass-panel"><span><AppIcon name="search" :size="28" /></span><h2>没有匹配的房间</h2></div>
   </template>
 
-  <MemberCardDialog v-if="cardAction" :action="cardAction" :locale="locale" @close="cardAction = null" @done="cardAction = null" />
+  <MemberCardDialog v-if="cardAction" :action="cardAction" :locale="locale" @close="cardAction = null" @done="completeCard" />
 
   <BaseModal v-if="editingRoom" title="修改房间名称" size="small" @close="editingRoom = null">
     <label class="form-field"><span>房间名称 <b>*</b></span><input v-model="editName" maxlength="13" :class="{ invalid: editError }" autofocus @input="editError = ''" @keyup.enter="saveRoomName" /><small v-if="editError" class="field-error">{{ editError }}</small></label>

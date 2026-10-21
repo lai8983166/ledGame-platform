@@ -17,9 +17,22 @@ describe("合并会员发还卡界面", () => {
     expect(members).not.toContain('data-testid="admin-card-issue"');
     expect(members).not.toContain('data-testid="admin-card-return"');
     expect(app).toContain('const activePage = ref<PageId>("rooms")');
-    expect(members).not.toContain('data-testid="admin-member-create"');
+    expect(members).toContain('data-testid="admin-member-create"');
+    expect(members).toContain('data-testid="admin-member-recharge"');
+    expect(members).toContain('data-testid="admin-member-issue"');
     expect(members).not.toContain("会员与手环分离");
     expect(dialog).not.toContain("description=");
+  });
+  it("会员充值不要求刷手环，发卡只填写分配时长，自助激活文案立即计时", () => {
+    const recharge = read("./components/MemberRechargeDialog.vue");
+    expect(recharge).toContain('/recharge`');
+    expect(recharge).toContain('initialDurationMinutes: minutes.value');
+    expect(recharge).toContain('amountCents: amount.value === "" ? null');
+    expect(recharge).not.toContain('keydown", onKeydown');
+    expect(dialog).toContain("text('memberAllocationMinutes')");
+    expect(dialog).toContain('props.presetMember');
+    expect(kiosk).toContain('activationTimingStarted');
+    expect(kiosk).not.toContain('Game time begins only after the first swipe');
   });
   it("房间卡只有四项，详情仅保留排队硬件与改名，不扩展店员数据权限", () => {
     expect(rooms).toContain('data-testid="admin-room-name"');

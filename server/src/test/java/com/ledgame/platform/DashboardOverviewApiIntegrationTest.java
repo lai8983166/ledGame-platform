@@ -63,6 +63,7 @@ class DashboardOverviewApiIntegrationTest {
                 "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN' AND deleted_at IS NULL",
                 Long.class);
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
+        jdbc.update("DELETE FROM member_recharge_records");
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM game_play_records");
         jdbc.update("DELETE FROM wristband_bindings");
@@ -87,6 +88,8 @@ class DashboardOverviewApiIntegrationTest {
         assertThat(charge("2283055802", 60).getStatusCode()).isEqualTo(HttpStatus.OK);
         ResponseEntity<Map<String, Object>> rejected = charge("2283055802", 10);
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        long memberId = jdbc.queryForObject("SELECT id FROM members WHERE phone='13000132001'", Long.class);
+        assertThat(http.postForEntity("/api/wristbands/bind", Map.of("uid", "2283055801", "memberId", memberId), Map.class).getStatusCode()).isEqualTo(HttpStatus.OK);
 
         jdbc.update("INSERT INTO wristband_charge_records(wristband_id,wristband_uid,duration_minutes,unit_price_cents,amount_cents,charged_at) SELECT id,card_uid,20,100,2000,'2026-08-08T15:59:59Z' FROM wristbands ORDER BY id LIMIT 1");
 
@@ -97,7 +100,7 @@ class DashboardOverviewApiIntegrationTest {
         assertThat(response.getBody())
                 .containsEntry("totalMembers", 2)
                 .containsEntry("newMembersToday", 1)
-                .containsEntry("wristbandsChargedToday", 2)
+                .containsEntry("wristbandsChargedToday", 1)
                 .containsEntry("revenueTodayCents", 9000)
                 .containsEntry("periodStart", "2026-08-09T00:00:00+08:00")
                 .containsEntry("periodEnd", "2026-08-10T00:00:00+08:00");

@@ -19,9 +19,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 6;
+    public static final int CURRENT_SCHEMA_VERSION = 7;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
-            "members", "wristbands", "wristband_charge_records", "wristband_bindings",
+            "members", "wristbands", "wristband_charge_records", "wristband_bindings", "member_recharge_records",
             "game_play_records", "legacy_game_sessions", "room_settings", "store_feature_settings", "store_settings",
             "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
@@ -45,6 +45,7 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         migrateStoreSettings();
         migrateChargeAuditFields();
         migrateMemberTimeAccounts();
+        migrateAllocatedTime();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -255,6 +256,43 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", Integer.class, table);
         return count != null && count > 0;
+    }
+
+    private void migrateAllocatedTime() {
+        if (!tableExists("members") || !tableExists("wristband_bindings")) return;
+        transactions.executeWithoutResult(transaction -> {
+            jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS member_recharge_records (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT, member_id INTEGER NOT NULL REFERENCES members(id),
+                  duration_minutes INTEGER NOT NULL CHECK(duration_minutes>0), amount_cents INTEGER,
+                  request_id TEXT NOT NULL UNIQUE, charged_at TEXT NOT NULL,
+                  operator_id INTEGER NOT NULL, operator_username TEXT NOT NULL, operator_display_name TEXT NOT NULL)
+                """);
+            boolean migrated = jdbc.queryForList("PRAGMA table_info(wristband_bindings)").stream()
+                    .anyMatch(row -> "allocated_seconds".equals(row.get("name")));
+            addColumnIfMissing("wristband_bindings", "allocated_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK(allocated_seconds>=0)");
+            addColumnIfMissing("wristband_bindings", "returned_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK(returned_seconds>=0)");
+            if (migrated) return;
+            if (jdbc.queryForList("PRAGMA table_info(wristband_bindings)").stream().noneMatch(row -> "wristband_id".equals(row.get("name")))) return;
+            Instant now = clock.instant();
+            for (Map<String,Object> member : jdbc.queryForList("SELECT id,time_balance_seconds,consumption_started_at FROM members")) {
+                long available = ((Number) member.get("time_balance_seconds")).longValue();
+                if (member.get("consumption_started_at") != null) {
+                    available = Math.max(0, Duration.between(now, Instant.parse(String.valueOf(member.get("consumption_started_at"))).plusSeconds(available)).getSeconds());
+                }
+                List<Map<String,Object>> bindings = jdbc.queryForList("SELECT id,wristband_id,duration_minutes FROM wristband_bindings WHERE member_id=? AND status IN ('READY','ACTIVE') ORDER BY id", member.get("id"));
+                for (int index=0; index<bindings.size(); index++) {
+                    Map<String,Object> binding = bindings.get(index);
+                    // The old shared balance has no per-card split. Preserve all actual remaining rights.
+                    long seconds = index == bindings.size()-1 ? available : Math.min(available, ((Number) binding.get("duration_minutes")).longValue()*60L);
+                    available -= seconds;
+                    String status = seconds > 0 ? "ACTIVE" : "EXPIRED";
+                    jdbc.update("UPDATE wristband_bindings SET allocated_seconds=?,started_at=?,status=? WHERE id=?", seconds, now.toString(), status, binding.get("id"));
+                    jdbc.update("UPDATE wristbands SET status=? WHERE id=?", status, binding.get("wristband_id"));
+                }
+                jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL WHERE id=?", available, member.get("id"));
+            }
+        });
     }
 
     private void addColumnIfMissing(String table, String column, String definition) {

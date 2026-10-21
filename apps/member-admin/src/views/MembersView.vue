@@ -4,6 +4,8 @@ import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
+import MemberRechargeDialog from "../components/MemberRechargeDialog.vue";
+import MemberCardDialog from "../components/MemberCardDialog.vue";
 import type { Member } from "../types";
 import { platformApi, platformBaseUrl } from "../platformApi";
 import { memberAdminCatalogs, type MemberAdminMessageKey } from "../localization";
@@ -26,6 +28,10 @@ const members = ref<Member[]>([]);
 const search = ref("");
 const statusFilter = ref<"all" | "active" | "inactive">("all");
 const selectedMember = ref<Member | null>(null);
+const rechargeOpen = ref(false);
+const rechargeTarget = ref<Member | null>(null);
+const issueTarget = ref<Member | null>(null);
+const currentBandRemaining = ref<number | null>(null);
 const refreshing = ref(false);
 const connectionError = ref("");
 const editingMember = ref(false);
@@ -139,6 +145,30 @@ const openMember = (member: Member) => {
   memberHistory.value = null;
   memberHistoryError.value = "";
   void loadMemberHistory(member);
+  currentBandRemaining.value = null;
+  if (member.wristbandUid) void request<{ remainingSeconds: number }>(`/wristbands/${encodeURIComponent(member.wristbandUid)}`).then(row => {
+    if (selectedMember.value?.id === member.id) currentBandRemaining.value = row.remainingSeconds;
+  }).catch(() => { /* Member history retains its independent retry path. */ });
+};
+
+const openRecharge = (member: Member | null) => {
+  rechargeTarget.value = member;
+  rechargeOpen.value = true;
+};
+const finishRecharge = async () => {
+  const created = !rechargeTarget.value;
+  rechargeOpen.value = false;
+  await loadMembers();
+  if (selectedMember.value) {
+    const refreshed = members.value.find(row => row.id === selectedMember.value?.id);
+    if (refreshed) { selectedMember.value = refreshed; void loadMemberHistory(refreshed); }
+  }
+  emit("toast", created ? "会员已保存" : "充值成功");
+};
+const finishIssue = async () => {
+  issueTarget.value = null;
+  await loadMembers();
+  emit("toast", "发卡成功");
 };
 
 const closeMember = () => {
@@ -222,17 +252,32 @@ onMounted(loadMembers);
     <div class="search-field search-field--wide"><AppIcon name="search" :size="18" /><input v-model="search" aria-label="查询会员" placeholder="查询姓名、数据库 ID 或手机号" @keydown.enter="loadMembers" /></div>
     <select v-model="statusFilter" class="select-control" aria-label="会员状态筛选"><option value="all">全部状态</option><option value="active">正常</option><option value="inactive">停用</option></select>
     <span class="result-count">共 {{ filteredMembers.length }} 位会员</span>
+    <button v-if="canEditMembers" class="primary-button" data-testid="admin-member-create" type="button" @click="openRecharge(null)">{{ text("memberCreate") }}</button>
+    <button class="secondary-button" type="button" :disabled="refreshing" @click="loadMembers">{{ text("memberRefresh") }}</button>
   </section>
 
   <section v-if="connectionError" class="notice-bar" data-testid="admin-members-error"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
 
   <section class="table-card glass-panel">
-    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>{{ text("cardCurrent") }}</th><th>{{ text("cardBalance") }}</th><th>{{ text("points") }}</th><th>{{ text("rank") }}</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="openMember(member)"><span class="avatar" :style="{ background: member.color }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" class="avatar__image" @error="member.avatarUrl = null" /><span v-else>{{ member.initials }}</span></span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td data-testid="admin-member-wristband">{{ member.wristbandUid || '—' }}</td><td data-testid="admin-member-balance">{{ formatBalance(member.remainingSeconds) }}<small class="account-status">{{ member.consuming ? '消费中' : '已暂停' }}</small></td><td data-testid="admin-member-points">{{ member.pointsTotal }}</td><td data-testid="admin-member-rank">#{{ member.rank }}</td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button class="icon-button" type="button" aria-label="查看会员" @click="openMember(member)"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
+    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>{{ text("cardCurrent") }}</th><th>{{ text("memberAccountBalance") }}</th><th>{{ text("points") }}</th><th>{{ text("rank") }}</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="openMember(member)"><span class="avatar" :style="{ background: member.color }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" class="avatar__image" @error="member.avatarUrl = null" /><span v-else>{{ member.initials }}</span></span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td data-testid="admin-member-wristband">{{ member.wristbandUid || '—' }}</td><td><span data-testid="admin-member-balance">{{ formatBalance(member.remainingSeconds) }}</span><button v-if="canEditMembers" class="ghost-button" data-testid="admin-member-recharge" type="button" @click="openRecharge(member)">{{ text("memberRechargeAction") }}</button></td><td data-testid="admin-member-points">{{ member.pointsTotal }}</td><td data-testid="admin-member-rank">#{{ member.rank }}</td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button v-if="canEditMembers" class="secondary-button" data-testid="admin-member-issue" type="button" @click="issueTarget = member">{{ text("cardIssue") }}</button><button class="icon-button" type="button" aria-label="查看会员" @click="openMember(member)"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
     <div v-else class="empty-state empty-state--flat"><span><AppIcon name="search" :size="28" /></span><h2>没有找到会员</h2><button class="secondary-button" type="button" @click="search = ''; statusFilter = 'all'">清除筛选</button></div>
     <footer class="table-footer"><strong>共 {{ filteredMembers.length }} 位</strong></footer>
   </section>
 
-  <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="closeMember"><div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }"><img v-if="selectedMember.avatarUrl" :src="selectedMember.avatarUrl" alt="" class="avatar__image" @error="selectedMember.avatarUrl = null" /><span v-else>{{ selectedMember.initials }}</span></span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div><div class="drawer-actions"><button v-if="selectedMember.status === 'active' && canEditMembers" class="secondary-button" data-testid="admin-member-edit" type="button" @click="openMemberEdit(selectedMember)"><AppIcon name="edit" :size="17" /> 编辑会员资料</button></div><section class="drawer-section"><div class="drawer-section__title"><h3>数据库资料</h3></div><dl class="detail-grid"><div><dt>数据库 ID</dt><dd>{{ selectedMember.id }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div><div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>生日</dt><dd>{{ selectedMember.birthday || '未设置' }}</dd></div><div><dt>性别</dt><dd>{{ selectedMember.gender || '未设置' }}</dd></div><div><dt>{{ text("cardCurrent") }}</dt><dd>{{ selectedMember.wristbandUid || '—' }}</dd></div><div><dt>{{ text("cardBalance") }}</dt><dd>{{ formatBalance(selectedMember.remainingSeconds) }}</dd></div></dl></section><section v-if="canDeleteMembers" class="drawer-section member-danger-zone"><div class="drawer-section__title"><h3>{{ text("memberDeleteDangerTitle") }}</h3></div><p>{{ text("memberDeleteDangerBody") }}</p><button class="danger-button" data-testid="admin-member-delete" type="button" @click="askToDeleteMember(selectedMember)"><AppIcon name="trash" :size="17" />{{ text("memberDeleteAction") }}</button></section></SideDrawer>
+  <MemberRechargeDialog v-if="rechargeOpen" :member="rechargeTarget" @close="rechargeOpen = false" @done="finishRecharge" />
+  <MemberCardDialog v-if="issueTarget" action="issue" :locale="locale" :preset-member="issueTarget" @close="issueTarget = null" @done="finishIssue" />
+  <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="closeMember">
+    <div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }"><img v-if="selectedMember.avatarUrl" :src="selectedMember.avatarUrl" alt="" class="avatar__image" @error="selectedMember.avatarUrl = null" /><span v-else>{{ selectedMember.initials }}</span></span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div>
+    <div class="drawer-actions"><button v-if="selectedMember.status === 'active' && canEditMembers" class="secondary-button" data-testid="admin-member-edit" type="button" @click="openMemberEdit(selectedMember)"><AppIcon name="edit" :size="17" /> 编辑会员资料</button></div>
+    <section class="drawer-section"><div class="drawer-section__title"><h3>数据库资料</h3></div><dl class="detail-grid">
+      <div><dt>数据库 ID</dt><dd>{{ selectedMember.id }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedMember.phone }}</dd></div>
+      <div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>生日</dt><dd>{{ selectedMember.birthday || '未设置' }}</dd></div><div><dt>性别</dt><dd>{{ selectedMember.gender || '未设置' }}</dd></div>
+      <div><dt>{{ text("cardCurrent") }}</dt><dd>{{ selectedMember.wristbandUid || '—' }}</dd></div>
+      <div><dt>{{ text("memberAccountBalance") }}</dt><dd>{{ formatBalance(selectedMember.remainingSeconds) }}</dd></div>
+      <div v-if="currentBandRemaining !== null"><dt>{{ text("memberAllocatedRemaining") }}</dt><dd data-testid="admin-member-allocated-remaining">{{ formatBalance(currentBandRemaining) }}</dd></div>
+    </dl></section>
+    <section v-if="canDeleteMembers" class="drawer-section member-danger-zone"><div class="drawer-section__title"><h3>{{ text("memberDeleteDangerTitle") }}</h3></div><p>{{ text("memberDeleteDangerBody") }}</p><button class="danger-button" data-testid="admin-member-delete" type="button" @click="askToDeleteMember(selectedMember)"><AppIcon name="trash" :size="17" />{{ text("memberDeleteAction") }}</button></section>
+  </SideDrawer>
 
   <BaseModal v-if="editingMember && selectedMember" title="编辑会员资料" description="修改后将保存到本机数据库。" size="large" @close="editingMember = false"><div class="form-grid"><label class="form-field"><span>会员姓名 <b>*</b></span><input v-model="editForm.name" data-testid="admin-member-edit-name" @input="editError = ''" /></label><label class="form-field"><span>联系方式 <b>*</b></span><input v-model="editForm.phone" data-testid="admin-member-edit-phone" inputmode="numeric" @input="editError = ''" /></label><label class="form-field"><span>生日</span><input v-model="editForm.birthday" type="date" data-testid="admin-member-edit-birthday" @input="editError = ''" /></label><label class="form-field"><span>性别</span><select v-model="editForm.gender" data-testid="admin-member-edit-gender"><option value="">未设置</option><option value="男">男</option><option value="女">女</option></select></label><label class="form-field"><span>头像标识</span><input v-model="editForm.avatarId" data-testid="admin-member-edit-avatar" placeholder="内置头像名称（可选）" /></label></div><p v-if="editError" class="form-error"><AppIcon name="alert" :size="16" />{{ editError }}</p><template #footer><button class="ghost-button" type="button" :disabled="editLoading" @click="editingMember = false">取消</button><button class="primary-button" data-testid="admin-member-edit-save" type="button" :disabled="editLoading" @click="saveMemberEdit">{{ editLoading ? '保存中…' : '保存资料' }}</button></template></BaseModal>
 
@@ -250,7 +295,7 @@ onMounted(loadMembers);
     <p v-else-if="memberHistoryError" class="member-history-state member-history-state--error">{{ memberHistoryError }}</p>
     <template v-else-if="historyModal === 'charges'">
       <p v-if="!memberHistory?.charges.length" class="member-history-state">{{ text("memberHistoryEmpty") }}</p>
-      <ul v-else class="member-history-list" data-testid="admin-member-charge-history-modal"><li v-for="record in memberHistory.charges" :key="`charge-modal-${record.id}`"><div><strong>{{ record.durationMinutes ?? 0 }} {{ text("memberHistoryMinutes") }}</strong><small>{{ formatHistoryTime(record.chargedAt || record.issuedAt) }} · {{ record.operatorLabel || '—' }}</small></div><strong>¥{{ ((record.amountCents ?? 0) / 100).toFixed(2) }}</strong></li></ul>
+      <ul v-else class="member-history-list" data-testid="admin-member-charge-history-modal"><li v-for="record in memberHistory.charges" :key="`charge-modal-${record.id}`"><div><strong>{{ record.durationMinutes ?? 0 }} {{ text("memberHistoryMinutes") }}</strong><small>{{ formatHistoryTime(record.chargedAt || record.issuedAt) }} · {{ record.operatorLabel || '—' }}</small></div><strong>{{ record.amountCents == null ? "—" : `¥${(record.amountCents / 100).toFixed(2)}` }}</strong></li></ul>
       <p v-if="memberHistory?.charges.length" class="member-history-note">{{ text("memberHistoryHistoricalNote") }}</p>
     </template>
     <template v-else>

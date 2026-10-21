@@ -41,11 +41,13 @@ class MemberTimeAccountMigrationTest {
             var jdbc=oldDatabase(path);
             var migration=new PlatformSchemaMigration(jdbc, Clock.fixed(now, ZoneOffset.UTC));
             migration.run(new DefaultApplicationArguments(new String[0]));
-            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isEqualTo(2070);
-            assertThat(jdbc.queryForObject("SELECT consumption_started_at FROM members WHERE id=1", String.class)).isEqualTo(now.toString());
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings WHERE member_id=1", Long.class)).isEqualTo(2070);
+            assertThat(jdbc.queryForObject("SELECT consumption_started_at FROM members WHERE id=1", String.class)).isNull();
             assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=2", Long.class)).isZero();
             migration.run(new DefaultApplicationArguments(new String[0]));
-            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isEqualTo(2070);
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings WHERE member_id=1", Long.class)).isEqualTo(2070);
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristband_bindings", Integer.class)).isEqualTo(4);
             assertThat(jdbc.queryForObject("SELECT name FROM members WHERE id=1", String.class)).isEqualTo("旧会员");
         } finally { Files.deleteIfExists(path); }
@@ -62,7 +64,28 @@ class MemberTimeAccountMigrationTest {
             assertThat(jdbc.queryForList("PRAGMA table_info(members)")).noneMatch(row->"time_balance_seconds".equals(row.get("name")));
             jdbc.execute("DROP TRIGGER reject_second_member");
             migration.run(new DefaultApplicationArguments(new String[0]));
-            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isEqualTo(2070);
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings WHERE member_id=1", Long.class)).isEqualTo(2070);
+        } finally { Files.deleteIfExists(path); }
+    }
+
+    @Test
+    void upgradesSharedAccountToAllocationAndKeepsUnboundAccountWithoutDoubleCredit() throws Exception {
+        Path path = Files.createTempFile("allocated-account-upgrade-", ".db");
+        try {
+            var jdbc = oldDatabase(path);
+            jdbc.execute("ALTER TABLE members ADD COLUMN time_balance_seconds INTEGER NOT NULL DEFAULT 0");
+            jdbc.execute("ALTER TABLE members ADD COLUMN consumption_started_at TEXT");
+            jdbc.update("UPDATE members SET time_balance_seconds=3600,consumption_started_at=? WHERE id=1", now.minusSeconds(600).toString());
+            jdbc.update("UPDATE members SET time_balance_seconds=1234 WHERE id=2");
+            var migration = new PlatformSchemaMigration(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings WHERE member_id=1", Long.class)).isEqualTo(3000);
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=2", Long.class)).isEqualTo(1234);
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings WHERE member_id=1", Long.class)).isEqualTo(3000);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_recharge_records", Integer.class)).isZero();
         } finally { Files.deleteIfExists(path); }
     }
 }

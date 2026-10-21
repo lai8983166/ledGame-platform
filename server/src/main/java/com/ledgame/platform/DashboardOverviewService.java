@@ -51,12 +51,13 @@ public class DashboardOverviewService {
              WHERE julianday(charged_at)>=julianday(?)
                AND julianday(charged_at)<julianday(?)
             """, startInstant, endInstant);
+        Map<String,Object> recharges = jdbc.queryForMap("SELECT COALESCE(SUM(amount_cents),0) AS revenueCents FROM member_recharge_records WHERE julianday(charged_at)>=julianday(?) AND julianday(charged_at)<julianday(?)", startInstant, endInstant);
 
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("totalMembers", totalMembers);
         result.put("newMembersToday", newMembersToday);
-        result.put("wristbandsChargedToday", number(charges.get("chargeCount")));
-        result.put("revenueTodayCents", number(charges.get("revenueCents")));
+        result.put("wristbandsChargedToday", count("SELECT COUNT(*) FROM wristband_bindings WHERE julianday(bound_at)>=julianday(?) AND julianday(bound_at)<julianday(?)", startInstant, endInstant));
+        result.put("revenueTodayCents", number(charges.get("revenueCents")) + number(recharges.get("revenueCents")));
         result.put("periodStart", BOUNDARY_FORMAT.format(start));
         result.put("periodEnd", BOUNDARY_FORMAT.format(end));
         result.put("generatedAt", generatedAt.atZone(zoneId).toOffsetDateTime().toString());
