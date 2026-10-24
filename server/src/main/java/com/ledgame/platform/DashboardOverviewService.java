@@ -47,8 +47,10 @@ public class DashboardOverviewService {
             """, startInstant, endInstant);
         Map<String, Object> charges = jdbc.queryForMap("""
             SELECT COUNT(*) AS chargeCount, COALESCE(SUM(amount_cents), 0) AS revenueCents
-              FROM wristband_charge_records
-             WHERE julianday(charged_at)>=julianday(?)
+              FROM wristband_charge_records c
+             WHERE c.precharge_request_id IS NULL
+               AND NOT EXISTS (SELECT 1 FROM member_recharge_records r WHERE r.source_charge_id=c.id)
+               AND julianday(charged_at)>=julianday(?)
                AND julianday(charged_at)<julianday(?)
             """, startInstant, endInstant);
         Map<String,Object> recharges = jdbc.queryForMap("SELECT COALESCE(SUM(amount_cents),0) AS revenueCents FROM member_recharge_records WHERE julianday(charged_at)>=julianday(?) AND julianday(charged_at)<julianday(?)", startInstant, endInstant);

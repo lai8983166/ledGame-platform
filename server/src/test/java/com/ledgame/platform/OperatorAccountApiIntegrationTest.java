@@ -86,6 +86,7 @@ class OperatorAccountApiIntegrationTest {
 
     @BeforeEach
     void resetAccounts() {
+        jdbc.update("DELETE FROM member_recharge_records");
         jdbc.update("DELETE FROM operator_action_logs");
         jdbc.update("DELETE FROM game_play_records");
         jdbc.update("DELETE FROM wristband_bindings");

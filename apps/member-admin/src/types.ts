@@ -1,4 +1,4 @@
-export type PageId = "wristbands" | "overview" | "rooms" | "members" | "records" | "ranking" | "settings";
+export type PageId = "wristbands" | "precharges" | "overview" | "rooms" | "members" | "records" | "ranking" | "settings";
 
 export type StatusTone = "neutral" | "info" | "success" | "warning" | "danger" | "purple";
 

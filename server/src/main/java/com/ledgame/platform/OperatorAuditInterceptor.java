@@ -85,6 +85,9 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         if (method.equals("PUT") && path.matches("/api/members/\\d+")) return action("MEMBER_UPDATED", "MEMBER", segment(path, 3));
         if (method.equals("DELETE") && path.matches("/api/members/\\d+")) return action("MEMBER_DELETED", "MEMBER", segment(path, 3));
         if (method.equals("POST") && path.equals("/api/wristbands/charge")) return action("WRISTBAND_CHARGED", "WRISTBAND", null);
+        if (method.equals("POST") && path.equals("/api/wristband-precharges")) return action("WRISTBAND_PRECHARGE_PREPARED", "WRISTBAND_PRECHARGE", null);
+        if (method.equals("POST") && path.matches("/api/wristband-precharges/\\d+/edit")) return action("WRISTBAND_PRECHARGE_UPDATED", "WRISTBAND_PRECHARGE", segment(path,3));
+        if (method.equals("POST") && path.matches("/api/wristband-precharges/\\d+/cancel")) return action("WRISTBAND_PRECHARGE_CANCELLED", "WRISTBAND_PRECHARGE", segment(path,3));
         if (method.equals("POST") && path.equals("/api/wristbands/issue")) return action("WRISTBAND_ISSUED", "WRISTBAND_BINDING", null);
         if (method.equals("POST") && path.equals("/api/wristbands/return")) return action("WRISTBAND_RETURNED", "WRISTBAND_BINDING", null);
         if (method.equals("POST") && path.equals("/api/wristbands/clear")) return action("WRISTBAND_BALANCE_CLEARED", "WRISTBAND", null);

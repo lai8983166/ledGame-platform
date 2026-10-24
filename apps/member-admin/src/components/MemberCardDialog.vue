@@ -15,7 +15,8 @@ const step = ref<"member" | "scan" | "confirm">(props.action === "issue" ? "memb
 const phone = ref("");
 const name = ref("");
 const member = ref<{ id: number; name: string; phone: string; remainingSeconds?: number } | null>(null);
-const band = ref<{ uid: string; bindingId?: number; memberName?: string; phone?: string; remainingSeconds?: number; status?: string } | null>(null);
+const band = ref<{ uid: string; bindingId?: number; memberName?: string; phone?: string; remainingSeconds?: number; status?: string; durationMinutes?: number; prechargeId?: number; prechargeVersion?: number } | null>(null);
+const isPrecharged = computed(() => props.action === "issue" && band.value?.status === "CHARGED");
 const minutes = ref(0);
 const registrationNeeded = ref(false);
 const initialMinutes = ref(0);
@@ -28,7 +29,7 @@ let buffer = "";
 let lastKeyAt = 0;
 let closed = false;
 let revision = 0;
-let submitted: { uid: string; memberId: number; durationMinutes: number; requestId: string } | null = null;
+let submitted: { uid: string; memberId: number; durationMinutes: number; requestId: string; prechargeId?: number; prechargeVersion?: number } | null = null;
 const request = async <T,>(path: string, init?: RequestInit) => await platformApi.request<T>(`/api${path}`, init) as T;
 const balance = (seconds = 0) => `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
 
@@ -75,6 +76,7 @@ const scan = async (uid: string) => {
     if (props.action === "issue" && !["IN_STOCK", "CHARGED"].includes(found.status ?? "")) throw new Error("此手环已发卡，请先还卡");
     if (props.action === "return" && (!found.bindingId || !["READY", "ACTIVE", "EXPIRED"].includes(found.status ?? ""))) throw new Error("此手环没有待归还的绑定");
     band.value = found;
+    if (props.action === "issue" && found.status === "CHARGED") minutes.value = found.durationMinutes ?? 0;
     step.value = "confirm";
   } catch (cause) { if (!closed) error.value = cause instanceof Error ? cause.message : "手环读取失败"; }
   finally { busy.value = false; }
@@ -103,14 +105,18 @@ const confirm = async () => {
   try {
     let receipt: { returnedSeconds?: number; accountRemainingSeconds?: number };
     if (props.action === "issue") {
-      submitted ??= { uid: band.value.uid, memberId: member.value!.id, durationMinutes: minutes.value, requestId: crypto.randomUUID() };
+      submitted ??= { uid: band.value.uid, memberId: member.value!.id, durationMinutes: minutes.value, requestId: crypto.randomUUID(),
+        ...(isPrecharged.value ? { prechargeId: band.value.prechargeId, prechargeVersion: band.value.prechargeVersion } : {}) };
       receipt = await request("/wristbands/issue", { method: "POST", body: JSON.stringify(submitted) });
     } else {
       receipt = await request("/wristbands/return", { method: "POST", body: JSON.stringify({ uid: band.value.uid, bindingId: band.value.bindingId }) });
     }
     emit("done", receipt);
   } catch (cause) {
-    if (cause instanceof PlatformApiError && cause.status >= 400 && cause.status < 500) submitted = null;
+    if (cause instanceof PlatformApiError && cause.status >= 400 && cause.status < 500) {
+      submitted = null;
+      if (cause.code === "PRECHARGE_CHANGED") { band.value = null; step.value = "scan"; buffer = ""; }
+    }
     error.value = cause instanceof Error ? cause.message : "操作失败";
   }
   finally { busy.value = false; committing.value = false; }
@@ -143,8 +149,8 @@ onBeforeUnmount(() => { closed = true; revision++; window.removeEventListener("k
         <div><dt>{{ action === 'issue' ? '账户余额' : '本次剩余／退回账户' }}</dt><dd data-testid="card-balance">{{ balance(action === 'issue' ? member?.remainingSeconds : band.remainingSeconds) }}</dd></div>
       </dl>
       <template v-if="action === 'issue'">
-        <label class="form-field"><span>{{ text('memberAllocationMinutes') }}</span><input v-model.number="minutes" data-testid="card-minutes" type="number" min="1" max="1440" step="1" :disabled="busy || !!submitted" @keydown.enter="confirm" /></label>
-        <div class="card-quick-values"><button v-for="value in [30, 60]" :key="value" class="secondary-button" type="button" :disabled="busy || !!submitted" @click="minutes = value">{{ value }} 分钟</button></div>
+        <label class="form-field"><span>{{ text(isPrecharged ? 'prechargeMinutes' : 'memberAllocationMinutes') }}</span><input v-model.number="minutes" data-testid="card-minutes" type="number" min="1" max="1440" step="1" :disabled="busy || !!submitted || isPrecharged" @keydown.enter="confirm" /></label>
+        <div v-if="!isPrecharged" class="card-quick-values"><button v-for="value in [30, 60]" :key="value" class="secondary-button" type="button" :disabled="busy || !!submitted" @click="minutes = value">{{ value }} 分钟</button></div>
       </template>
     </div>
     <p v-if="error" class="form-error" data-testid="card-error">{{ error }}</p>

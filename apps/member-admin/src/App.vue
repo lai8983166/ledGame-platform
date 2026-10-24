@@ -7,6 +7,7 @@ import LeaderboardView from "./views/LeaderboardView.vue";
 import MembersView from "./views/MembersView.vue";
 import RecordsView from "./views/RecordsView.vue";
 import RoomsView from "./views/RoomsView.vue";
+import WristbandPrechargesView from "./views/WristbandPrechargesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import SecondaryLeaderboardView from "./views/SecondaryLeaderboardView.vue";
 import LoginView from "./views/LoginView.vue";
@@ -49,12 +50,14 @@ const navDefinitions: Array<{ id: PageId; labelKey: MemberAdminMessageKey; icon:
   { id: "rooms", labelKey: "navRooms", icon: "rooms" },
   { id: "overview", labelKey: "navOverview", icon: "overview" },
   { id: "members", labelKey: "navMembers", icon: "members" },
+  { id: "precharges", labelKey: "navPrecharges", icon: "card" },
   { id: "records", labelKey: "navRecords", icon: "records" },
   { id: "ranking", labelKey: "navRanking", icon: "ranking" },
   { id: "settings", labelKey: "navSettings", icon: "settings" },
 ];
 const descriptionKeys: Record<PageId, MemberAdminMessageKey> = {
   wristbands: "descWristbands",
+  precharges: "navPrecharges",
   overview: "descOverview",
   rooms: "descRooms",
   members: "descMembers",
@@ -217,7 +220,7 @@ onBeforeUnmount(() => {
           </button>
           <div>
             <h1>{{ currentMeta.title }}</h1>
-            <p v-if="activePage !== 'members' && activePage !== 'rooms'">{{ currentMeta.description }}</p>
+            <p v-if="!['members', 'rooms', 'precharges'].includes(activePage)">{{ currentMeta.description }}</p>
           </div>
         </div>
         <div class="topbar__actions">
@@ -269,6 +272,7 @@ onBeforeUnmount(() => {
         </section>
         <DashboardView v-else-if="activePage === 'overview'" :locale="locale" />
         <RoomsView v-else-if="activePage === 'rooms'" :locale="locale" @toast="showToast" />
+        <WristbandPrechargesView v-else-if="activePage === 'precharges'" :locale="locale" @toast="showToast" />
         <MembersView v-else-if="activePage === 'members'" :locale="locale" @toast="showToast" />
         <RecordsView v-else-if="activePage === 'records'" :locale="locale" />
         <LeaderboardView v-else-if="activePage === 'ranking'" :locale="locale" />

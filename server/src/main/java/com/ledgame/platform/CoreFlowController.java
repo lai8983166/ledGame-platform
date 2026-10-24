@@ -278,7 +278,8 @@ public class CoreFlowController {
                    c.operator_id AS operatorId, c.operator_username AS operatorUsername,
                    c.operator_display_name AS operatorDisplayName
               FROM wristband_charge_records c
-             WHERE c.member_id=?
+             WHERE c.member_id=? AND c.precharge_request_id IS NULL
+               AND NOT EXISTS (SELECT 1 FROM member_recharge_records r WHERE r.source_charge_id=c.id)
              ORDER BY c.charged_at DESC, c.id DESC
              LIMIT 100
             """, id);
@@ -356,14 +357,16 @@ public class CoreFlowController {
                    c.operator_display_name AS operatorDisplayName
               FROM wristband_charge_records c
               JOIN wristbands w ON w.id=c.wristband_id
+             WHERE c.precharge_request_id IS NULL
+               AND NOT EXISTS (SELECT 1 FROM member_recharge_records r WHERE r.source_charge_id=c.id)
             """;
-        if (uid != null) sql += " WHERE w.card_uid_lookup_hash=?";
+        if (uid != null) sql += " AND w.card_uid_lookup_hash=?";
         sql += " ORDER BY c.charged_at DESC, c.id DESC";
         List<Map<String, Object>> rows = uid == null ? jdbc.queryForList(sql)
                 : jdbc.queryForList(sql.replace("w.card_uid_lookup_hash=?", "(w.card_uid_lookup_hash=? OR (w.card_uid_lookup_hash IS NULL AND w.card_uid=?))"),
                         protectedData.wristbandLookupHash(normalizeUid(uid)), normalizeUid(uid));
         List<Map<String,Object>> result = new java.util.ArrayList<>(rows.stream().map(this::decryptChargeRow).toList());
-        if (uid == null) result.addAll(memberRecharges(null));
+        result.addAll(memberRecharges(null).stream().filter(row -> uid == null || normalizeUid(uid).equals(row.get("uid"))).toList());
         result.sort(java.util.Comparator.comparing(row -> String.valueOf(row.get("chargedAt")), java.util.Comparator.reverseOrder()));
         return result;
     }
@@ -371,11 +374,14 @@ public class CoreFlowController {
     private List<Map<String,Object>> memberRecharges(Long memberId) {
         String sql = """
             SELECT 'member-'||c.id AS id,c.member_id AS memberId,m.name AS memberName,m.phone,
-                   NULL AS uid,c.duration_minutes AS durationMinutes,NULL AS unitPriceCents,
-                   c.amount_cents AS amountCents,NULL AS issuedAt,c.charged_at AS chargedAt,
+                   s.wristband_uid AS uid,c.duration_minutes AS durationMinutes,
+                   CASE WHEN s.precharge_request_id IS NULL THEN s.unit_price_cents END AS unitPriceCents,
+                   c.amount_cents AS amountCents,s.issued_at AS issuedAt,c.charged_at AS chargedAt,
                    c.operator_id AS operatorId,c.operator_username AS operatorUsername,
-                   c.operator_display_name AS operatorDisplayName,c.operator_display_name AS operatorLabel
+                   c.operator_display_name AS operatorDisplayName,c.operator_display_name AS operatorLabel,
+                   c.source_charge_id AS sourceChargeId
               FROM member_recharge_records c JOIN members m ON m.id=c.member_id
+              LEFT JOIN wristband_charge_records s ON s.id=c.source_charge_id
             """;
         List<Map<String,Object>> rows = memberId == null ? jdbc.queryForList(sql)
                 : jdbc.queryForList(sql + " WHERE c.member_id=?", memberId);
@@ -383,6 +389,7 @@ public class CoreFlowController {
             Map<String,Object> value = new java.util.LinkedHashMap<>(row);
             decryptInto(value, "memberName", "members", "name");
             decryptInto(value, "phone", "members", "phone");
+            decryptInto(value, "uid", "wristband_charge_records", "wristband_uid");
             return value;
         }).toList();
     }
@@ -446,7 +453,8 @@ public class CoreFlowController {
         var operator = authorization.requireCapability(operatorId, OperatorCapability.WRISTBAND_MANAGE);
         if (request.memberId() == null) throw badRequest("缺少会员 ID");
         Map<String, Object> result = gameAccessService.issue(request.uid(), request.memberId(),
-                request.durationMinutes() == null ? 0 : request.durationMinutes(), request.requestId(), operator);
+                request.durationMinutes() == null ? 0 : request.durationMinutes(), request.requestId(), operator,
+                request.prechargeId(),request.prechargeVersion());
         httpRequest.setAttribute(OperatorAuditInterceptor.TARGET_ID_ATTRIBUTE, String.valueOf(result.get("bindingId")));
         return result;
     }
@@ -472,6 +480,7 @@ public class CoreFlowController {
         Map<String, Object> wristband = findWristband(uid);
         if (!String.valueOf(wristband.get("status")).equals("CHARGED")) throw conflict("只有未绑定的已充时手环可以清除可用余额");
         jdbc.update("UPDATE wristbands SET status='IN_STOCK', duration_minutes=NULL, charged_at=NULL, updated_at=? WHERE card_uid_lookup_hash=?", now(), protectedData.wristbandLookupHash(uid));
+        jdbc.update("UPDATE wristband_charge_records SET precharge_status='CANCELLED',precharge_version=precharge_version+1 WHERE precharge_status='PENDING' AND wristband_id=(SELECT id FROM wristbands WHERE card_uid_lookup_hash=?)",protectedData.wristbandLookupHash(uid));
         return findWristband(uid);
     }
 
@@ -602,7 +611,7 @@ public class CoreFlowController {
     }
 
     public record ChargeRequest(String uid, Integer durationMinutes) {}
-    public record IssueRequest(String uid, Long memberId, Integer durationMinutes, String requestId) {}
+    public record IssueRequest(String uid, Long memberId, Integer durationMinutes, String requestId, Long prechargeId, Integer prechargeVersion) {}
     public record ReturnRequest(String uid, Long bindingId) {}
     public record BindRequest(String uid, Long memberId) {}
     public record UidRequest(String uid) {}

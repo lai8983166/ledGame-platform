@@ -29,7 +29,7 @@ describe("合并会员发还卡界面", () => {
     expect(recharge).toContain('initialDurationMinutes: minutes.value');
     expect(recharge).toContain('amountCents: amount.value === "" ? null');
     expect(recharge).not.toContain('keydown", onKeydown');
-    expect(dialog).toContain("text('memberAllocationMinutes')");
+    expect(dialog).toContain("isPrecharged ? 'prechargeMinutes' : 'memberAllocationMinutes'");
     expect(dialog).toContain('props.presetMember');
     expect(kiosk).toContain('activationTimingStarted');
     expect(kiosk).not.toContain('Game time begins only after the first swipe');
@@ -64,5 +64,31 @@ describe("合并会员发还卡界面", () => {
     expect(members).toContain('data-testid="admin-member-edit"');
     expect(members).toContain('data-testid="admin-member-game-history-modal"');
     expect(kiosk).toContain("playerInfoState.info.account.remainingSeconds");
+  });
+});
+
+describe("手环预充值与账户领取", () => {
+  const precharges = read("./views/WristbandPrechargesView.vue");
+  it("独立页面保持精简，不恢复旧手环管理多入口", () => {
+    expect(app).toContain('{ id: "precharges", labelKey: "navPrecharges"');
+    expect(app).toContain('<WristbandPrechargesView');
+    for (const removed of ["window.confirm", "window.alert", "/wristbands/clear", "/wristbands/reclaim", "description="]) expect(precharges).not.toContain(removed);
+    for (const selector of ["precharge-start", "precharge-search", "precharge-status", "precharge-refresh", "precharge-edit", "precharge-cancel"]) expect(precharges).toContain(`data-testid="${selector}"`);
+  });
+  it("先设置时长再连续刷卡，只在等待时捕获数字回车，重试复用请求号", () => {
+    expect(precharges).toContain('if (!scanning.value || modal.value !== "prepare" || busy.value || submitted');
+    expect(precharges).toContain('event.key === "Enter"');
+    expect(precharges).toContain('if (!submitted)');
+    expect(precharges).toContain('requestId: crypto.randomUUID()');
+    expect(precharges).toContain('successCount.value++');
+    expect(precharges).toContain('window.removeEventListener("keydown", onKeydown)');
+    expect(precharges).toContain('version: selected.value.version');
+  });
+  it("柜台固定领取额度，带来源和版本，过期确认回到刷卡", () => {
+    expect(dialog).toContain('found.status === "CHARGED") minutes.value = found.durationMinutes');
+    expect(dialog).toContain('prechargeId: band.value.prechargeId, prechargeVersion: band.value.prechargeVersion');
+    expect(dialog).toContain('|| isPrecharged');
+    expect(dialog).toContain('cause.code === "PRECHARGE_CHANGED"');
+    expect(dialog).toContain('step.value = "scan"');
   });
 });

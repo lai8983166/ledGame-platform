@@ -80,6 +80,8 @@ class MemberTimeAccountMigrationTest {
             jdbc.update("UPDATE members SET time_balance_seconds=1234 WHERE id=2");
             var migration = new PlatformSchemaMigration(jdbc, Clock.fixed(now, ZoneOffset.UTC));
             migration.run(new DefaultApplicationArguments(new String[0]));
+            assertThat(jdbc.queryForList("PRAGMA table_info(wristband_charge_records)")).anyMatch(row->"precharge_request_id".equals(row.get("name")));
+            assertThat(jdbc.queryForList("PRAGMA table_info(member_recharge_records)")).anyMatch(row->"source_charge_id".equals(row.get("name")));
             assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=1", Long.class)).isZero();
             assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings WHERE member_id=1", Long.class)).isEqualTo(3000);
             assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=2", Long.class)).isEqualTo(1234);

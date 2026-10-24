@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GameAccessService {
     private static final String WRISTBAND_SQL = """
         SELECT w.id, w.card_uid AS uid, w.status, w.duration_minutes AS durationMinutes,
+               CASE WHEN w.status='CHARGED' THEN (SELECT MAX(c.id) FROM wristband_charge_records c WHERE c.wristband_id=w.id) END AS prechargeId,
+               CASE WHEN w.status='CHARGED' THEN (SELECT c.precharge_version FROM wristband_charge_records c WHERE c.wristband_id=w.id ORDER BY c.id DESC LIMIT 1) END AS prechargeVersion,
                w.charged_at AS chargedAt, b.id AS bindingId, b.member_id AS memberId,
                b.duration_minutes AS bindingDurationMinutes, b.bound_at AS boundAt,
                b.started_at AS startedAt, b.ended_at AS endedAt,
@@ -166,6 +168,12 @@ public class GameAccessService {
     @Transactional
     public Map<String, Object> issue(String rawUid, long memberId, int minutes, String requestId,
             OperatorAuthorizationService.AuthorizedOperator operator) {
+        return issue(rawUid,memberId,minutes,requestId,operator,null,null);
+    }
+
+    @Transactional
+    public Map<String, Object> issue(String rawUid, long memberId, int minutes, String requestId,
+            OperatorAuthorizationService.AuthorizedOperator operator, Long prechargeId, Integer prechargeVersion) {
         String uid = normalizeUid(rawUid);
         if (minutes < 1 || minutes > 1440) throw error(HttpStatus.BAD_REQUEST, "INVALID_DURATION", "本次发卡时长必须是 1 到 1440 的整数");
         validateRequestId(requestId);
@@ -177,6 +185,12 @@ public class GameAccessService {
                 throw error(HttpStatus.CONFLICT, "ISSUE_REQUEST_CONFLICT", "发卡请求内容已经变化，请重新办理");
             }
             return issueReceipt(uid, number(binding.get("id")), memberId, text(binding.get("status")));
+        }
+        if (prechargeId != null) {
+            var current = findRaw(uid);
+            if (!"CHARGED".equals(current.get("status")) || !prechargeId.equals(current.get("prechargeId") == null ? null : number(current.get("prechargeId")))
+                    || prechargeVersion == null || current.get("prechargeVersion")==null || prechargeVersion.intValue()!=((Number)current.get("prechargeVersion")).intValue())
+                throw WristbandPrechargeService.changed();
         }
         return bindAccount(uid, memberId, minutes, requestId, operator);
     }
@@ -207,17 +221,36 @@ public class GameAccessService {
         Map<String, Object> band = bands.get(0);
         if (!List.of("IN_STOCK", "CHARGED").contains(text(band.get("status")))) throw error(HttpStatus.CONFLICT, "WRISTBAND_ALREADY_BOUND", "此手环已绑定，请先还卡");
         long bandId = number(band.get("id"));
-        long pending = "CHARGED".equals(band.get("status")) ? number(band.get("duration_minutes")) * 60L : 0;
-        long available = number(memberAccount(memberId).get("remainingSeconds")) + pending;
+        if ("CHARGED".equals(band.get("status"))) {
+            if (minutes != ((Number)band.get("duration_minutes")).intValue()) throw WristbandPrechargeService.changed();
+            var source = jdbc.queryForMap("SELECT * FROM wristband_charge_records WHERE wristband_id=? ORDER BY id DESC LIMIT 1",bandId);
+            long sourceId = number(source.get("id"));
+            if (source.get("member_id")!=null || (source.get("precharge_status")!=null && !"PENDING".equals(source.get("precharge_status")))) throw WristbandPrechargeService.changed();
+            // Credit the member before allocating; both writes share the binding transaction.
+            jdbc.update("UPDATE members SET time_balance_seconds=time_balance_seconds+?,updated_at=? WHERE id=?",minutes*60L,now,memberId);
+            boolean legacy = source.get("precharge_request_id")==null;
+            jdbc.update("""
+                INSERT INTO member_recharge_records(member_id,duration_minutes,amount_cents,request_id,charged_at,
+                  operator_id,operator_username,operator_display_name,source_charge_id) VALUES (?,?,?,?,?,?,?,?,?)
+                """,memberId,minutes,legacy?source.get("amount_cents"):null,"precharge-"+sourceId,
+                    legacy?source.get("charged_at"):now,source.get("operator_id")==null?0:source.get("operator_id"),
+                    legacyOperator(source,"operator_username"),legacyOperator(source,"operator_display_name"),sourceId);
+            jdbc.update("UPDATE wristband_charge_records SET member_id=?,precharge_status='CLAIMED',precharge_version=precharge_version+1 WHERE id=?",memberId,sourceId);
+        }
+        long available = number(memberAccount(memberId).get("remainingSeconds"));
         long allocated = minutes * 60L;
         if (allocated <= 0 || allocated > available) throw error(HttpStatus.CONFLICT, "MEMBER_INSUFFICIENT_TIME", "会员余额不足，请先充值");
         jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL,updated_at=? WHERE id=?", available-allocated, now, memberId);
         jdbc.update("INSERT INTO wristband_bindings(wristband_id,member_id,status,duration_minutes,bound_at,started_at,allocated_seconds,issue_request_id,issued_credit_minutes,issued_by_operator_id) VALUES (?,?,'ACTIVE',?,?,?,?,?,?,?)",
                 bandId, memberId, minutes, now, now, allocated, requestId, minutes, operator == null ? null : operator.id());
         long bindingId = jdbc.queryForObject("SELECT last_insert_rowid()", Long.class);
-        if (pending > 0) jdbc.update("UPDATE wristband_charge_records SET member_id=? WHERE id=(SELECT MAX(id) FROM wristband_charge_records WHERE wristband_id=?) AND member_id IS NULL", memberId, bandId);
         jdbc.update("UPDATE wristbands SET status='ACTIVE',duration_minutes=NULL,charged_at=NULL,updated_at=? WHERE id=?", now, bandId);
         return getWristband(uid);
+    }
+
+    private String legacyOperator(Map<String,Object> source, String field) {
+        String value = protectedData.decryptField("wristband_charge_records",field,source.get(field));
+        return value == null ? "历史记录（未知）" : value;
     }
 
     private Map<String, Object> issueReceipt(String uid, long bindingId, long memberId, String status) {

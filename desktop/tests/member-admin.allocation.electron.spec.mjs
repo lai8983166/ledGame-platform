@@ -6,7 +6,7 @@ import path from 'node:path';
 import { prepareActivationLicense } from './activation-fixture.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
-test('打包实操：会员列表充值、部分分配、还卡退回及自助立即计时', async () => {
+test('打包实操：账户充值、连续预充值、柜台及自助领取、还卡退回', async () => {
   test.setTimeout(180_000);
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ledgame-allocation-'));
   const port = await new Promise(resolve => {
@@ -90,7 +90,56 @@ test('打包实操：会员列表充值、部分分配、还卡退回及自助�
     expect(history.charges).toHaveLength(2);
     expect(history.charges.some(record => record.amountCents===5000)).toBe(true);
 
-    await api('/api/wristbands/charge', 'POST', { uid:'2283055881', durationMinutes:30 });
+    // Prepare anonymous entitlements through the actual UI, without touching the member account.
+    await page.getByTestId('admin-nav-precharges').click();
+    await page.getByTestId('precharge-start').click();
+    await page.getByTestId('precharge-minutes').fill('60');
+    await page.getByTestId('precharge-begin-scan').click();
+    for (const uid of ['2283055882','2283055881','2283055883']) {
+      await page.keyboard.type(uid); await page.keyboard.press('Enter');
+      await expect(page.getByTestId('precharge-last-success')).toContainText(uid);
+    }
+    await page.keyboard.type('2283055882'); await page.keyboard.press('Enter');
+    await expect(page.getByTestId('precharge-error')).toContainText('此手环已预充值');
+    await page.getByTestId('precharge-close').click();
+    expect((await api('/api/members'))[0].remainingSeconds).toBe(afterReturn);
+    expect((await api('/api/members/'+member.id+'/history')).charges).toHaveLength(2);
+    expect((await api('/api/dashboard/overview')).revenueTodayCents).toBe(5000);
+    const editable = page.getByTestId('precharge-row-2283055883');
+    await editable.getByTestId('precharge-edit').click();
+    await page.getByTestId('precharge-minutes').fill('30');
+    await page.getByTestId('precharge-change-submit').click();
+    await expect(page.getByTestId('precharge-dialog')).toHaveCount(0);
+    await expect(editable).toContainText('30 分钟');
+    await editable.getByTestId('precharge-cancel').click();
+    await page.getByTestId('precharge-change-submit').click();
+    await expect(editable).toHaveCount(0);
+    await page.getByTestId('precharge-search').fill('2283055882');
+    await page.getByTestId('precharge-refresh').click();
+    await expect(page.locator('[data-testid^="precharge-row-"]')).toHaveCount(1);
+    await page.getByTestId('precharge-search').fill('');
+    await page.getByTestId('precharge-refresh').click();
+    await expect(page.locator('[data-testid^="precharge-row-"]')).toHaveCount(2);
+    await page.screenshot({path:test.info().outputPath('手环预充值-连续刷卡与待激活列表.png'),fullPage:true});
+    await page.getByTestId('admin-nav-members').click();
+    await row.getByTestId('admin-member-issue').click();
+    await page.keyboard.type('2283055882'); await page.keyboard.press('Enter');
+    await expect(page.getByTestId('card-minutes')).toHaveValue('60');
+    await expect(page.getByTestId('card-minutes')).toBeDisabled();
+    await page.getByTestId('card-submit').click();
+    await expect(page.getByTestId('card-confirmation')).toHaveCount(0);
+    expect((await api('/api/members'))[0].remainingSeconds).toBe(afterReturn);
+    const counterBand = await api('/api/wristbands/2283055882');
+    expect(counterBand.status).toBe('ACTIVE');
+    await page.getByTestId('admin-nav-rooms').click();
+    await page.getByTestId('admin-card-return').click();
+    await page.keyboard.type('2283055882'); await page.keyboard.press('Enter');
+    await expect(page.getByTestId('card-confirmation')).toBeVisible();
+    await page.getByTestId('card-submit').click();
+    await expect(page.getByTestId('card-confirmation')).toHaveCount(0);
+    const afterCounterReturn = (await api('/api/members'))[0].remainingSeconds;
+    expect(afterCounterReturn).toBeGreaterThan(afterReturn);
+    expect(afterCounterReturn).toBeLessThanOrEqual(afterReturn+3600);
     const kioskExe = path.join(root,'release/registration-kiosk/win-unpacked/LED Game 自助注册端.exe');
     kiosk = await electron.launch({ executablePath:kioskExe, cwd:path.dirname(kioskExe), env:{...env, LEDGAME_USER_DATA:path.join(directory,'kiosk')} });
     const operator = await kiosk.firstWindow();
@@ -111,8 +160,10 @@ test('打包实操：会员列表充值、部分分配、还卡退回及自助�
     await expect(customer.getByTestId('kiosk-screen-success')).toBeVisible();
     const activated = await api('/api/wristbands/2283055881');
     expect(activated.status).toBe('ACTIVE');
-    expect((await api('/api/members'))[0].remainingSeconds).toBe(afterReturn);
-    await expect.poll(async () => (await api('/api/wristbands/2283055881')).remainingSeconds).toBeLessThan(1800);
+    expect((await api('/api/members'))[0].remainingSeconds).toBe(afterCounterReturn);
+    await expect.poll(async () => (await api('/api/wristbands/2283055881')).remainingSeconds).toBeLessThan(3600);
+    expect((await api('/api/members/'+member.id+'/history')).charges).toHaveLength(4);
+    expect((await api('/api/dashboard/overview')).revenueTodayCents).toBe(5000);
     await customer.screenshot({path:test.info().outputPath('自助激活-立即计时.png')});
   } finally {
     if (kiosk) {

@@ -19,7 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 7;
+    public static final int CURRENT_SCHEMA_VERSION = 8;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
             "members", "wristbands", "wristband_charge_records", "wristband_bindings", "member_recharge_records",
             "game_play_records", "legacy_game_sessions", "room_settings", "store_feature_settings", "store_settings",
@@ -46,6 +46,7 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         migrateChargeAuditFields();
         migrateMemberTimeAccounts();
         migrateAllocatedTime();
+        migratePrecharges();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -292,6 +293,18 @@ public class PlatformSchemaMigration implements ApplicationRunner {
                 }
                 jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL WHERE id=?", available, member.get("id"));
             }
+        });
+    }
+
+    private void migratePrecharges() {
+        if (!tableExists("wristband_charge_records") || !tableExists("member_recharge_records")) return;
+        transactions.executeWithoutResult(status -> {
+            addColumnIfMissing("wristband_charge_records", "precharge_status", "TEXT");
+            addColumnIfMissing("wristband_charge_records", "precharge_request_id", "TEXT");
+            addColumnIfMissing("wristband_charge_records", "precharge_version", "INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing("member_recharge_records", "source_charge_id", "INTEGER");
+            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_precharge_request ON wristband_charge_records(precharge_request_id) WHERE precharge_request_id IS NOT NULL");
+            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_recharge_source ON member_recharge_records(source_charge_id) WHERE source_charge_id IS NOT NULL");
         });
     }
 

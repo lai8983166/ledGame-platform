@@ -131,6 +131,111 @@ class CoreFlowApiIntegrationTest {
     }
 
     @Test
+    void prechargePrepareRetryEditCancelAndStaleRequestsDoNotCreateRevenueOrMemberCredit() {
+        var payload = Map.of("uid", "2283055901", "durationMinutes", 60, "requestId", "precharge-prepare-1");
+        var prepared = post("/api/wristband-precharges", payload);
+        assertThat(prepared.getStatusCode()).isEqualTo(HttpStatus.OK);
+        long id = number(prepared.getBody().get("id"));
+        assertThat(post("/api/wristband-precharges", payload).getBody().get("id")).isEqualTo(prepared.getBody().get("id"));
+        assertError(post("/api/wristband-precharges", Map.of("uid", "2283055901", "durationMinutes", 60, "requestId", "duplicate-card")), HttpStatus.CONFLICT, "PRECHARGE_ALREADY_PENDING");
+        clock.advance(Duration.ofHours(2));
+        assertThat(number(get("/api/wristbands/2283055901").getBody().get("remainingSeconds"))).isEqualTo(3600);
+        assertThat(number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"))).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_recharge_records", Integer.class)).isZero();
+        assertThat(getList("/api/records/wristband-charges").getBody()).isEmpty();
+        assertThat(post("/api/wristband-precharges/"+id+"/edit", Map.of("version",0,"durationMinutes",30)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(post("/api/wristband-precharges/"+id+"/cancel", Map.of("version",0)), HttpStatus.CONFLICT,"PRECHARGE_CHANGED");
+        assertThat(post("/api/wristband-precharges/"+id+"/cancel", Map.of("version",1)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(get("/api/wristbands/2283055901").getBody()).containsEntry("status","IN_STOCK");
+        assertThat(post("/api/wristband-precharges", Map.of("uid","2283055901","durationMinutes",90,"requestId","new-card-cycle")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(post("/api/wristband-precharges/"+id+"/cancel", Map.of("version",1)),HttpStatus.CONFLICT,"PRECHARGE_CHANGED");
+        assertThat(number(get("/api/wristbands/2283055901").getBody().get("durationMinutes"))).isEqualTo(90);
+        assertThat(http.postForEntity("/api/wristband-precharges", payload, Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(http.getForEntity("/api/wristband-precharges", Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_action_logs WHERE action='WRISTBAND_PRECHARGE_CANCELLED' AND target_id=?",Integer.class,String.valueOf(id))).isEqualTo(1);
+        // Compatibility callers clearing a new precharge must also retire its pending record.
+        assertThat(post("/api/wristbands/clear",Map.of("uid","2283055901")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getList("/api/wristband-precharges?status=PENDING").getBody()).isEmpty();
+    }
+
+    @Test
+    void prechargeClaimCreditsMemberThenAllocatesOnceAndReturnRefundsOnlyRemainder() {
+        long member = number(post("/api/members",Map.of("name","预充值领取","phone","13800138901")).getBody().get("id"));
+        post("/api/members/"+member+"/recharge",Map.of("durationMinutes",40,"requestId","original-account","amountCents",2000));
+        long id = number(post("/api/wristband-precharges",Map.of("uid","2283055902","durationMinutes",60,"requestId","claim-source")).getBody().get("id"));
+        var claim = post("/api/wristbands/bind",Map.of("uid","2283055902","memberId",member));
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(claim.getBody()).containsEntry("status","ACTIVE");
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isEqualTo(2400);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_recharge_records WHERE source_charge_id=?",Integer.class,id)).isEqualTo(1);
+        assertError(post("/api/wristbands/bind",Map.of("uid","2283055902","memberId",member)),HttpStatus.CONFLICT,"WRISTBAND_ALREADY_BOUND");
+        assertError(post("/api/wristband-precharges/"+id+"/edit",Map.of("version",0,"durationMinutes",30)),HttpStatus.CONFLICT,"PRECHARGE_CHANGED");
+        assertThat(maps(get("/api/members/"+member+"/history").getBody().get("charges"))).hasSize(2);
+        assertThat(getList("/api/records/wristband-charges?uid=2283055902").getBody()).hasSize(1);
+        assertThat(number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"))).isEqualTo(2000);
+        clock.advance(Duration.ofMinutes(20));
+        var receipt = post("/api/wristbands/return",Map.of("uid","2283055902","bindingId",claim.getBody().get("bindingId")));
+        assertThat(number(receipt.getBody().get("accountRemainingSeconds"))).isEqualTo(4800);
+        assertThat(get("/api/wristbands/2283055902").getBody()).containsEntry("status","IN_STOCK");
+        String csv = http.exchange("/api/exports/wristband-charges.csv",HttpMethod.GET,new HttpEntity<>(operatorHeaders()),String.class).getBody();
+        assertThat(csv).contains("2283055902");
+        assertThat(csv.lines().filter(line->line.contains("2283055902"))).hasSize(1);
+    }
+
+    @Test
+    void prechargeClaimRollsBackAndCounterUsesExactCurrentPrecharge() {
+        long member = number(post("/api/members",Map.of("name","预充值原子性","phone","13800138902")).getBody().get("id"));
+        var prepared = post("/api/wristband-precharges",Map.of("uid","2283055903","durationMinutes",60,"requestId","claim-rollback")).getBody();
+        long id = number(prepared.get("id"));
+        jdbc.execute("CREATE TRIGGER reject_precharge_binding BEFORE INSERT ON wristband_bindings BEGIN SELECT RAISE(ABORT,'test rollback'); END");
+        try {
+            assertThat(post("/api/wristbands/bind",Map.of("uid","2283055903","memberId",member)).getStatusCode().is5xxServerError()).isTrue();
+        } finally { jdbc.execute("DROP TRIGGER reject_precharge_binding"); }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_recharge_records",Integer.class)).isZero();
+        assertThat(get("/api/wristbands/2283055903").getBody()).containsEntry("status","CHARGED");
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isZero();
+        post("/api/wristband-precharges/"+id+"/edit",Map.of("version",0,"durationMinutes",30));
+        assertError(post("/api/wristbands/issue",Map.of("uid","2283055903","memberId",member,"durationMinutes",60,"requestId","counter-claim","prechargeId",id,"prechargeVersion",0)),HttpStatus.CONFLICT,"PRECHARGE_CHANGED");
+        var body = Map.of("uid","2283055903","memberId",member,"durationMinutes",30,"requestId","counter-claim-current","prechargeId",id,"prechargeVersion",1);
+        assertThat(post("/api/wristbands/issue",body).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(post("/api/wristbands/issue",body).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_recharge_records",Integer.class)).isEqualTo(1);
+        var second = post("/api/wristband-precharges",Map.of("uid","2283055904","durationMinutes",30,"requestId","second-member-card"));
+        assertError(post("/api/wristbands/bind",Map.of("uid","2283055904","memberId",member)),HttpStatus.CONFLICT,"MEMBER_HAS_WRISTBAND");
+        assertThat(get("/api/wristbands/2283055904").getBody()).containsEntry("status","CHARGED");
+    }
+
+    @Test
+    void prechargeParallelPreparationAndClaimsCannotDuplicateCredit() {
+        long member=number(post("/api/members",Map.of("name","并发领取","phone","13800138903")).getBody().get("id"));
+        var prepare=Map.of("uid","2283055905","durationMinutes",60,"requestId","parallel-precharge");
+        var preparations=java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post("/api/wristband-precharges",prepare))).toList();
+        preparations.forEach(result->assertThat(result.join().getStatusCode()).isEqualTo(HttpStatus.OK));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM wristband_charge_records",Integer.class)).isEqualTo(1);
+        var claims=java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post("/api/wristbands/bind",Map.of("uid","2283055905","memberId",member)))).toList();
+        assertThat(claims.stream().map(result->result.join().getStatusCode()).filter(HttpStatus.OK::equals)).hasSize(1);
+        claims.forEach(result->assertThat(result.join().getStatusCode()).isIn(HttpStatus.OK,HttpStatus.CONFLICT));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_recharge_records",Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT SUM(allocated_seconds) FROM wristband_bindings",Long.class)).isEqualTo(3600);
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isZero();
+        assertError(post("/api/wristband-precharges",Map.of("uid","2283055905","durationMinutes",60,"requestId","active-precharge")),HttpStatus.CONFLICT,"WRISTBAND_ALREADY_BOUND");
+        assertError(post("/api/wristband-precharges",Map.of("uid","2283055999","durationMinutes",0,"requestId","bad-duration")),HttpStatus.BAD_REQUEST,"INVALID_DURATION");
+    }
+
+    @Test
+    void legacyPrechargeClaimKeepsOriginalRevenueAndNewPreparationDoesNotChargeAutomatically() {
+        long member=number(post("/api/members",Map.of("name","历史预置","phone","13800138904")).getBody().get("id"));
+        post("/api/wristbands/charge",Map.of("uid","2283055906","durationMinutes",60));
+        assertThat(number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"))).isEqualTo(6000);
+        var legacy=getList("/api/wristband-precharges?status=PENDING").getBody().get(0);
+        post("/api/wristband-precharges/"+legacy.get("id")+"/edit",Map.of("version",0,"durationMinutes",30));
+        assertThat(post("/api/wristbands/bind",Map.of("uid","2283055906","memberId",member)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"))).isEqualTo(6000);
+        assertThat(getList("/api/records/wristband-charges").getBody()).singleElement().satisfies(record->assertThat(number(record.get("amountCents"))).isEqualTo(6000));
+        assertThat(maps(get("/api/members/"+member+"/history").getBody().get("charges"))).hasSize(1);
+    }
+
+    @Test
     void rechargeAuthorizationValidationConcurrentRetriesAndInitialCreditRollback() {
         long member = number(post("/api/members", Map.of("name", "充值边界", "phone", "13800138884")).getBody().get("id"));
         Map<String,Object> credit = Map.of("durationMinutes", 100, "requestId", "parallel-credit");

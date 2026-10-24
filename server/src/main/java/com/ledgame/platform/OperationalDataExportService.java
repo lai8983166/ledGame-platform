@@ -53,13 +53,17 @@ public class OperationalDataExportService {
     @Transactional(readOnly = true)
     public byte[] wristbandCharges() {
         return queryCsv("""
-            SELECT id, wristband_uid, duration_minutes, unit_price_cents, amount_cents,
-                   issued_at, charged_at, operator_id, operator_username, operator_display_name,member_id
-              FROM wristband_charge_records
+            SELECT c.id,c.wristband_uid,c.duration_minutes,c.unit_price_cents,c.amount_cents,
+                   c.issued_at,c.charged_at,c.operator_id,c.operator_username,c.operator_display_name,c.member_id
+              FROM wristband_charge_records c
+             WHERE c.precharge_request_id IS NULL
+               AND NOT EXISTS (SELECT 1 FROM member_recharge_records r WHERE r.source_charge_id=c.id)
             UNION ALL
-            SELECT 'member-'||id,NULL,duration_minutes,NULL,amount_cents,NULL,charged_at,
-                   operator_id,operator_username,operator_display_name,member_id
-              FROM member_recharge_records
+            SELECT 'member-'||r.id,s.wristband_uid,r.duration_minutes,
+                   CASE WHEN s.precharge_request_id IS NULL THEN s.unit_price_cents END,
+                   r.amount_cents,s.issued_at,r.charged_at,
+                   r.operator_id,r.operator_username,r.operator_display_name,r.member_id
+              FROM member_recharge_records r LEFT JOIN wristband_charge_records s ON s.id=r.source_charge_id
              ORDER BY charged_at DESC
             """, List.of("交易ID", "手环UID", "充值分钟", "每分钟单价（分）", "交易金额（分）", "发卡时间", "充值时间", "操作员ID", "操作员账号", "操作员名称", "会员ID"),
                 row -> {

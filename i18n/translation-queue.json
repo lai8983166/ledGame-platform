@@ -477,6 +477,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -527,6 +531,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -1083,6 +1191,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -1133,6 +1245,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -1689,6 +1905,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -1739,6 +1959,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -2295,6 +2619,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -2345,6 +2673,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -2901,6 +3333,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -2951,6 +3387,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -3507,6 +4047,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -3557,6 +4101,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -4113,6 +4761,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -4163,6 +4815,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -4719,6 +5475,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -4769,6 +5529,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -5325,6 +6189,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -5375,6 +6243,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -5931,6 +6903,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -5981,6 +6957,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -6537,6 +7617,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -6587,6 +7671,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
@@ -7143,6 +8331,10 @@
             "source": "Submitting…",
             "translation": ""
           },
+          "navPrecharges": {
+            "source": "Wristband precharge",
+            "translation": ""
+          },
           "openNavigation": {
             "source": "Open navigation",
             "translation": ""
@@ -7193,6 +8385,110 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "prechargeActions": {
+            "source": "Actions",
+            "translation": ""
+          },
+          "prechargeAll": {
+            "source": "All statuses",
+            "translation": ""
+          },
+          "prechargeBeginScan": {
+            "source": "Start scanning",
+            "translation": ""
+          },
+          "prechargeCancel": {
+            "source": "Cancel precharge",
+            "translation": ""
+          },
+          "prechargeCancelConfirm": {
+            "source": "Cancel the precharge for",
+            "translation": ""
+          },
+          "prechargeCancelSuccess": {
+            "source": "Precharge cancelled",
+            "translation": ""
+          },
+          "prechargeCancelled": {
+            "source": "Cancelled",
+            "translation": ""
+          },
+          "prechargeClaimed": {
+            "source": "Activated",
+            "translation": ""
+          },
+          "prechargeConfirm": {
+            "source": "Confirm",
+            "translation": ""
+          },
+          "prechargeEdit": {
+            "source": "Edit precharge",
+            "translation": ""
+          },
+          "prechargeEmpty": {
+            "source": "No matching precharges",
+            "translation": ""
+          },
+          "prechargeFinish": {
+            "source": "Finish",
+            "translation": ""
+          },
+          "prechargeInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "prechargeLoadFailed": {
+            "source": "Could not load precharges. Please retry.",
+            "translation": ""
+          },
+          "prechargeLoading": {
+            "source": "Loading…",
+            "translation": ""
+          },
+          "prechargeMinutes": {
+            "source": "Precharged minutes",
+            "translation": ""
+          },
+          "prechargeMinutesUnit": {
+            "source": "min",
+            "translation": ""
+          },
+          "prechargeOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "prechargePending": {
+            "source": "Awaiting activation",
+            "translation": ""
+          },
+          "prechargePreparedAt": {
+            "source": "Prepared at",
+            "translation": ""
+          },
+          "prechargePreparedCount": {
+            "source": "Prepared:",
+            "translation": ""
+          },
+          "prechargeRetry": {
+            "source": "Retry",
+            "translation": ""
+          },
+          "prechargeSaved": {
+            "source": "Precharge updated",
+            "translation": ""
+          },
+          "prechargeScan": {
+            "source": "Please scan a wristband",
+            "translation": ""
+          },
+          "prechargeStatus": {
+            "source": "Status",
+            "translation": ""
+          },
+          "prechargeSubmitFailed": {
+            "source": "Operation failed. Please retry.",
             "translation": ""
           },
           "rank": {
