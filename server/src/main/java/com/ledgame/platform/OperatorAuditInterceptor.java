@@ -82,6 +82,7 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         if (method.equals("DELETE") && path.matches("/api/operator-accounts/\\d+")) return action("ACCOUNT_DELETED", "OPERATOR_ACCOUNT", segment(path, 3));
         if (method.equals("POST") && path.equals("/api/members")) return action("MEMBER_CREATED", "MEMBER", null);
         if (method.equals("POST") && path.matches("/api/members/\\d+/recharge")) return action("MEMBER_RECHARGED", "MEMBER", segment(path, 3));
+        if (method.equals("POST") && path.matches("/api/members/\\d+/time-adjustments")) return action("MEMBER_TIME_ADJUSTED", "MEMBER", segment(path,3));
         if (method.equals("PUT") && path.matches("/api/members/\\d+")) return action("MEMBER_UPDATED", "MEMBER", segment(path, 3));
         if (method.equals("DELETE") && path.matches("/api/members/\\d+")) return action("MEMBER_DELETED", "MEMBER", segment(path, 3));
         if (method.equals("POST") && path.equals("/api/wristbands/charge")) return action("WRISTBAND_CHARGED", "WRISTBAND", null);

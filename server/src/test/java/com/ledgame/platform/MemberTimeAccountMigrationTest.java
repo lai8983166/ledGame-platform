@@ -70,6 +70,23 @@ class MemberTimeAccountMigrationTest {
     }
 
     @Test
+    void addsAdjustmentTableWithoutChangingAccountsAndTracksBackupRevision() throws Exception {
+        Path path=Files.createTempFile("time-adjustment-migration-", ".db");
+        try {
+            var jdbc=oldDatabase(path);
+            var migration=new PlatformSchemaMigration(jdbc,Clock.fixed(now,ZoneOffset.UTC));
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            long before=jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=2",Long.class);
+            long revision=jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1",Long.class);
+            jdbc.update("INSERT INTO member_time_adjustments(member_id,request_id,delta_seconds,before_seconds,after_seconds,reason,adjusted_at,operator_id,operator_username,operator_display_name) VALUES (2,'migration-test',60,0,60,'测试',?,1,'test','测试操作员')",now.toString());
+            assertThat(jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1",Long.class)).isEqualTo(revision+1);
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_time_adjustments",Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT time_balance_seconds FROM members WHERE id=2",Long.class)).isEqualTo(before);
+        } finally { Files.deleteIfExists(path); }
+    }
+
+    @Test
     void upgradesSharedAccountToAllocationAndKeepsUnboundAccountWithoutDoubleCredit() throws Exception {
         Path path = Files.createTempFile("allocated-account-upgrade-", ".db");
         try {

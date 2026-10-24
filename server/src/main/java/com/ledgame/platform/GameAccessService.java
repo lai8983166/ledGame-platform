@@ -161,6 +161,45 @@ public class GameAccessService {
         return memberAccount(memberId);
     }
 
+    @Transactional
+    public Map<String,Object> adjustTime(long memberId, String direction, java.math.BigDecimal rawMinutes,
+            String rawReason, String requestId, OperatorAuthorizationService.AuthorizedOperator operator) {
+        if (!"ADD".equals(direction) && !"DEDUCT".equals(direction))
+            throw error(HttpStatus.BAD_REQUEST,"INVALID_ADJUSTMENT_DIRECTION","请选择增加或扣减");
+        if (rawMinutes==null || rawMinutes.stripTrailingZeros().scale()>0 || rawMinutes.compareTo(java.math.BigDecimal.ONE)<0 || rawMinutes.compareTo(java.math.BigDecimal.valueOf(1440))>0)
+            throw error(HttpStatus.BAD_REQUEST,"INVALID_DURATION","调整分钟数必须是 1 到 1440 的整数");
+        String reason=rawReason==null?"":rawReason.strip();
+        if (reason.isBlank() || reason.length()>500) throw error(HttpStatus.BAD_REQUEST,"INVALID_ADJUSTMENT_REASON","请填写调整原因（最多 500 字）");
+        validateRequestId(requestId);
+        long delta=rawMinutes.longValueExact()*60L*("ADD".equals(direction)?1:-1);
+        var previous=jdbc.queryForList("SELECT id,member_id,delta_seconds,reason FROM member_time_adjustments WHERE request_id=?",requestId);
+        if (!previous.isEmpty()) {
+            var saved=previous.get(0);
+            if (number(saved.get("member_id"))!=memberId || number(saved.get("delta_seconds"))!=delta || !reason.equals(saved.get("reason")))
+                throw error(HttpStatus.CONFLICT,"ADJUSTMENT_REQUEST_CONFLICT","调整请求内容已变化，请重新办理");
+            return adjustmentReceipt(number(saved.get("id")));
+        }
+        if (jdbc.queryForList("SELECT id FROM members WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL",memberId).isEmpty())
+            throw error(HttpStatus.NOT_FOUND,"MEMBER_NOT_FOUND","会员不存在或已停用");
+        int changed=jdbc.update("UPDATE members SET time_balance_seconds=time_balance_seconds+?,updated_at=? WHERE id=? AND time_balance_seconds+?>=0",delta,now(),memberId,delta);
+        if (changed!=1) throw error(HttpStatus.CONFLICT,"MEMBER_INSUFFICIENT_TIME","未分配账户余额不足，不能扣减");
+        long after=number(memberAccount(memberId).get("remainingSeconds"));
+        jdbc.update("""
+            INSERT INTO member_time_adjustments(member_id,request_id,delta_seconds,before_seconds,after_seconds,
+              reason,adjusted_at,operator_id,operator_username,operator_display_name) VALUES (?,?,?,?,?,?,?,?,?,?)
+            """,memberId,requestId,delta,after-delta,after,reason,now(),operator.id(),operator.username(),operator.displayName());
+        return adjustmentReceipt(jdbc.queryForObject("SELECT last_insert_rowid()",Long.class));
+    }
+
+    private Map<String,Object> adjustmentReceipt(long id) {
+        return jdbc.queryForMap("""
+            SELECT id,member_id AS memberId,delta_seconds AS deltaSeconds,before_seconds AS beforeSeconds,
+                   after_seconds AS afterSeconds,reason,adjusted_at AS adjustedAt,operator_id AS operatorId,
+                   operator_username AS operatorUsername,operator_display_name AS operatorLabel
+              FROM member_time_adjustments WHERE id=?
+            """,id);
+    }
+
     private static void validateRequestId(String requestId) {
         if (requestId == null || !requestId.matches("[A-Za-z0-9_-]{1,100}")) throw error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST_ID", "请求无效，请重新打开办理窗口");
     }

@@ -140,6 +140,13 @@ public class CoreFlowController {
         return gameAccessService.recharge(id, request.durationMinutes() == null ? 0 : request.durationMinutes(), request.amountCents(), request.requestId(), operator);
     }
 
+    @PostMapping("/members/{id}/time-adjustments")
+    public Map<String,Object> adjustMemberTime(@PathVariable long id,@RequestBody MemberTimeAdjustmentRequest request,
+            @RequestHeader(value="X-Operator-Id",required=false) Long operatorId) {
+        var operator=authorization.requireCapability(operatorId,OperatorCapability.MEMBER_MANAGE);
+        return gameAccessService.adjustTime(id,request.direction(),request.durationMinutes(),request.reason(),request.requestId(),operator);
+    }
+
     @GetMapping("/members/{id}/avatar")
     public ResponseEntity<byte[]> readMemberAvatar(@PathVariable Long id) {
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT avatar_id FROM members WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL", id);
@@ -304,6 +311,12 @@ public class CoreFlowController {
         charges.sort(java.util.Comparator.comparing(row -> String.valueOf(row.get("chargedAt")), java.util.Comparator.reverseOrder()));
         response.put("charges", charges);
         response.put("plays", playRows.stream().map(this::decryptMemberPlayRow).toList());
+        response.put("adjustments",jdbc.queryForList("""
+            SELECT id,delta_seconds AS deltaSeconds,before_seconds AS beforeSeconds,after_seconds AS afterSeconds,
+                   reason,adjusted_at AS adjustedAt,operator_id AS operatorId,
+                   operator_username AS operatorUsername,operator_display_name AS operatorLabel
+              FROM member_time_adjustments WHERE member_id=? ORDER BY id DESC LIMIT 100
+            """,id));
         return response;
     }
 
@@ -618,6 +631,7 @@ public class CoreFlowController {
     public record MemberRequest(String phone, String name, String avatarId, String birthday, String gender, String createdBy,
             String avatarImageBase64, String avatarImageMimeType, Integer initialDurationMinutes, Long amountCents, String requestId) {}
     public record MemberRechargeRequest(Integer durationMinutes, Long amountCents, String requestId) {}
+    public record MemberTimeAdjustmentRequest(String direction,java.math.BigDecimal durationMinutes,String reason,String requestId) {}
     public record MemberUpdateRequest(String phone, String name, String avatarId, String birthday, String gender,
             String avatarImageBase64, String avatarImageMimeType) {}
 }

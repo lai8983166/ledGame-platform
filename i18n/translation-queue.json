@@ -361,6 +361,90 @@
             "source": "Account balance",
             "translation": ""
           },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
+            "translation": ""
+          },
           "memberAllocatedRemaining": {
             "source": "Current card remaining",
             "translation": ""
@@ -1073,6 +1157,90 @@
           },
           "memberAccountBalance": {
             "source": "Account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
             "translation": ""
           },
           "memberAllocatedRemaining": {
@@ -1789,6 +1957,90 @@
             "source": "Account balance",
             "translation": ""
           },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
+            "translation": ""
+          },
           "memberAllocatedRemaining": {
             "source": "Current card remaining",
             "translation": ""
@@ -2501,6 +2753,90 @@
           },
           "memberAccountBalance": {
             "source": "Account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
             "translation": ""
           },
           "memberAllocatedRemaining": {
@@ -3217,6 +3553,90 @@
             "source": "Account balance",
             "translation": ""
           },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
+            "translation": ""
+          },
           "memberAllocatedRemaining": {
             "source": "Current card remaining",
             "translation": ""
@@ -3929,6 +4349,90 @@
           },
           "memberAccountBalance": {
             "source": "Account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
             "translation": ""
           },
           "memberAllocatedRemaining": {
@@ -4645,6 +5149,90 @@
             "source": "Account balance",
             "translation": ""
           },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
+            "translation": ""
+          },
           "memberAllocatedRemaining": {
             "source": "Current card remaining",
             "translation": ""
@@ -5357,6 +5945,90 @@
           },
           "memberAccountBalance": {
             "source": "Account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
             "translation": ""
           },
           "memberAllocatedRemaining": {
@@ -6073,6 +6745,90 @@
             "source": "Account balance",
             "translation": ""
           },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
+            "translation": ""
+          },
           "memberAllocatedRemaining": {
             "source": "Current card remaining",
             "translation": ""
@@ -6785,6 +7541,90 @@
           },
           "memberAccountBalance": {
             "source": "Account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
             "translation": ""
           },
           "memberAllocatedRemaining": {
@@ -7501,6 +8341,90 @@
             "source": "Account balance",
             "translation": ""
           },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
+            "translation": ""
+          },
           "memberAllocatedRemaining": {
             "source": "Current card remaining",
             "translation": ""
@@ -8213,6 +9137,90 @@
           },
           "memberAccountBalance": {
             "source": "Account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAccount": {
+            "source": "Unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentAction": {
+            "source": "Adjust",
+            "translation": ""
+          },
+          "memberAdjustmentAdd": {
+            "source": "Add",
+            "translation": ""
+          },
+          "memberAdjustmentAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "memberAdjustmentBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "memberAdjustmentConfirm": {
+            "source": "Confirm adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentDeduct": {
+            "source": "Deduct",
+            "translation": ""
+          },
+          "memberAdjustmentDirection": {
+            "source": "Adjustment",
+            "translation": ""
+          },
+          "memberAdjustmentExpected": {
+            "source": "Expected account balance",
+            "translation": ""
+          },
+          "memberAdjustmentFailed": {
+            "source": "Adjustment failed. Please retry.",
+            "translation": ""
+          },
+          "memberAdjustmentHistory": {
+            "source": "Adjustment records",
+            "translation": ""
+          },
+          "memberAdjustmentInsufficient": {
+            "source": "Insufficient unallocated account balance",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidMinutes": {
+            "source": "Enter a whole number of minutes between 1 and 1440",
+            "translation": ""
+          },
+          "memberAdjustmentInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "memberAdjustmentMinutes": {
+            "source": "Minutes",
+            "translation": ""
+          },
+          "memberAdjustmentOperator": {
+            "source": "Operator",
+            "translation": ""
+          },
+          "memberAdjustmentReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "memberAdjustmentSaved": {
+            "source": "Account time adjusted",
+            "translation": ""
+          },
+          "memberAdjustmentSeconds": {
+            "source": "sec",
+            "translation": ""
+          },
+          "memberAdjustmentTime": {
+            "source": "Time",
+            "translation": ""
+          },
+          "memberAdjustmentTitle": {
+            "source": "Adjust account time",
             "translation": ""
           },
           "memberAllocatedRemaining": {

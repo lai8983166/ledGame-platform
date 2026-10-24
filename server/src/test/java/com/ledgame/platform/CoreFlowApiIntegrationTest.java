@@ -109,6 +109,7 @@ class CoreFlowApiIntegrationTest {
                 "SELECT id FROM operator_accounts WHERE account_type='FACTORY_ADMIN'", Long.class);
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
         jdbc.update("DELETE FROM member_recharge_records");
+        jdbc.update("DELETE FROM member_time_adjustments");
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM legacy_game_sessions");
         jdbc.update("DELETE FROM game_play_records");
@@ -128,6 +129,73 @@ class CoreFlowApiIntegrationTest {
             String fileName = path.getFileName().toString();
             avatarStorage.delete("uploaded:" + fileName.substring(0, fileName.length() - 4));
         });
+    }
+
+    @Test
+    void manualTimeAdjustmentsPreserveActiveCardRevenueAndHaveAuditableHistory() {
+        long member=number(post("/api/members",Map.of("name","补偿会员","phone","13800138910")).getBody().get("id"));
+        post("/api/members/"+member+"/recharge",Map.of("durationMinutes",100,"amountCents",5000,"requestId","adjust-original"));
+        var band=post("/api/wristbands/issue",Map.of("uid","2283055910","memberId",member,"durationMinutes",60,"requestId","adjust-card")).getBody();
+        var beforeBand=get("/api/wristbands/2283055910").getBody();
+        var payload=Map.of("direction","ADD","durationMinutes",50,"reason","异常多扣补偿","requestId","adjust-add");
+        var added=post("/api/members/"+member+"/time-adjustments",payload);
+        assertThat(added.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(added.getBody().get("beforeSeconds"))).isEqualTo(2400);
+        assertThat(number(added.getBody().get("afterSeconds"))).isEqualTo(5400);
+        assertThat(post("/api/members/"+member+"/time-adjustments",payload).getBody()).isEqualTo(added.getBody());
+        var deducted=post("/api/members/"+member+"/time-adjustments",Map.of("direction","DEDUCT","durationMinutes",20,"reason","误加额度纠正","requestId","adjust-deduct"));
+        assertThat(number(deducted.getBody().get("afterSeconds"))).isEqualTo(4200);
+        assertThat(post("/api/members/"+member+"/time-adjustments",payload).getBody()).isEqualTo(added.getBody());
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isEqualTo(4200);
+        var afterBand=get("/api/wristbands/2283055910").getBody();
+        assertThat(afterBand).containsEntry("startedAt",beforeBand.get("startedAt")).containsEntry("allocatedSeconds",beforeBand.get("allocatedSeconds")).containsEntry("bindingId",band.get("bindingId"));
+        assertThat(number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"))).isEqualTo(5000);
+        assertThat(maps(get("/api/members/"+member+"/history").getBody().get("charges"))).hasSize(1);
+        var records=maps(get("/api/members/"+member+"/history").getBody().get("adjustments"));
+        assertThat(records).hasSize(2);
+        assertThat(records).anySatisfy(row->{
+            assertThat(row).containsEntry("reason","异常多扣补偿").containsEntry("deltaSeconds",3000);
+            assertThat(number(row.get("operatorId"))).isEqualTo(factoryOperatorId);
+        });
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_action_logs WHERE action='MEMBER_TIME_ADJUSTED' AND target_id=?",Integer.class,String.valueOf(member))).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    void adjustmentValidationPermissionsConflictAndRollbackAreSafe() {
+        long member=number(post("/api/members",Map.of("name","补偿边界","phone","13800138911")).getBody().get("id"));
+        String route="/api/members/"+member+"/time-adjustments";
+        var body=Map.of("direction","ADD","durationMinutes",10,"reason","补偿","requestId","adjust-boundary");
+        assertThat(http.postForEntity(route,body,Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertError(post(route,Map.of("direction","ADD","durationMinutes",10,"reason","  ","requestId","empty-reason")),HttpStatus.BAD_REQUEST,"INVALID_ADJUSTMENT_REASON");
+        assertError(post(route,Map.of("direction","ADD","durationMinutes",10,"reason","测".repeat(501),"requestId","long-reason")),HttpStatus.BAD_REQUEST,"INVALID_ADJUSTMENT_REASON");
+        assertError(post(route,Map.of("direction","UNKNOWN","durationMinutes",10,"reason","补偿","requestId","bad-direction")),HttpStatus.BAD_REQUEST,"INVALID_ADJUSTMENT_DIRECTION");
+        assertError(post(route,Map.of("direction","ADD","durationMinutes",10,"reason","补偿","requestId","")),HttpStatus.BAD_REQUEST,"INVALID_REQUEST_ID");
+        for (Object minutes : List.of(0,-1,1441,1.5)) assertThat(post(route,Map.of("direction","ADD","durationMinutes",minutes,"reason","补偿","requestId","bad-adjust")).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertError(post(route,Map.of("direction","DEDUCT","durationMinutes",1,"reason","扣减","requestId","overdraw")),HttpStatus.CONFLICT,"MEMBER_INSUFFICIENT_TIME");
+        jdbc.execute("CREATE TRIGGER reject_time_adjustment BEFORE INSERT ON member_time_adjustments BEGIN SELECT RAISE(ABORT,'test rollback'); END");
+        try { assertThat(post(route,body).getStatusCode().is5xxServerError()).isTrue(); }
+        finally { jdbc.execute("DROP TRIGGER reject_time_adjustment"); }
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isZero();
+        assertThat(post(route,body).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(post(route,Map.of("direction","DEDUCT","durationMinutes",10,"reason","补偿","requestId","adjust-boundary")),HttpStatus.CONFLICT,"ADJUSTMENT_REQUEST_CONFLICT");
+        jdbc.update("UPDATE members SET status='FROZEN' WHERE id=?",member);
+        assertError(post(route,Map.of("direction","ADD","durationMinutes",1,"reason","补偿","requestId","frozen-adjust")),HttpStatus.NOT_FOUND,"MEMBER_NOT_FOUND");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_time_adjustments",Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentTimeAdjustmentsCannotOverdrawAndSameRequestOnlyAppliesOnce() {
+        long member=number(post("/api/members",Map.of("name","并发补偿","phone","13800138912")).getBody().get("id"));
+        String route="/api/members/"+member+"/time-adjustments";
+        var body=Map.of("direction","ADD","durationMinutes",10,"reason","一次补偿","requestId","parallel-adjust");
+        var additions=java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post(route,body))).toList();
+        additions.forEach(result->assertThat(result.join().getStatusCode()).isEqualTo(HttpStatus.OK));
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isEqualTo(600);
+        var deductions=java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post(route,Map.of("direction","DEDUCT","durationMinutes",7,"reason","并发扣减","requestId","deduct-"+index)))).toList();
+        assertThat(deductions.stream().map(result->result.join().getStatusCode()).filter(HttpStatus.OK::equals)).hasSize(1);
+        deductions.forEach(result->assertThat(result.join().getStatusCode()).isIn(HttpStatus.OK,HttpStatus.CONFLICT));
+        assertThat(number(gameAccessService.memberAccount(member).get("remainingSeconds"))).isEqualTo(180);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_time_adjustments",Integer.class)).isEqualTo(2);
     }
 
     @Test

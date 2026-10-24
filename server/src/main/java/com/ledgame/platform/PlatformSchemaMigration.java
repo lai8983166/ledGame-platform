@@ -19,9 +19,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 8;
+    public static final int CURRENT_SCHEMA_VERSION = 9;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
-            "members", "wristbands", "wristband_charge_records", "wristband_bindings", "member_recharge_records",
+            "members", "wristbands", "wristband_charge_records", "wristband_bindings", "member_recharge_records", "member_time_adjustments",
             "game_play_records", "legacy_game_sessions", "room_settings", "store_feature_settings", "store_settings",
             "operator_accounts", "operator_action_logs");
     private final JdbcTemplate jdbc;
@@ -47,6 +47,7 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         migrateMemberTimeAccounts();
         migrateAllocatedTime();
         migratePrecharges();
+        ensureMemberTimeAdjustments();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -294,6 +295,21 @@ public class PlatformSchemaMigration implements ApplicationRunner {
                 jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL WHERE id=?", available, member.get("id"));
             }
         });
+    }
+
+    private void ensureMemberTimeAdjustments() {
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS member_time_adjustments (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              member_id INTEGER NOT NULL REFERENCES members(id),
+              request_id TEXT NOT NULL UNIQUE,
+              delta_seconds INTEGER NOT NULL CHECK(delta_seconds<>0),
+              before_seconds INTEGER NOT NULL CHECK(before_seconds>=0),
+              after_seconds INTEGER NOT NULL CHECK(after_seconds>=0),
+              reason TEXT NOT NULL, adjusted_at TEXT NOT NULL,
+              operator_id INTEGER NOT NULL, operator_username TEXT NOT NULL, operator_display_name TEXT NOT NULL)
+            """);
+        jdbc.execute("CREATE INDEX IF NOT EXISTS ix_time_adjustments_member ON member_time_adjustments(member_id,id DESC)");
     }
 
     private void migratePrecharges() {

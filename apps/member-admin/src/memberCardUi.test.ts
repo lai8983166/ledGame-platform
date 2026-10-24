@@ -92,3 +92,26 @@ describe("手环预充值与账户领取", () => {
     expect(dialog).toContain('step.value = "scan"');
   });
 });
+
+describe("人工时长调整", () => {
+  const adjustment = read("./components/MemberTimeAdjustmentDialog.vue");
+  it("从余额旁调整，详情单独弹出调整记录，不混入充值收款", () => {
+    expect(members).toContain('data-testid="admin-member-adjust"');
+    expect(members).toContain('data-testid="admin-member-adjustment-history-button"');
+    expect(members).toContain('data-testid="admin-member-adjustment-history-modal"');
+    expect(members).toContain('Array.isArray(result.adjustments)');
+    expect(adjustment).toContain('/time-adjustments`');
+    expect(adjustment).not.toContain('amountCents');
+    expect(adjustment).not.toContain('window.confirm');
+    expect(adjustment).not.toContain('window.alert');
+  });
+  it("校验整数分钟、必填原因和扣减余额，重试使用原请求并锁定输入", () => {
+    expect(adjustment).toContain('Number.isInteger(minutes.value)');
+    expect(adjustment).toContain('!reason.value.trim()');
+    expect(adjustment).toContain('expectedSeconds.value<0');
+    expect(adjustment).toContain('if (!submitted.value)');
+    expect(adjustment).toContain('requestId:crypto.randomUUID()');
+    expect(adjustment).toContain(':disabled="busy || !!submitted"');
+    expect(adjustment).toContain('if (!busy.value) emit("close")');
+  });
+});
