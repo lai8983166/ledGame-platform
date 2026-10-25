@@ -6,6 +6,7 @@ import SideDrawer from "../components/SideDrawer.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import MemberRechargeDialog from "../components/MemberRechargeDialog.vue";
 import MemberTimeAdjustmentDialog from "../components/MemberTimeAdjustmentDialog.vue";
+import MemberPointsDialog from "../components/MemberPointsDialog.vue";
 import MemberCardDialog from "../components/MemberCardDialog.vue";
 import type { Member } from "../types";
 import { platformApi, platformBaseUrl } from "../platformApi";
@@ -32,6 +33,7 @@ const selectedMember = ref<Member | null>(null);
 const rechargeOpen = ref(false);
 const rechargeTarget = ref<Member | null>(null);
 const adjustmentTarget = ref<Member | null>(null);
+const pointsTarget = ref<Member | null>(null);
 const issueTarget = ref<Member | null>(null);
 const currentBandRemaining = ref<number | null>(null);
 const refreshing = ref(false);
@@ -67,12 +69,13 @@ type MemberGameHistory = {
   scoringPolicy?: string | null;
 };
 type MemberTimeAdjustment = { id:number; deltaSeconds:number; beforeSeconds:number; afterSeconds:number; reason:string; adjustedAt:string; operatorLabel:string; operatorUsername:string };
-type MemberHistory = { charges: MemberChargeHistory[]; plays: MemberGameHistory[]; adjustments: MemberTimeAdjustment[] };
+type MemberPointDeduction = { id: number; points: number; beforePoints: number; afterPoints: number; rankingPoints: number; reason: string; deductedAt: string; operatorLabel: string; operatorUsername: string };
+type MemberHistory = { charges: MemberChargeHistory[]; plays: MemberGameHistory[]; adjustments: MemberTimeAdjustment[]; pointDeductions: MemberPointDeduction[] };
 const memberHistory = ref<MemberHistory | null>(null);
 const memberHistoryLoading = ref(false);
 const memberHistoryError = ref("");
-const historyModal = ref<"charges" | "plays" | "adjustments" | null>(null);
-const historyTitle = computed(() => text(historyModal.value === "charges" ? "memberChargeHistoryTitle" : historyModal.value === "adjustments" ? "memberAdjustmentHistory" : "memberGameHistoryTitle"));
+const historyModal = ref<"charges" | "plays" | "adjustments" | "pointDeductions" | null>(null);
+const historyTitle = computed(() => text(historyModal.value === "charges" ? "memberChargeHistoryTitle" : historyModal.value === "adjustments" ? "memberAdjustmentHistory" : historyModal.value === "pointDeductions" ? "pointsDeductHistory" : "memberGameHistoryTitle"));
 let memberHistoryRequest = 0;
 const deletion = reactive(createMemberDeletionState());
 const canEditMembers = computed(() => canUseOperatorCapability(operatorSession.current.value, "memberManage"));
@@ -82,11 +85,11 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return await platformApi.request<T>(`/api${path}`, init) as T;
 };
 
-type BackendMember = { id: number; phone: string; name: string; avatarId?: string | null; avatarUrl?: string | null; birthday?: string | null; gender?: string | null; status: string; createdAt?: string; pointsTotal: number; rank: number; remainingSeconds?: number; consuming?: boolean; wristbandUid?: string | null };
+type BackendMember = { id: number; phone: string; name: string; avatarId?: string | null; avatarUrl?: string | null; birthday?: string | null; gender?: string | null; status: string; createdAt?: string; pointsTotal: number; levelName?: string | null; remainingPoints?: number; rankingPoints?: number; rank: number; remainingSeconds?: number; consuming?: boolean; wristbandUid?: string | null };
 const mapMember = (item: BackendMember): Member => {
   const id = String(item.id);
   const initials = item.name.trim().slice(-2).toUpperCase();
-  return { id, account: `DB-${id}`, name: item.name, initials, phone: item.phone, identityId: "未设置", status: item.status === "ACTIVE" ? "active" : "inactive", joinedAt: (item.createdAt ?? "").slice(0, 10) || "—", color: palette[item.id % palette.length], pointsTotal: Number(item.pointsTotal ?? 0), rank: Number(item.rank ?? 1), avatarId: item.avatarId ?? null, birthday: item.birthday ?? null, gender: item.gender ?? null, remainingSeconds: item.remainingSeconds ?? 0, consuming: item.consuming ?? false, wristbandUid: item.wristbandUid ?? null };
+  return { id, account: `DB-${id}`, name: item.name, initials, phone: item.phone, identityId: "未设置", status: item.status === "ACTIVE" ? "active" : "inactive", joinedAt: (item.createdAt ?? "").slice(0, 10) || "—", color: palette[item.id % palette.length], pointsTotal: Number(item.pointsTotal ?? 0), levelName: item.levelName ?? null, remainingPoints: Number(item.remainingPoints ?? item.pointsTotal ?? 0), rankingPoints: Number(item.rankingPoints ?? item.pointsTotal ?? 0), rank: Number(item.rank ?? 1), avatarId: item.avatarId ?? null, birthday: item.birthday ?? null, gender: item.gender ?? null, remainingSeconds: item.remainingSeconds ?? 0, consuming: item.consuming ?? false, wristbandUid: item.wristbandUid ?? null };
 };
 
 const mapMemberWithAvatar = (item: BackendMember): Member => ({
@@ -132,12 +135,13 @@ const loadMemberHistory = async (member: Member) => {
         charges: Array.isArray(result.charges) ? result.charges : [],
         plays: Array.isArray(result.plays) ? result.plays : [],
         adjustments: Array.isArray(result.adjustments) ? result.adjustments : [],
+        pointDeductions: Array.isArray(result.pointDeductions) ? result.pointDeductions : [],
       };
     }
   } catch (error) {
     if (requestId === memberHistoryRequest && selectedMember.value?.id === member.id) {
       memberHistoryError.value = error instanceof Error ? error.message : text("memberHistoryLoadFailed");
-      memberHistory.value = { charges: [], plays: [], adjustments: [] };
+      memberHistory.value = { charges: [], plays: [], adjustments: [], pointDeductions: [] };
     }
   } finally {
     if (requestId === memberHistoryRequest) memberHistoryLoading.value = false;
@@ -179,6 +183,15 @@ const finishAdjustment = async () => {
   }
   emit("toast",text("memberAdjustmentSaved"));
 };
+const finishPoints = async () => {
+  pointsTarget.value = null;
+  await loadMembers();
+  if (selectedMember.value) {
+    const refreshed = members.value.find(row => row.id === selectedMember.value?.id);
+    if (refreshed) { selectedMember.value = refreshed; void loadMemberHistory(refreshed); }
+  }
+  emit("toast", text("pointsDeductSaved"));
+};
 const finishIssue = async () => {
   issueTarget.value = null;
   await loadMembers();
@@ -194,7 +207,7 @@ const closeMember = () => {
   memberHistoryLoading.value = false;
 };
 
-const openHistoryModal = (kind: "charges" | "plays" | "adjustments") => {
+const openHistoryModal = (kind: "charges" | "plays" | "adjustments" | "pointDeductions") => {
   if (memberHistoryLoading.value || memberHistoryError.value || !memberHistory.value) return;
   historyModal.value = kind;
 };
@@ -274,13 +287,14 @@ onMounted(loadMembers);
   <section v-if="connectionError" class="notice-bar" data-testid="admin-members-error"><AppIcon name="alert" :size="18" /><div><strong>无法读取数据库会员</strong><p>{{ connectionError }}。请先启动本机后端。</p></div></section>
 
   <section class="table-card glass-panel">
-    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>{{ text("cardCurrent") }}</th><th>{{ text("memberAccountBalance") }}</th><th>{{ text("points") }}</th><th>{{ text("rank") }}</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="openMember(member)"><span class="avatar" :style="{ background: member.color }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" class="avatar__image" @error="member.avatarUrl = null" /><span v-else>{{ member.initials }}</span></span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td data-testid="admin-member-wristband">{{ member.wristbandUid || '—' }}</td><td><span data-testid="admin-member-balance">{{ formatBalance(member.remainingSeconds) }}</span><button v-if="canEditMembers" class="ghost-button" data-testid="admin-member-recharge" type="button" @click="openRecharge(member)">{{ text("memberRechargeAction") }}</button><button v-if="canEditMembers" class="ghost-button" data-testid="admin-member-adjust" type="button" @click="adjustmentTarget = member">{{ text("memberAdjustmentAction") }}</button></td><td data-testid="admin-member-points">{{ member.pointsTotal }}</td><td data-testid="admin-member-rank">#{{ member.rank }}</td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button v-if="canEditMembers" class="secondary-button" data-testid="admin-member-issue" type="button" @click="issueTarget = member">{{ text("cardIssue") }}</button><button class="icon-button" type="button" aria-label="查看会员" @click="openMember(member)"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
+    <div v-if="filteredMembers.length" class="data-table-wrap"><table class="data-table member-table"><thead><tr><th>会员</th><th>联系方式</th><th>{{ text("cardCurrent") }}</th><th>{{ text("memberAccountBalance") }}</th><th>{{ text("remainingPoints") }}</th><th>{{ text("rankingPoints") }}</th><th>{{ text("rank") }}</th><th>{{ text("memberLevel") }}</th><th>加入日期</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="member in filteredMembers" :key="member.id" :data-testid="`admin-member-${member.id}`"><td><button class="member-cell" type="button" @click="openMember(member)"><span class="avatar" :style="{ background: member.color }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" class="avatar__image" @error="member.avatarUrl = null" /><span v-else>{{ member.initials }}</span></span><span><strong data-testid="admin-member-name">{{ member.name }}</strong><small>{{ member.account }}</small></span></button></td><td data-testid="admin-member-phone">{{ member.phone }}</td><td data-testid="admin-member-wristband">{{ member.wristbandUid || '—' }}</td><td><span data-testid="admin-member-balance">{{ formatBalance(member.remainingSeconds) }}</span><button v-if="canEditMembers" class="ghost-button" data-testid="admin-member-recharge" type="button" @click="openRecharge(member)">{{ text("memberRechargeAction") }}</button><button v-if="canEditMembers" class="ghost-button" data-testid="admin-member-adjust" type="button" @click="adjustmentTarget = member">{{ text("memberAdjustmentAction") }}</button></td><td><span data-testid="admin-member-remaining-points">{{ member.remainingPoints }}</span><button v-if="canEditMembers && member.status === 'active'" class="ghost-button" data-testid="admin-member-deduct-points" type="button" @click="pointsTarget = member">{{ text("pointsDeduct") }}</button></td><td data-testid="admin-member-ranking-points"><span data-testid="admin-member-points">{{ member.rankingPoints }}</span></td><td data-testid="admin-member-rank">#{{ member.rank }}</td><td data-testid="admin-member-level">{{ member.levelName || text("memberLevelUnrated") }}</td><td>{{ member.joinedAt }}</td><td><StatusBadge :tone="member.status === 'active' ? 'success' : 'neutral'">{{ member.status === 'active' ? '正常' : '停用' }}</StatusBadge></td><td><button v-if="canEditMembers" class="secondary-button" data-testid="admin-member-issue" type="button" @click="issueTarget = member">{{ text("cardIssue") }}</button><button class="icon-button" type="button" aria-label="查看会员" @click="openMember(member)"><AppIcon name="eye" :size="17" /></button></td></tr></tbody></table></div>
     <div v-else class="empty-state empty-state--flat"><span><AppIcon name="search" :size="28" /></span><h2>没有找到会员</h2><button class="secondary-button" type="button" @click="search = ''; statusFilter = 'all'">清除筛选</button></div>
     <footer class="table-footer"><strong>共 {{ filteredMembers.length }} 位</strong></footer>
   </section>
 
   <MemberRechargeDialog v-if="rechargeOpen" :member="rechargeTarget" @close="rechargeOpen = false" @done="finishRecharge" />
   <MemberTimeAdjustmentDialog v-if="adjustmentTarget" :member="adjustmentTarget" :locale="locale" @close="adjustmentTarget = null" @done="finishAdjustment" />
+  <MemberPointsDialog v-if="pointsTarget" :member="pointsTarget" :locale="locale" @close="pointsTarget = null" @done="finishPoints" />
   <MemberCardDialog v-if="issueTarget" action="issue" :locale="locale" :preset-member="issueTarget" @close="issueTarget = null" @done="finishIssue" />
   <SideDrawer v-if="selectedMember" :title="selectedMember.name" :eyebrow="selectedMember.account" @close="closeMember">
     <div class="member-hero"><span class="avatar avatar--large" :style="{ background: selectedMember.color }"><img v-if="selectedMember.avatarUrl" :src="selectedMember.avatarUrl" alt="" class="avatar__image" @error="selectedMember.avatarUrl = null" /><span v-else>{{ selectedMember.initials }}</span></span><div><h3>{{ selectedMember.name }}</h3><p>{{ selectedMember.phone }}</p><StatusBadge :tone="selectedMember.status === 'active' ? 'success' : 'neutral'">{{ selectedMember.status === 'active' ? '正常会员' : '已停用' }}</StatusBadge></div></div>
@@ -290,6 +304,9 @@ onMounted(loadMembers);
       <div><dt>加入日期</dt><dd>{{ selectedMember.joinedAt }}</dd></div><div><dt>生日</dt><dd>{{ selectedMember.birthday || '未设置' }}</dd></div><div><dt>性别</dt><dd>{{ selectedMember.gender || '未设置' }}</dd></div>
       <div><dt>{{ text("cardCurrent") }}</dt><dd>{{ selectedMember.wristbandUid || '—' }}</dd></div>
       <div><dt>{{ text("memberAccountBalance") }}</dt><dd>{{ formatBalance(selectedMember.remainingSeconds) }}</dd></div>
+      <div><dt>{{ text("remainingPoints") }}</dt><dd>{{ selectedMember.remainingPoints }}</dd></div>
+      <div><dt>{{ text("rankingPoints") }}</dt><dd>{{ selectedMember.rankingPoints }}</dd></div>
+      <div><dt>{{ text("memberLevel") }}</dt><dd data-testid="admin-member-detail-level">{{ selectedMember.levelName || text("memberLevelUnrated") }}</dd></div>
       <div v-if="currentBandRemaining !== null"><dt>{{ text("memberAllocatedRemaining") }}</dt><dd data-testid="admin-member-allocated-remaining">{{ formatBalance(currentBandRemaining) }}</dd></div>
     </dl></section>
     <section v-if="canDeleteMembers" class="drawer-section member-danger-zone"><div class="drawer-section__title"><h3>{{ text("memberDeleteDangerTitle") }}</h3></div><p>{{ text("memberDeleteDangerBody") }}</p><button class="danger-button" data-testid="admin-member-delete" type="button" @click="askToDeleteMember(selectedMember)"><AppIcon name="trash" :size="17" />{{ text("memberDeleteAction") }}</button></section>
@@ -304,6 +321,7 @@ onMounted(loadMembers);
       <button class="secondary-button" type="button" :disabled="memberHistoryLoading || !!memberHistoryError" data-testid="admin-member-charge-history-button" @click="openHistoryModal('charges')"><AppIcon name="wallet" :size="17" />{{ text("memberChargeHistoryTitle") }}<span>{{ memberHistory?.charges.length ?? 0 }}</span></button>
       <button class="secondary-button" type="button" :disabled="memberHistoryLoading || !!memberHistoryError" data-testid="admin-member-game-history-button" @click="openHistoryModal('plays')"><AppIcon name="game" :size="17" />{{ text("memberGameHistoryTitle") }}<span>{{ memberHistory?.plays.length ?? 0 }}</span></button>
       <button class="secondary-button" type="button" :disabled="memberHistoryLoading || !!memberHistoryError" data-testid="admin-member-adjustment-history-button" @click="openHistoryModal('adjustments')"><AppIcon name="clock" :size="17" />{{ text("memberAdjustmentHistory") }}<span>{{ memberHistory?.adjustments.length ?? 0 }}</span></button>
+      <button class="secondary-button" type="button" :disabled="memberHistoryLoading || !!memberHistoryError" data-testid="admin-member-point-history-button" @click="openHistoryModal('pointDeductions')"><AppIcon name="wallet" :size="17" />{{ text("pointsDeductHistory") }}<span>{{ memberHistory?.pointDeductions.length ?? 0 }}</span></button>
     </div>
   </Teleport>
 
@@ -319,13 +337,21 @@ onMounted(loadMembers);
       <p v-if="!memberHistory?.plays.length" class="member-history-state">{{ text("memberHistoryEmpty") }}</p>
       <ul v-else class="member-history-list" data-testid="admin-member-game-history-modal"><li v-for="play in memberHistory.plays" :key="`play-modal-${play.id}`"><div><strong>{{ play.gameName || play.gameId || '—' }}</strong><small>{{ formatHistoryTime(play.startedAt) }} · {{ play.roomId || play.deviceId || '—' }}</small></div><div class="member-history-list__result"><strong>{{ play.pointsAwarded ?? 0 }} {{ text("memberHistoryPoints") }}</strong><small>{{ play.status || '—' }} / {{ play.terminationReason || '—' }}</small></div></li></ul>
     </template>
-    <template v-else>
+    <template v-else-if="historyModal === 'adjustments'">
       <p v-if="!memberHistory?.adjustments.length" class="member-history-state">{{ text('memberHistoryEmpty') }}</p>
       <div v-else class="data-table-wrap" data-testid="admin-member-adjustment-history-modal"><table class="data-table"><thead><tr>
         <th>{{ text('memberAdjustmentDirection') }}</th><th>{{ text('memberAdjustmentBefore') }}</th><th>{{ text('memberAdjustmentAfter') }}</th><th>{{ text('memberAdjustmentReason') }}</th><th>{{ text('memberAdjustmentTime') }}</th><th>{{ text('memberAdjustmentOperator') }}</th>
       </tr></thead><tbody><tr v-for="record in memberHistory.adjustments" :key="record.id">
         <td>{{ record.deltaSeconds > 0 ? '+' : '−' }}{{ Math.abs(record.deltaSeconds) / 60 }} {{ text('memberHistoryMinutes') }}</td><td>{{ formatBalance(record.beforeSeconds) }}</td><td>{{ formatBalance(record.afterSeconds) }}</td>
         <td class="adjustment-history-reason">{{ record.reason }}</td><td>{{ formatAdjustmentTime(record.adjustedAt) }}</td><td>{{ record.operatorLabel }} · {{ record.operatorUsername }}</td>
+      </tr></tbody></table></div>
+    </template>
+    <template v-else>
+      <p v-if="!memberHistory?.pointDeductions.length" class="member-history-state">{{ text('memberHistoryEmpty') }}</p>
+      <div v-else class="data-table-wrap" data-testid="admin-member-point-history-modal"><table class="data-table"><thead><tr>
+        <th>{{ text('pointsDeductAmount') }}</th><th>{{ text('pointsDeductBefore') }}</th><th>{{ text('pointsDeductAfter') }}</th><th>{{ text('pointsDeductReason') }}</th><th>{{ text('memberAdjustmentTime') }}</th><th>{{ text('memberAdjustmentOperator') }}</th>
+      </tr></thead><tbody><tr v-for="record in memberHistory.pointDeductions" :key="record.id">
+        <td>{{ record.points }}</td><td>{{ record.beforePoints }}</td><td>{{ record.afterPoints }}</td><td class="adjustment-history-reason">{{ record.reason }}</td><td>{{ formatAdjustmentTime(record.deductedAt) }}</td><td>{{ record.operatorLabel }} · {{ record.operatorUsername }}</td>
       </tr></tbody></table></div>
     </template>
   </BaseModal>

@@ -19,11 +19,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class PlatformSchemaMigration implements ApplicationRunner {
-    public static final int CURRENT_SCHEMA_VERSION = 9;
+    public static final int CURRENT_SCHEMA_VERSION = 11;
     static final List<String> REVISION_TRACKED_TABLES = List.of(
-            "members", "wristbands", "wristband_charge_records", "wristband_bindings", "member_recharge_records", "member_time_adjustments",
+            "members", "wristbands", "wristband_charge_records", "wristband_bindings", "member_recharge_records", "member_time_adjustments", "member_point_deductions",
             "game_play_records", "legacy_game_sessions", "room_settings", "store_feature_settings", "store_settings",
-            "operator_accounts", "operator_action_logs");
+            "operator_accounts", "operator_action_logs", "member_levels");
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final Clock clock;
@@ -48,6 +48,8 @@ public class PlatformSchemaMigration implements ApplicationRunner {
         migrateAllocatedTime();
         migratePrecharges();
         ensureMemberTimeAdjustments();
+        ensureMemberPointDeductions();
+        ensureMemberLevels();
         List<Map<String, Object>> memberColumns = jdbc.queryForList("PRAGMA table_info(members)");
         boolean hasDeletedAt = memberColumns.stream()
                 .anyMatch(column -> "deleted_at".equalsIgnoreCase(String.valueOf(column.get("name"))));
@@ -295,6 +297,34 @@ public class PlatformSchemaMigration implements ApplicationRunner {
                 jdbc.update("UPDATE members SET time_balance_seconds=?,consumption_started_at=NULL WHERE id=?", available, member.get("id"));
             }
         });
+    }
+
+    private void ensureMemberLevels() {
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS member_levels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                min_points INTEGER NOT NULL CHECK (min_points >= 0),
+                max_points INTEGER NOT NULL CHECK (max_points >= min_points AND max_points <= 9007199254740991),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """);
+    }
+
+    private void ensureMemberPointDeductions() {
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS member_point_deductions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              member_id INTEGER NOT NULL REFERENCES members(id), request_id TEXT NOT NULL UNIQUE,
+              points_deducted INTEGER NOT NULL CHECK(points_deducted>0),
+              before_points INTEGER NOT NULL CHECK(before_points>=0),
+              after_points INTEGER NOT NULL CHECK(after_points>=0),
+              ranking_points INTEGER NOT NULL CHECK(ranking_points>=0),
+              reason TEXT NOT NULL, deducted_at TEXT NOT NULL,
+              operator_id INTEGER NOT NULL, operator_username TEXT NOT NULL, operator_display_name TEXT NOT NULL)
+            """);
+        jdbc.execute("CREATE INDEX IF NOT EXISTS ix_point_deductions_member ON member_point_deductions(member_id,id DESC)");
     }
 
     private void ensureMemberTimeAdjustments() {

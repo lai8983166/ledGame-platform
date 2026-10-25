@@ -36,11 +36,12 @@ public class CoreFlowController {
     private final OperatorAuthorizationService authorization;
     private final AvatarStorageService avatars;
     private final StoreSettingsService storeSettings;
+    private final MemberPointsService memberPoints;
 
     public CoreFlowController(JdbcTemplate jdbc, GameAccessService gameAccessService, Clock clock,
             ActivationService activation, StartupGate startupGate, ProtectedDataService protectedData,
             OperatorAuthorizationService authorization, AvatarStorageService avatars,
-            StoreSettingsService storeSettings) {
+            StoreSettingsService storeSettings, MemberPointsService memberPoints) {
         this.jdbc = jdbc;
         this.gameAccessService = gameAccessService;
         this.clock = clock;
@@ -50,6 +51,7 @@ public class CoreFlowController {
         this.authorization = authorization;
         this.avatars = avatars;
         this.storeSettings = storeSettings;
+        this.memberPoints = memberPoints;
     }
 
     @GetMapping("/health")
@@ -74,6 +76,9 @@ public class CoreFlowController {
                  GROUP BY m.id
             )
             SELECT totals.*,
+                   (SELECT name FROM member_levels WHERE min_points<=totals.pointsTotal AND max_points>=totals.pointsTotal) AS levelName,
+                   pointsTotal AS rankingPoints,
+                   pointsTotal-COALESCE((SELECT SUM(d.points_deducted) FROM member_point_deductions d WHERE d.member_id=totals.id),0) AS remainingPoints,
                    1 + (SELECT COUNT(*) FROM totals higher WHERE higher.pointsTotal > totals.pointsTotal) AS rank
               FROM totals
             """;
@@ -138,6 +143,13 @@ public class CoreFlowController {
             @RequestHeader(value="X-Operator-Id", required=false) Long operatorId) {
         var operator = authorization.requireCapability(operatorId, OperatorCapability.MEMBER_MANAGE);
         return gameAccessService.recharge(id, request.durationMinutes() == null ? 0 : request.durationMinutes(), request.amountCents(), request.requestId(), operator);
+    }
+
+    @PostMapping("/members/{id}/point-deductions")
+    public Map<String,Object> deductMemberPoints(@PathVariable long id,@RequestBody MemberPointDeductionRequest request,
+            @RequestHeader(value="X-Operator-Id",required=false) Long operatorId) {
+        var operator=authorization.requireCapability(operatorId,OperatorCapability.MEMBER_MANAGE);
+        return memberPoints.deduct(id,request.points(),request.reason(),request.requestId(),operator);
     }
 
     @PostMapping("/members/{id}/time-adjustments")
@@ -311,6 +323,7 @@ public class CoreFlowController {
         charges.sort(java.util.Comparator.comparing(row -> String.valueOf(row.get("chargedAt")), java.util.Comparator.reverseOrder()));
         response.put("charges", charges);
         response.put("plays", playRows.stream().map(this::decryptMemberPlayRow).toList());
+        response.put("pointDeductions",memberPoints.history(id));
         response.put("adjustments",jdbc.queryForList("""
             SELECT id,delta_seconds AS deltaSeconds,before_seconds AS beforeSeconds,after_seconds AS afterSeconds,
                    reason,adjusted_at AS adjustedAt,operator_id AS operatorId,
@@ -632,6 +645,7 @@ public class CoreFlowController {
             String avatarImageBase64, String avatarImageMimeType, Integer initialDurationMinutes, Long amountCents, String requestId) {}
     public record MemberRechargeRequest(Integer durationMinutes, Long amountCents, String requestId) {}
     public record MemberTimeAdjustmentRequest(String direction,java.math.BigDecimal durationMinutes,String reason,String requestId) {}
+    public record MemberPointDeductionRequest(java.math.BigDecimal points,String reason,String requestId) {}
     public record MemberUpdateRequest(String phone, String name, String avatarId, String birthday, String gender,
             String avatarImageBase64, String avatarImageMimeType) {}
 }

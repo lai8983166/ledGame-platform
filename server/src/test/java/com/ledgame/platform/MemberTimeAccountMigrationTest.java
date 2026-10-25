@@ -87,6 +87,46 @@ class MemberTimeAccountMigrationTest {
     }
 
     @Test
+    void levelConfigurationMigrationIsEmptyRepeatableAndTrackedForBackup() throws Exception {
+        Path path = Files.createTempFile("member-level-migration-", ".db");
+        try {
+            var jdbc = oldDatabase(path);
+            var migration = new PlatformSchemaMigration(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            var members = jdbc.queryForList("SELECT * FROM members ORDER BY id");
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_levels", Integer.class)).isZero();
+            long revision = jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class);
+            jdbc.update("INSERT INTO member_levels(name,min_points,max_points,created_at,updated_at) VALUES ('等级测试',0,999,?,?)", now.toString(), now.toString());
+            assertThat(jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class)).isEqualTo(revision + 1);
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            assertThat(jdbc.queryForList("SELECT * FROM members ORDER BY id")).isEqualTo(members);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_levels", Integer.class)).isEqualTo(1);
+        } finally { Files.deleteIfExists(path); }
+    }
+
+    @Test
+    void pointsLedgerIsRepeatableTrackedAndLeavesExistingAccountsUntouched() throws Exception {
+        Path path = Files.createTempFile("member-points-migration-", ".db");
+        try {
+            var jdbc = oldDatabase(path);
+            var migration = new PlatformSchemaMigration(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            var members = jdbc.queryForList("SELECT * FROM members ORDER BY id");
+            long revision = jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class);
+            jdbc.update("""
+                INSERT INTO member_point_deductions(member_id,request_id,points_deducted,before_points,after_points,
+                    ranking_points,reason,deducted_at,operator_id,operator_username,operator_display_name)
+                VALUES (2,'points-migration',5,20,15,20,'测试兑换',?,1,'test','测试操作员')
+                """, now.toString());
+            assertThat(jdbc.queryForObject("SELECT revision FROM database_state WHERE id=1", Long.class)).isEqualTo(revision + 1);
+            migration.run(new DefaultApplicationArguments(new String[0]));
+            assertThat(jdbc.queryForList("SELECT * FROM members ORDER BY id")).isEqualTo(members);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_point_deductions", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT after_points FROM member_point_deductions", Integer.class)).isEqualTo(15);
+        } finally { Files.deleteIfExists(path); }
+    }
+
+    @Test
     void upgradesSharedAccountToAllocationAndKeepsUnboundAccountWithoutDoubleCredit() throws Exception {
         Path path = Files.createTempFile("allocated-account-upgrade-", ".db");
         try {

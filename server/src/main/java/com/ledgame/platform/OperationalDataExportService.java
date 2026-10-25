@@ -36,18 +36,19 @@ public class OperationalDataExportService {
                GROUP BY m.id
             )
             SELECT id, phone, name, avatar_id, birthday, gender, status, created_at, created_by,
+                   points_total-COALESCE((SELECT SUM(d.points_deducted) FROM member_point_deductions d WHERE d.member_id=scores.id),0) AS remaining_points,
                    points_total, RANK() OVER (ORDER BY points_total DESC) AS points_rank
               FROM scores ORDER BY id
             """;
         return queryCsv(sql,
-                List.of("会员ID", "手机号", "姓名", "头像", "生日", "性别", "状态", "注册时间", "注册来源", "积分", "积分排名"),
+                List.of("会员ID", "手机号", "姓名", "头像", "生日", "性别", "状态", "注册时间", "注册来源", "剩余积分", "排名积分", "积分排名"),
                 row -> {
             decrypt(row, "phone", "members", "phone");
             decrypt(row, "name", "members", "name");
             decrypt(row, "avatar_id", "members", "avatar_id");
             decrypt(row, "birthday", "members", "birthday");
             decrypt(row, "gender", "members", "gender");
-        }, "id", "phone", "name", "avatar_id", "birthday", "gender", "status", "created_at", "created_by", "points_total", "points_rank");
+        }, "id", "phone", "name", "avatar_id", "birthday", "gender", "status", "created_at", "created_by", "remaining_points", "points_total", "points_rank");
     }
 
     @Transactional(readOnly = true)

@@ -533,6 +533,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -615,6 +687,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -725,8 +849,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -1331,6 +1463,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -1413,6 +1617,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -1523,8 +1779,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -2129,6 +2393,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -2211,6 +2547,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -2321,8 +2709,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -2927,6 +3323,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -3009,6 +3477,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -3119,8 +3639,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -3725,6 +4253,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -3807,6 +4407,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -3917,8 +4569,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -4523,6 +5183,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -4605,6 +5337,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -4715,8 +5499,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -5321,6 +6113,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -5403,6 +6267,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -5513,8 +6429,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -6119,6 +7043,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -6201,6 +7197,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -6311,8 +7359,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -6917,6 +7973,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -6999,6 +8127,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -7109,8 +8289,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -7715,6 +8903,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -7797,6 +9057,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -7907,8 +9219,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -8513,6 +9833,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -8595,6 +9987,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -8705,8 +10149,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -9311,6 +10763,78 @@
             "source": "Initial recharge minutes",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelCreate": {
+            "source": "Add level",
+            "translation": ""
+          },
+          "memberLevelDelete": {
+            "source": "Delete level",
+            "translation": ""
+          },
+          "memberLevelDeleteConfirm": {
+            "source": "Delete this level?",
+            "translation": ""
+          },
+          "memberLevelDeleted": {
+            "source": "Level deleted",
+            "translation": ""
+          },
+          "memberLevelEdit": {
+            "source": "Edit level",
+            "translation": ""
+          },
+          "memberLevelEmpty": {
+            "source": "No levels configured",
+            "translation": ""
+          },
+          "memberLevelFailed": {
+            "source": "Could not save levels. Please retry.",
+            "translation": ""
+          },
+          "memberLevelMax": {
+            "source": "Maximum ranking points",
+            "translation": ""
+          },
+          "memberLevelMin": {
+            "source": "Minimum ranking points",
+            "translation": ""
+          },
+          "memberLevelName": {
+            "source": "Level name",
+            "translation": ""
+          },
+          "memberLevelNameInvalid": {
+            "source": "Enter a unique level name (1–30 characters)",
+            "translation": ""
+          },
+          "memberLevelOverlap": {
+            "source": "This range overlaps another level (including endpoints)",
+            "translation": ""
+          },
+          "memberLevelRangeInvalid": {
+            "source": "Enter non-negative whole numbers with minimum not exceeding maximum",
+            "translation": ""
+          },
+          "memberLevelSave": {
+            "source": "Save level",
+            "translation": ""
+          },
+          "memberLevelSaved": {
+            "source": "Level saved",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
+          "memberLevels": {
+            "source": "Level management",
+            "translation": ""
+          },
           "memberPoints": {
             "source": "Member points",
             "translation": ""
@@ -9393,6 +10917,58 @@
           },
           "points": {
             "source": "Points",
+            "translation": ""
+          },
+          "pointsDeduct": {
+            "source": "Deduct points",
+            "translation": ""
+          },
+          "pointsDeductAfter": {
+            "source": "After",
+            "translation": ""
+          },
+          "pointsDeductAmount": {
+            "source": "Points to deduct",
+            "translation": ""
+          },
+          "pointsDeductBefore": {
+            "source": "Before",
+            "translation": ""
+          },
+          "pointsDeductConfirm": {
+            "source": "Confirm deduction",
+            "translation": ""
+          },
+          "pointsDeductExpected": {
+            "source": "Remaining after deduction",
+            "translation": ""
+          },
+          "pointsDeductFailed": {
+            "source": "Deduction failed. Please retry.",
+            "translation": ""
+          },
+          "pointsDeductHistory": {
+            "source": "Point deduction records",
+            "translation": ""
+          },
+          "pointsDeductInsufficient": {
+            "source": "Insufficient remaining points",
+            "translation": ""
+          },
+          "pointsDeductInvalid": {
+            "source": "Enter a positive whole number of points",
+            "translation": ""
+          },
+          "pointsDeductInvalidReason": {
+            "source": "Enter a reason (up to 500 characters)",
+            "translation": ""
+          },
+          "pointsDeductReason": {
+            "source": "Reason",
+            "translation": ""
+          },
+          "pointsDeductSaved": {
+            "source": "Points deducted",
             "translation": ""
           },
           "prechargeActions": {
@@ -9503,8 +11079,16 @@
             "source": "Rank",
             "translation": ""
           },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
           "rawScore": {
             "source": "Raw score",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "roomGameRemaining": {
@@ -9701,6 +11285,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -9791,6 +11383,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -10075,6 +11675,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -10165,6 +11773,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -10449,6 +12065,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -10539,6 +12163,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -10823,6 +12455,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -10913,6 +12553,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -11197,6 +12845,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -11287,6 +12943,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -11571,6 +13235,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -11661,6 +13333,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -11945,6 +13625,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -12035,6 +13723,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -12319,6 +14015,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -12409,6 +14113,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -12693,6 +14405,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -12783,6 +14503,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -13067,6 +14795,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -13157,6 +14893,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -13441,6 +15185,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -13531,6 +15283,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {
@@ -13815,6 +15575,14 @@
             "source": "Local service",
             "translation": ""
           },
+          "memberLevel": {
+            "source": "Level",
+            "translation": ""
+          },
+          "memberLevelUnrated": {
+            "source": "Unrated",
+            "translation": ""
+          },
           "offlineMessage": {
             "source": "Member Admin network connection has a problem. Please check the network connection.",
             "translation": ""
@@ -13905,6 +15673,14 @@
           },
           "playerInfoWristbandPlaceholder": {
             "source": "Tap to enter wristband UID",
+            "translation": ""
+          },
+          "rankingPoints": {
+            "source": "Ranking points",
+            "translation": ""
+          },
+          "remainingPoints": {
+            "source": "Remaining points",
             "translation": ""
           },
           "returningPlayer": {

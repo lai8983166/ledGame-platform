@@ -118,6 +118,7 @@ export interface PlayerProfile {
   id: number;
   phone: string;
   name: string;
+  levelName?: string | null;
   avatarId?: string | null;
   avatarUrl?: string | null;
   birthday?: string | null;
@@ -160,7 +161,7 @@ export interface PlayerRecentPlay {
 
 export interface PlayerInfo {
   profile: PlayerProfile;
-  points: { total: number; rank: number };
+  points: { total: number; rank: number; remaining?: number; ranking?: number };
   account?: { remainingSeconds: number; consuming: boolean };
   wristbands: PlayerWristband[];
   recentPlays: PlayerRecentPlay[];

@@ -15,13 +15,15 @@ public class PlayerInfoService {
     private final GameAccessService accessService;
     private final ProtectedDataService protectedData;
     private final AvatarStorageService avatars;
+    private final MemberPointsService memberPoints;
 
     public PlayerInfoService(JdbcTemplate jdbc, GameAccessService accessService, ProtectedDataService protectedData,
-            AvatarStorageService avatars) {
+            AvatarStorageService avatars,MemberPointsService memberPoints) {
         this.jdbc = jdbc;
         this.accessService = accessService;
         this.protectedData = protectedData;
         this.avatars = avatars;
+        this.memberPoints = memberPoints;
     }
 
     @Transactional(readOnly = true)
@@ -84,11 +86,9 @@ public class PlayerInfoService {
         profile.put("birthday", protectedData.decryptField("members", "birthday", profile.get("birthday")));
         profile.put("gender", protectedData.decryptField("members", "gender", profile.get("gender")));
         long memberId = number(profile.get("id"));
-        long total = value(jdbc.queryForObject("""
-            SELECT COALESCE(SUM(points_awarded), 0)
-              FROM game_play_records
-             WHERE member_id=? AND status IN ('COMPLETED', 'LEGACY_SETTLED')
-            """, Long.class, memberId));
+        var points=memberPoints.balance(memberId);
+        long total=points.get("ranking");
+        profile.put("levelName", jdbc.queryForObject("SELECT (SELECT name FROM member_levels WHERE min_points<=? AND max_points>=?)", String.class, total, total));
         long rank = 1 + value(jdbc.queryForObject("""
             SELECT COUNT(*) FROM (
                 SELECT m.id, COALESCE(SUM(CASE WHEN g.status IN ('COMPLETED', 'LEGACY_SETTLED') THEN g.points_awarded ELSE 0 END), 0) AS total
@@ -125,7 +125,7 @@ public class PlayerInfoService {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("profile", profile);
         result.put("account", accessService.memberAccount(memberId));
-        result.put("points", Map.of("total", total, "rank", rank));
+        result.put("points", Map.of("total",total,"rank",rank,"ranking",total,"remaining",points.get("remaining")));
         result.put("wristbands", wristbands);
         result.put("recentPlays", recentPlays);
         return result;

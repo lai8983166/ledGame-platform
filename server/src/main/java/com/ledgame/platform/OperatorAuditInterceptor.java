@@ -75,6 +75,9 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
 
     private static OperatorAuditAction actionFor(String rawMethod, String path) {
         String method = rawMethod.toUpperCase(Locale.ROOT);
+        if (method.equals("POST") && path.equals("/api/member-levels")) return action("MEMBER_LEVEL_CREATED", "MEMBER_LEVEL", null);
+        if (method.equals("PUT") && path.matches("/api/member-levels/\\d+")) return action("MEMBER_LEVEL_UPDATED", "MEMBER_LEVEL", segment(path,3));
+        if (method.equals("DELETE") && path.matches("/api/member-levels/\\d+")) return action("MEMBER_LEVEL_DELETED", "MEMBER_LEVEL", segment(path,3));
         if (method.equals("POST") && path.equals("/api/operator-accounts")) return action("ACCOUNT_CREATED", "OPERATOR_ACCOUNT", null);
         if (method.equals("PUT") && path.matches("/api/operator-accounts/\\d+/password")) return action("ACCOUNT_PASSWORD_RESET", "OPERATOR_ACCOUNT", segment(path, 3));
         if (method.equals("PUT") && path.matches("/api/operator-accounts/\\d+/enabled")) return action("ACCOUNT_ENABLED_CHANGED", "OPERATOR_ACCOUNT", segment(path, 3));
@@ -83,6 +86,7 @@ public class OperatorAuditInterceptor implements HandlerInterceptor {
         if (method.equals("POST") && path.equals("/api/members")) return action("MEMBER_CREATED", "MEMBER", null);
         if (method.equals("POST") && path.matches("/api/members/\\d+/recharge")) return action("MEMBER_RECHARGED", "MEMBER", segment(path, 3));
         if (method.equals("POST") && path.matches("/api/members/\\d+/time-adjustments")) return action("MEMBER_TIME_ADJUSTED", "MEMBER", segment(path,3));
+        if (method.equals("POST") && path.matches("/api/members/\\d+/point-deductions")) return action("MEMBER_POINTS_DEDUCTED", "MEMBER", segment(path,3));
         if (method.equals("PUT") && path.matches("/api/members/\\d+")) return action("MEMBER_UPDATED", "MEMBER", segment(path, 3));
         if (method.equals("DELETE") && path.matches("/api/members/\\d+")) return action("MEMBER_DELETED", "MEMBER", segment(path, 3));
         if (method.equals("POST") && path.equals("/api/wristbands/charge")) return action("WRISTBAND_CHARGED", "WRISTBAND", null);

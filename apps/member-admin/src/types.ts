@@ -53,6 +53,9 @@ export interface Member {
   color: string;
   avatarUrl?: string | null;
   pointsTotal?: number;
+  remainingPoints?: number;
+  rankingPoints?: number;
+  levelName?: string | null;
   rank?: number;
   avatarId?: string | null;
   birthday?: string | null;

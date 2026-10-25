@@ -5,6 +5,7 @@ import AppIcon from "../components/AppIcon.vue";
 import BaseModal from "../components/BaseModal.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import DesktopRuntimeCard from "../components/DesktopRuntimeCard.vue";
+import MemberLevelsSettings from "../components/MemberLevelsSettings.vue";
 import type { PlatformLocale } from "@ledgame/platform-shared-ui";
 import { platformApi } from "../platformApi";
 import { createOperatorAccountManager } from "../operatorAccountState";
@@ -12,7 +13,7 @@ import { memberAdminMessage } from "../localization";
 import { operatorSession } from "../operatorSession";
 import { canUseOperatorCapability } from "../operatorPolicy";
 
-type SettingsTab = "accounts" | "password" | "basic" | "features" | "upload" | "backup";
+type SettingsTab = "accounts" | "levels" | "password" | "basic" | "features" | "upload" | "backup";
 const emit = defineEmits<{ toast: [message: string]; backupChanged: []; logoutRequired: [] }>();
 const props = defineProps<{ locale: PlatformLocale; backupStatus: DatabaseBackupStatus | null }>();
 const text = (key: Parameters<typeof memberAdminMessage>[1]) => memberAdminMessage(props.locale, key);
@@ -54,6 +55,7 @@ const settingsTabs = computed(() => props.backupStatus?.state === "MAINTENANCE_L
   ? (isFactory.value ? [backupTab] : [])
   : [
   ...(canManageAccounts.value ? [{ id: "accounts", label: "操作账号", icon: "members", desc: role.value === "STORE_MANAGER" ? "管理店员账号" : "管理店长与店员账号" }] : []),
+  ...(canManageAccounts.value ? [{ id: "levels", label: text("memberLevels"), icon: "ranking", desc: "" }] : []),
   { id: "features", label: "功能开关", icon: "settings", desc: "启用或关闭功能" },
   { id: "password", label: "修改密码", icon: "settings", desc: "修改当前登录账号密码" },
   ...(canManageFeatureSettings.value ? [
@@ -351,6 +353,7 @@ const testUpload = () => {
         <footer class="settings-actions"><button class="secondary-button" type="button" :disabled="accountManager.loading" @click="accountManager.load"><AppIcon name="refresh" :size="17" />刷新账号列表</button></footer>
       </section>
 
+      <MemberLevelsSettings v-else-if="activeTab === 'levels' && canManageAccounts" :locale="locale" :can-delete="isFactory" @toast="emit('toast', $event)" />
       <section v-else-if="activeTab === 'password'" class="settings-card glass-panel" data-testid="operator-own-password">
         <header class="settings-card__header"><span class="settings-icon"><AppIcon name="settings" /></span><div><p class="section-eyebrow">ACCOUNT SECURITY</p><h2>修改自己的密码</h2><p>修改后下次登录使用新密码。</p></div></header>
         <label class="form-field"><span>新密码 <b>*</b></span><input v-model="selfPassword" data-testid="operator-own-password-input" type="password" autocomplete="new-password" /><small>6 到 72 个字符</small></label>

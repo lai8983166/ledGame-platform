@@ -110,6 +110,8 @@ class CoreFlowApiIntegrationTest {
         clock.set(Instant.parse("2026-08-09T02:00:00Z"));
         jdbc.update("DELETE FROM member_recharge_records");
         jdbc.update("DELETE FROM member_time_adjustments");
+        jdbc.update("DELETE FROM member_point_deductions");
+        jdbc.update("DELETE FROM member_levels");
         jdbc.update("DELETE FROM wristband_charge_records");
         jdbc.update("DELETE FROM legacy_game_sessions");
         jdbc.update("DELETE FROM game_play_records");
@@ -129,6 +131,171 @@ class CoreFlowApiIntegrationTest {
             String fileName = path.getFileName().toString();
             avatarStorage.delete("uploaded:" + fileName.substring(0, fileName.length() - 4));
         });
+    }
+
+    @Test
+    void memberLevelsFollowRankingPointsAndCurrentConfigurationWithoutRedemptionDowngrade() {
+        long member = createReadyWristband("13800138930", "等级测试", 60);
+        assertThat(getList("/api/members").getBody().get(0).get("levelName")).isNull();
+        var lower = post("/api/member-levels", Map.of("name", "青铜", "minPoints", 0, "maxPoints", 999));
+        assertThat(lower.getStatusCode()).isEqualTo(HttpStatus.OK);
+        long upper = number(post("/api/member-levels", Map.of("name", "白银", "minPoints", 1000, "maxPoints", 1999)).getBody().get("id"));
+        assertThat(getList("/api/members").getBody().get(0)).containsEntry("levelName", "青铜");
+        var play = startPlay("level-first", "simple", "等级测试").getBody();
+        put("/api/game-plays/"+play.get("id")+"/result", Map.of("success",true,"terminationReason","NATURAL_COMPLETION","rawScore",1000));
+        var ranking = get("/api/leaderboard/summary").getBody();
+        post("/api/members/"+member+"/point-deductions", Map.of("points",800,"reason","等级兑换","requestId","level-redemption"));
+        for (String query : List.of("phone=13800138930", "wristbandUid=2283055618")) {
+            var info = get("/api/player-info?"+query).getBody();
+            assertThat(map(info.get("profile"))).containsEntry("levelName", "白银");
+            assertThat(number(map(info.get("points")).get("remaining"))).isEqualTo(200);
+        }
+        assertThat(getList("/api/members").getBody().get(0)).containsEntry("levelName", "白银");
+        put("/api/member-levels/"+upper, Map.of("name","进阶","minPoints",1000,"maxPoints",1999));
+        assertThat(getList("/api/members").getBody().get(0)).containsEntry("levelName", "进阶");
+        var next = startPlay("level-second", "simple", "等级继续").getBody();
+        put("/api/game-plays/"+next.get("id")+"/result", Map.of("success",true,"terminationReason","NATURAL_COMPLETION","rawScore",1000));
+        assertThat(getList("/api/members").getBody().get(0).get("levelName")).isNull();
+        long highest = number(post("/api/member-levels", Map.of("name","黄金","minPoints",2000,"maxPoints",2000)).getBody().get("id"));
+        assertThat(getList("/api/members").getBody().get(0)).containsEntry("levelName","黄金");
+        var beforeDelete = get("/api/leaderboard/summary").getBody();
+        http.exchange("/api/member-levels/"+highest,HttpMethod.DELETE,new HttpEntity<>(operatorHeaders()),Map.class);
+        assertThat(getList("/api/members").getBody().get(0).get("levelName")).isNull();
+        assertThat(get("/api/leaderboard/summary").getBody()).isEqualTo(beforeDelete);
+        assertThat(number(map(get("/api/player-info?phone=13800138930").getBody().get("points")).get("ranking"))).isEqualTo(2000);
+        assertThat(ranking).isNotNull();
+    }
+
+    @Test
+    void memberLevelValidationRejectsOverlapDuplicateInvalidAndMissingRows() {
+        var level = post("/api/member-levels",Map.of("name","Bronze","minPoints",0,"maxPoints",999));
+        assertThat(level.getStatusCode()).isEqualTo(HttpStatus.OK);
+        long id = number(level.getBody().get("id"));
+        for (var range : List.of(Map.of("minPoints",999,"maxPoints",1001), Map.of("minPoints",1,"maxPoints",2), Map.of("minPoints",0,"maxPoints",2000)))
+            assertError(post("/api/member-levels", Map.of("name","相交","minPoints",range.get("minPoints"),"maxPoints",range.get("maxPoints"))),HttpStatus.CONFLICT,"MEMBER_LEVEL_OVERLAP");
+        assertError(post("/api/member-levels",Map.of("name"," bronze ","minPoints",1000,"maxPoints",2000)),HttpStatus.CONFLICT,"MEMBER_LEVEL_NAME_EXISTS");
+        for (Object min : List.of(-1,0.5,9007199254740992L))
+            assertError(post("/api/member-levels",Map.of("name","错误","minPoints",min,"maxPoints",2000)),HttpStatus.BAD_REQUEST,"INVALID_MEMBER_LEVEL_RANGE");
+        assertError(post("/api/member-levels",Map.of("name"," ","minPoints",1000,"maxPoints",2000)),HttpStatus.BAD_REQUEST,"INVALID_MEMBER_LEVEL_NAME");
+        assertError(post("/api/member-levels",Map.of("name","长".repeat(31),"minPoints",1000,"maxPoints",2000)),HttpStatus.BAD_REQUEST,"INVALID_MEMBER_LEVEL_NAME");
+        assertError(post("/api/member-levels",Map.of("name","倒置","minPoints",2000,"maxPoints",1000)),HttpStatus.BAD_REQUEST,"INVALID_MEMBER_LEVEL_RANGE");
+        assertThat(put("/api/member-levels/"+id,Map.of("name","修改","minPoints",0,"maxPoints",999)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(put("/api/member-levels/999999",Map.of("name","不存在","minPoints",2000,"maxPoints",3000)),HttpStatus.NOT_FOUND,"MEMBER_LEVEL_NOT_FOUND");
+        jdbc.execute("CREATE TRIGGER reject_level_update BEFORE UPDATE ON member_levels BEGIN SELECT RAISE(ABORT,'rollback'); END");
+        try { assertThat(put("/api/member-levels/"+id,Map.of("name","失败","minPoints",0,"maxPoints",999)).getStatusCode().is5xxServerError()).isTrue(); }
+        finally { jdbc.execute("DROP TRIGGER reject_level_update"); }
+        assertThat(getList("/api/member-levels").getBody()).singleElement().satisfies(row->assertThat(row).containsEntry("name","修改"));
+    }
+
+    @Test
+    void concurrentMemberLevelCreationDoesNotAllowIntersectingRanges() {
+        var results = java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post("/api/member-levels",Map.of("name","并发"+index,"minPoints",0,"maxPoints",999)))).toList();
+        assertThat(results.stream().map(result->result.join().getStatusCode()).filter(HttpStatus.OK::equals)).hasSize(1);
+        results.forEach(result->assertThat(result.join().getStatusCode()).isIn(HttpStatus.OK,HttpStatus.CONFLICT));
+        assertThat(getList("/api/member-levels").getBody()).hasSize(1);
+    }
+
+    @Test
+    void memberLevelPermissionsAndOperatorAuditFollowExistingRoleBoundaries() {
+        assertThat(http.getForEntity("/api/member-levels",Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        var body=Map.of("name","权限等级","minPoints",0,"maxPoints",999);
+        long id=number(post("/api/member-levels",body).getBody().get("id"));
+        for(String role:List.of("STORE_MANAGER","CLERK")) {
+            long operator=number(post("/api/operator-accounts",Map.of("username","level-"+role,"displayName","等级操作员","password","password888","accountType",role)).getBody().get("id"));
+            var headers=new HttpHeaders(); headers.set("X-Operator-Id",String.valueOf(operator));
+            assertThat(http.exchange("/api/member-levels",HttpMethod.GET,new HttpEntity<>(headers),List.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+            var entity=new HttpEntity<>(Map.of("name","角色"+role,"minPoints",1000,"maxPoints",1999),headers);
+            var response=http.exchange("/api/member-levels",HttpMethod.POST,entity,Map.class);
+            assertThat(response.getStatusCode()).isEqualTo(role.equals("STORE_MANAGER")?HttpStatus.OK:HttpStatus.FORBIDDEN);
+            assertThat(http.exchange("/api/member-levels/"+id,HttpMethod.PUT,new HttpEntity<>(body,headers),Map.class).getStatusCode()).isEqualTo(role.equals("STORE_MANAGER")?HttpStatus.OK:HttpStatus.FORBIDDEN);
+            assertThat(http.exchange("/api/member-levels/"+id,HttpMethod.DELETE,new HttpEntity<>(headers),Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        }
+        assertThat(http.exchange("/api/member-levels/"+id,HttpMethod.DELETE,new HttpEntity<>(operatorHeaders()),Map.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_action_logs WHERE action='MEMBER_LEVEL_CREATED' AND target_id=?",Integer.class,String.valueOf(id))).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_action_logs WHERE action='MEMBER_LEVEL_DELETED' AND target_id=?",Integer.class,String.valueOf(id))).isEqualTo(1);
+    }
+
+    @Test
+    void redemptionSeparatesAvailablePointsWithoutChangingRankAndFutureAwardsStillAccumulate() {
+        long member=createReadyWristband("13800138920","积分兑换",60);
+        var first=startPlay("points-first","simple","积分测试").getBody();
+        put("/api/game-plays/"+first.get("id")+"/result",Map.of("success",true,"terminationReason","NATURAL_COMPLETION","rawScore",10000));
+        var ranking=get("/api/leaderboard/summary").getBody();
+        var band=get("/api/wristbands/2283055618").getBody();
+        long revenue=number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"));
+        var request=Map.of("points",5000,"reason","兑换礼品","requestId","redeem-first");
+        var result=post("/api/members/"+member+"/point-deductions",request);
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(number(result.getBody().get("beforePoints"))).isEqualTo(10000);
+        assertThat(number(result.getBody().get("afterPoints"))).isEqualTo(5000);
+        assertThat(post("/api/members/"+member+"/point-deductions",request).getBody()).isEqualTo(result.getBody());
+        var projection=getList("/api/members").getBody().get(0);
+        assertThat(number(projection.get("remainingPoints"))).isEqualTo(5000);
+        assertThat(number(projection.get("rankingPoints"))).isEqualTo(10000);
+        assertThat(number(projection.get("pointsTotal"))).isEqualTo(10000);
+        for (String query:List.of("phone=13800138920","wristbandUid=2283055618")) {
+            var points=map(get("/api/player-info?"+query).getBody().get("points"));
+            assertThat(number(points.get("remaining"))).isEqualTo(5000);
+            assertThat(number(points.get("ranking"))).isEqualTo(10000);
+            assertThat(number(points.get("total"))).isEqualTo(10000);
+        }
+        assertThat(get("/api/leaderboard/summary").getBody()).isEqualTo(ranking);
+        assertThat(get("/api/wristbands/2283055618").getBody()).isEqualTo(band);
+        assertThat(number(get("/api/dashboard/overview").getBody().get("revenueTodayCents"))).isEqualTo(revenue);
+        assertThat(maps(get("/api/members/"+member+"/history").getBody().get("pointDeductions"))).singleElement().satisfies(row->{
+            assertThat(row).containsEntry("reason","兑换礼品");
+            assertThat(number(row.get("operatorId"))).isEqualTo(factoryOperatorId);
+        });
+        String csv=http.exchange("/api/exports/members.csv",HttpMethod.GET,new HttpEntity<>(operatorHeaders()),String.class).getBody();
+        assertThat(csv).contains("剩余积分","排名积分",",5000,10000,1");
+        var next=startPlay("points-second","simple","积分继续").getBody();
+        var award=Map.of("success",true,"terminationReason","NATURAL_COMPLETION","rawScore",500);
+        put("/api/game-plays/"+next.get("id")+"/result",award);
+        put("/api/game-plays/"+next.get("id")+"/result",award);
+        var after=map(get("/api/player-info?phone=13800138920").getBody().get("points"));
+        assertThat(number(after.get("remaining"))).isEqualTo(5500);
+        assertThat(number(after.get("ranking"))).isEqualTo(10500);
+        assertThat(post("/api/members/"+member+"/point-deductions",request).getBody()).isEqualTo(result.getBody());
+    }
+
+    @Test
+    void pointDeductionRejectsInvalidInputsAndRollsBackOnFailure() {
+        long member=createReadyWristband("13800138921","积分边界",60);
+        var play=startPlay("points-validation","simple","积分边界").getBody();
+        put("/api/game-plays/"+play.get("id")+"/result",Map.of("success",true,"terminationReason","NATURAL_COMPLETION","rawScore",10));
+        String route="/api/members/"+member+"/point-deductions";
+        var body=Map.of("points",5,"reason","兑换","requestId","points-validation");
+        assertThat(http.postForEntity(route,body,Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        for(Object points:List.of(0,-1,1.5,9007199254740992L))
+            assertError(post(route,Map.of("points",points,"reason","兑换","requestId","bad-points")),HttpStatus.BAD_REQUEST,"INVALID_POINTS");
+        assertError(post(route,Map.of("points",11,"reason","兑换","requestId","overdraw-points")),HttpStatus.CONFLICT,"MEMBER_INSUFFICIENT_POINTS");
+        assertError(post(route,Map.of("points",5,"reason"," ","requestId","empty-points-reason")),HttpStatus.BAD_REQUEST,"INVALID_POINTS_REASON");
+        assertError(post(route,Map.of("points",5,"reason","测".repeat(501),"requestId","long-points-reason")),HttpStatus.BAD_REQUEST,"INVALID_POINTS_REASON");
+        jdbc.execute("CREATE TRIGGER reject_points_deduction BEFORE INSERT ON member_point_deductions BEGIN SELECT RAISE(ABORT,'test rollback'); END");
+        try { assertThat(post(route,body).getStatusCode().is5xxServerError()).isTrue(); }
+        finally { jdbc.execute("DROP TRIGGER reject_points_deduction"); }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_point_deductions",Integer.class)).isZero();
+        assertThat(post(route,body).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertError(post(route,Map.of("points",4,"reason","兑换","requestId","points-validation")),HttpStatus.CONFLICT,"POINT_DEDUCTION_REQUEST_CONFLICT");
+        jdbc.update("UPDATE members SET status='FROZEN' WHERE id=?",member);
+        assertError(post(route,Map.of("points",1,"reason","兑换","requestId","frozen-points")),HttpStatus.NOT_FOUND,"MEMBER_NOT_FOUND");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operator_action_logs WHERE action='MEMBER_POINTS_DEDUCTED' AND target_id=?",Integer.class,String.valueOf(member))).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentPointDeductionsCannotOverspendOrDuplicateRequests() {
+        long member=createReadyWristband("13800138922","并发兑换",60);
+        var play=startPlay("points-concurrent","simple","积分并发").getBody();
+        put("/api/game-plays/"+play.get("id")+"/result",Map.of("success",true,"terminationReason","NATURAL_COMPLETION","rawScore",10));
+        String route="/api/members/"+member+"/point-deductions";
+        var repeated=Map.of("points",2,"reason","一次兑换","requestId","parallel-points");
+        var repeats=java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post(route,repeated))).toList();
+        repeats.forEach(response->assertThat(response.join().getStatusCode()).isEqualTo(HttpStatus.OK));
+        var requests=java.util.stream.IntStream.range(0,6).mapToObj(index->java.util.concurrent.CompletableFuture.supplyAsync(()->post(route,Map.of("points",5,"reason","并发兑换","requestId","independent-points-"+index)))).toList();
+        assertThat(requests.stream().map(response->response.join().getStatusCode()).filter(HttpStatus.OK::equals)).hasSize(1);
+        requests.forEach(response->assertThat(response.join().getStatusCode()).isIn(HttpStatus.OK,HttpStatus.CONFLICT));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_point_deductions",Integer.class)).isEqualTo(2);
+        assertThat(number(map(get("/api/player-info?phone=13800138922").getBody().get("points")).get("remaining"))).isEqualTo(3);
     }
 
     @Test

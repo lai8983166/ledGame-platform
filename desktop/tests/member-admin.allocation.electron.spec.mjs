@@ -6,7 +6,7 @@ import path from 'node:path';
 import { prepareActivationLicense } from './activation-fixture.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
-test('打包实操：账户充值、连续预充值、柜台及自助领取、还卡退回', async () => {
+test('打包实操：账户时长、手环预充值与退回、积分扣减、等级及自助查询', async () => {
   test.setTimeout(180_000);
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ledgame-allocation-'));
   const port = await new Promise(resolve => {
@@ -46,6 +46,45 @@ test('打包实操：账户充值、连续预充值、柜台及自助领取、�
       expect(response.ok, `${route}: ${response.status}`).toBe(true);
       return response.json();
     };
+    await page.getByTestId('admin-nav-settings').click();
+    await page.getByTestId('settings-tab-levels').click();
+    await expect(page.getByTestId('member-level-empty')).toBeVisible();
+    const addLevel = async (name, min, max) => {
+      await page.getByTestId('member-level-create').click();
+      await page.getByTestId('member-level-name').fill(name);
+      await page.getByTestId('member-level-min').fill(String(min));
+      await page.getByTestId('member-level-max').fill(String(max));
+      await expect(page.getByTestId('member-level-save')).toHaveText('保存等级');
+      await page.getByTestId('member-level-save').click();
+      await expect(page.getByTestId('member-level-dialog')).toHaveCount(0);
+    };
+    await addLevel('入门',0,9999);
+    await addLevel('进阶',10000,19999);
+    await page.getByTestId('member-level-create').click();
+    await page.getByTestId('member-level-save').click();
+    await expect(page.getByTestId('member-level-error')).toContainText('等级名称');
+    await page.getByTestId('member-level-name').fill('重叠校验');
+    await page.getByTestId('member-level-min').fill('9999');
+    await page.getByTestId('member-level-max').fill('20000');
+    await page.getByTestId('member-level-save').click();
+    await expect(page.getByTestId('member-level-error')).toContainText('重叠');
+    await page.getByTestId('member-level-cancel').click();
+    await addLevel('临时等级',20000,29999);
+    const temporaryLevel = page.locator('[data-testid^="member-level-row-"]').filter({hasText:'临时等级'});
+    await temporaryLevel.getByTestId('member-level-edit').click();
+    await page.getByTestId('member-level-name').fill('临时修改');
+    await page.getByTestId('member-level-save').click();
+    await expect(temporaryLevel).toHaveCount(0);
+    const updatedLevel = page.locator('[data-testid^="member-level-row-"]').filter({hasText:'临时修改'});
+    await expect(updatedLevel.getByTestId('member-level-delete')).toHaveText('删除等级');
+    await updatedLevel.getByTestId('member-level-delete').click();
+    await page.getByTestId('member-level-delete-cancel').click();
+    await expect(updatedLevel).toHaveCount(1);
+    await updatedLevel.getByTestId('member-level-delete').click();
+    await page.getByTestId('member-level-delete-confirm').click();
+    await expect(updatedLevel).toHaveCount(0);
+    await page.setViewportSize({width:1280,height:800});
+    await page.screenshot({path:test.info().outputPath('等级管理-配置与区间.png'),fullPage:true,animations:'disabled'});
     await page.getByTestId('admin-nav-members').click();
     await page.getByTestId('admin-member-create').click();
     await page.getByTestId('member-create-name').fill('桌面分配测试');
@@ -57,6 +96,7 @@ test('打包实操：账户充值、连续预充值、柜台及自助领取、�
     const member = (await api('/api/members')).find(member => member.phone==='13800138880');
     const row = page.getByTestId(`admin-member-${member.id}`);
     await expect(row.getByTestId('admin-member-balance')).toContainText('100 分');
+    await expect(row.getByTestId('admin-member-level')).toHaveText('入门');
     await row.getByTestId('admin-member-recharge').click();
     await page.getByTestId('member-recharge-minutes').fill('10');
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
@@ -111,6 +151,46 @@ test('打包实操：账户充值、连续预充值、柜台及自助领取、�
     await page.screenshot({path:test.info().outputPath('人工时长调整-记录与操作员.png'),fullPage:true,animations:'disabled'});
     await page.getByRole('dialog',{name:'调整记录',exact:true}).getByRole('button',{name:'关闭弹窗'}).click();
     await expect(adjustments).toHaveCount(0);
+    await page.getByRole('button',{name:'关闭详情'}).click();
+    // Seed a real completed settlement, then exercise point redemption using visible controls.
+    const play = await api('/api/game-plays/start', 'POST', { uid:'2283055880', deviceId:'points-desktop',
+      externalSessionId:'points-desktop-first', gameId:'simple', gameName:'积分测试' });
+    await api(`/api/game-plays/${play.id}/result`, 'PUT', {success:true, terminationReason:'NATURAL_COMPLETION', rawScore:10000});
+    const rankingBefore = await api('/api/leaderboard/summary');
+    await page.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(row.getByTestId('admin-member-remaining-points')).toHaveText('10000');
+    await row.getByTestId('admin-member-deduct-points').click();
+    await page.getByTestId('member-points-amount').fill('5000');
+    await page.getByTestId('member-points-submit').click();
+    await expect(page.getByTestId('member-points-error')).toContainText('请填写扣减原因');
+    await page.getByTestId('member-points-reason').fill('取消兑换测试');
+    await page.getByTestId('member-points-cancel').click();
+    expect((await api('/api/members'))[0].remainingPoints).toBe(10000);
+    await row.getByTestId('admin-member-deduct-points').click();
+    await page.getByTestId('member-points-amount').fill('10001');
+    await page.getByTestId('member-points-reason').fill('积分兑换测试');
+    await page.getByTestId('member-points-submit').click();
+    await expect(page.getByTestId('member-points-error')).toContainText('剩余积分不足');
+    await page.getByTestId('member-points-amount').fill('5000');
+    await expect(page.getByTestId('member-points-expected')).toHaveText('5000');
+    await page.getByTestId('member-points-submit').click();
+    await expect(page.getByTestId('member-points-dialog')).toHaveCount(0);
+    await expect(row.getByTestId('admin-member-remaining-points')).toHaveText('5000');
+    await expect(row.getByTestId('admin-member-ranking-points')).toHaveText('10000');
+    await expect(row.getByTestId('admin-member-level')).toHaveText('进阶');
+    const rankingAfter = await api('/api/leaderboard/summary');
+    for (const period of ['day','month','year']) {
+      // generatedAt is intentionally live; compare business entries rather than response timestamps.
+      expect(rankingAfter[period].entries).toEqual(rankingBefore[period].entries);
+    }
+    await row.locator('.member-cell').click();
+    await page.getByTestId('admin-member-point-history-button').click();
+    const deductions = page.getByTestId('admin-member-point-history-modal');
+    await expect(deductions).toContainText('积分兑换测试');
+    await expect(deductions).toContainText('allocation-admin');
+    await expect(deductions.locator('tbody tr')).toHaveCount(1);
+    await page.screenshot({path:test.info().outputPath('积分扣减-双积分与操作记录.png'),fullPage:true,animations:'disabled'});
+    await page.getByRole('dialog',{name:'积分扣减记录',exact:true}).getByRole('button',{name:'关闭弹窗'}).click();
     await page.getByRole('button',{name:'关闭详情'}).click();
     await expect.poll(async () => (await api('/api/wristbands/2283055880')).remainingSeconds).toBeLessThan(3600);
     await page.getByTestId('admin-nav-rooms').click();
@@ -202,6 +282,15 @@ test('打包实操：账户充值、连续预充值、柜台及自助领取、�
     expect((await api('/api/members/'+member.id+'/history')).charges).toHaveLength(4);
     expect((await api('/api/dashboard/overview')).revenueTodayCents).toBe(5000);
     await customer.screenshot({path:test.info().outputPath('自助激活-立即计时.png')});
+    await customer.getByTestId('kiosk-bind-success').getByRole('button',{name:'Return Home'}).click();
+    await customer.getByTestId('kiosk-player-info').click();
+    await customer.getByTestId('kiosk-info-phone').fill('13800138880');
+    await customer.getByTestId('kiosk-info-submit').click();
+    await expect(customer.getByTestId('kiosk-info-points-remaining')).toHaveText('5000');
+    await expect(customer.getByTestId('kiosk-info-points-total')).toHaveText('10000');
+    await expect(customer.getByTestId('kiosk-info-rank')).toHaveText('#1');
+    await expect(customer.getByTestId('kiosk-info-level')).toContainText('进阶');
+    await customer.screenshot({path:test.info().outputPath('自助查询-剩余积分与排名积分.png'),fullPage:true,animations:'disabled'});
   } finally {
     if (kiosk) {
       await kiosk.evaluate(({BrowserWindow}) => { for(const window of BrowserWindow.getAllWindows()) window.destroy(); }).catch(()=>{});
