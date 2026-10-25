@@ -262,8 +262,6 @@ test('打包实操：账户时长、手环预充值与退回、积分扣减、�
     const operator = await kiosk.firstWindow();
     await operator.getByTestId('operator-host').fill('127.0.0.1');
     await operator.getByTestId('operator-port').fill(String(port));
-    await operator.getByTestId('operator-save').click();
-    await operator.getByTestId('operator-test').click();
     await expect(operator.getByTestId('operator-launch')).toBeEnabled();
     const customerPromise = kiosk.waitForEvent('window');
     await operator.getByTestId('operator-launch').click();
@@ -272,7 +270,7 @@ test('打包实操：账户时长、手环预充值与退回、积分扣减、�
     await customer.getByTestId('kiosk-member-phone').fill('13800138880');
     await customer.getByTestId('kiosk-member-submit').click();
     await customer.getByTestId('kiosk-existing-continue').click();
-    await customer.getByTestId('kiosk-scan-start').click();
+    await expect(customer.getByTestId('kiosk-scan-dialog')).toBeVisible();
     await customer.keyboard.type('2283055881'); await customer.keyboard.press('Enter');
     await expect(customer.getByTestId('kiosk-screen-success')).toBeVisible();
     const activated = await api('/api/wristbands/2283055881');

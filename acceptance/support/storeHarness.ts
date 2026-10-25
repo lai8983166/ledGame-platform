@@ -270,9 +270,6 @@ export class StoreAcceptanceHarness {
     this.#registrationOperatorPage = await this.#registrationElectron.firstWindow();
     await this.#registrationOperatorPage.getByTestId("operator-host").fill("127.0.0.1");
     await this.#registrationOperatorPage.getByTestId("operator-port").fill(String(this.#ports.platform));
-    await this.#registrationOperatorPage.getByTestId("operator-save").click();
-    await this.#registrationOperatorPage.getByTestId("operator-test").click();
-    await expect(this.#registrationOperatorPage.getByTestId("operator-status")).toContainText(/连接成功|connection/i);
     await this.#registrationOperatorPage.getByTestId("operator-launch").click();
     await expect.poll(() => this.#registrationElectron!.windows().length).toBe(2);
     this.#kioskPage = this.#registrationElectron.windows().find((page) => page !== this.#registrationOperatorPage) ?? null;
@@ -568,7 +565,6 @@ export class StoreAcceptanceHarness {
 
   async #scanKioskWristband(uid: string): Promise<void> {
     const page = this.kioskPage;
-    await page.getByTestId("kiosk-scan-start").click();
     await expect(page.getByTestId("kiosk-scan-dialog")).toBeVisible();
     await page.keyboard.type(uid);
     await page.keyboard.press("Enter");

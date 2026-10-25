@@ -11305,6 +11305,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -11333,8 +11341,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -11695,6 +11719,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -11723,8 +11755,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -12085,6 +12133,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -12113,8 +12169,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -12475,6 +12547,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -12503,8 +12583,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -12865,6 +12961,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -12893,8 +12997,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -13255,6 +13375,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -13283,8 +13411,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -13645,6 +13789,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -13673,8 +13825,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -14035,6 +14203,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -14063,8 +14239,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -14425,6 +14617,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -14453,8 +14653,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -14815,6 +15031,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -14843,8 +15067,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -15205,6 +15445,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -15233,8 +15481,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {
@@ -15595,6 +15859,14 @@
             "source": "Member Admin connection problem",
             "translation": ""
           },
+          "operatorBrowserPreview": {
+            "source": "Browser preview only. Use the desktop development command to verify both windows.",
+            "translation": ""
+          },
+          "operatorConnectionFailed": {
+            "source": "Cannot connect to Member Admin. Check that it is running, and check the network or firewall settings.",
+            "translation": ""
+          },
           "operatorDescription": {
             "source": "This page is for staff only. The customer flow runs in a separate fullscreen window.",
             "translation": ""
@@ -15623,8 +15895,24 @@
             "source": "Port",
             "translation": ""
           },
+          "operatorReady": {
+            "source": "Enter the Member Admin address, then start",
+            "translation": ""
+          },
           "operatorSave": {
             "source": "Save settings",
+            "translation": ""
+          },
+          "operatorStartFailed": {
+            "source": "Unable to start self-service",
+            "translation": ""
+          },
+          "operatorStarted": {
+            "source": "Self-service started",
+            "translation": ""
+          },
+          "operatorStarting": {
+            "source": "Connecting…",
             "translation": ""
           },
           "operatorTest": {

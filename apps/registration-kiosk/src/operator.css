@@ -18,3 +18,7 @@ body { margin:0; }
 .operator-actions button:disabled { opacity:.4; cursor:not-allowed; }
 .operator-actions .operator-launch { margin-left:auto; color:#05202b; background:#55e1e5; }
 .operator-card small { color:#718ba0; }
+.operator-error-dialog { width:min(480px,90vw); padding:28px; border-radius:18px; background:#fff; color:#111827; box-shadow:0 24px 80px #0008; outline:none; }
+.operator-error-dialog h2 { margin:0 0 16px; font-size:22px; }
+.operator-error-dialog p { line-height:1.6; overflow-wrap:anywhere; }
+.operator-error-dialog button { display:block; margin:24px 0 0 auto; min-height:42px; padding:0 24px; border:0; border-radius:9px; background:#087b86; color:#fff; cursor:pointer; }

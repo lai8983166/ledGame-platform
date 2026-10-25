@@ -7,8 +7,32 @@ describe("registration kiosk workflow UI contract", () => {
     expect(source).toContain("playerInfoModeWristband");
     expect(source).toContain("openPlayerInfoScan");
     expect(source).toContain("queryPlayerInfoByWristband");
-    expect(source).toContain("data-testid=\"kiosk-info-scan\"");
+    expect(source).toContain('data-testid="kiosk-info-mode-wristband"');
+    expect(source).not.toContain('data-testid="kiosk-info-scan"');
+    expect(source).not.toContain('data-testid="kiosk-info-wristband"');
+    expect(source).not.toContain("openInput('infoWristbandUid'");
     expect(source).toContain("data-testid=\"kiosk-info-result\"");
+  });
+
+  it("starts with one button and reuses save/check/start in order without a native dialog", async () => {
+    const source = await readFile(new URL("./OperatorApp.vue", import.meta.url), "utf8");
+    expect(source).not.toContain('data-testid="operator-save"');
+    expect(source).not.toContain('data-testid="operator-test"');
+    expect(source).toContain('data-testid="operator-error-dialog"');
+    expect(source.indexOf('await desktop.saveSettings')).toBeLessThan(source.indexOf('await desktop.testConnection'));
+    expect(source.indexOf('await desktop.testConnection')).toBeLessThan(source.indexOf('await desktop.startKiosk'));
+    expect(source).toContain('finally { busy.value = false; }');
+    expect(source).not.toMatch(/window\.(alert|confirm|prompt)/);
+  });
+
+  it("enters activation scan automatically, clears stale success and focuses the reader prompt", async () => {
+    const source = await readFile(new URL("./App.vue", import.meta.url), "utf8");
+    expect(source).not.toContain('data-testid="kiosk-scan-start"');
+    expect(source).toContain('if (target === "swipe") openScanDialog();');
+    expect(source).toContain('scanDialog.value?.focus()');
+    expect(source).toContain('clearScanTimer();');
+    expect(source).toContain('requestRevision === sessionRequestRevision && screen.value === "swipe"');
+    expect(source).toContain('if (purpose === "bind" && screen.value === "swipe") goTo(profileScreen.value);');
   });
 
   it("exposes persisted timeout settings and a visible countdown", async () => {

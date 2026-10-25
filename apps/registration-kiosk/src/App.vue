@@ -58,6 +58,7 @@ const settingsError = ref("");
 const locale = ref<PlatformLocale>(readStoredLocale(window.localStorage, REGISTRATION_KIOSK_LOCALE_STORAGE_KEY));
 const session = reactive<KioskSession>(createSession());
 const wristbandScan = reactive(createWristbandScanSession());
+const scanDialog = ref<HTMLElement | null>(null);
 const activeInput = ref<InputTarget | null>(null);
 const keyboardLayout = ref<KeyboardLayout>("numeric");
 const staffExitOpen = ref(false);
@@ -96,6 +97,7 @@ const selectedAvatarIsPhoto = computed(() => Boolean(session.avatarPhotoDataUrl)
 const pendingAvatar = computed(() => avatars.find((avatar) => avatar.id === pendingAvatarId.value) ?? avatars[0]);
 const availableAvatars = computed(() => avatarOptionsForGender(session.gender));
 const scanDialogOpen = computed(() => wristbandScan.state !== "idle");
+watch(scanDialogOpen, async (open) => { if (open) { await nextTick(); scanDialog.value?.focus(); } });
 const keyboardOpen = computed(() => activeInput.value !== null);
 const copy = computed(() => registrationKioskCatalogs[locale.value]);
 const text = (key: RegistrationKioskMessageKey) => copy.value[key];
@@ -168,7 +170,13 @@ const showToast = (message: string) => {
   toastTimer = window.setTimeout(() => (toast.value = ""), 2800);
 };
 
+const clearScanTimer = () => {
+  if (scanTimer) window.clearTimeout(scanTimer);
+  scanTimer = undefined;
+};
+
 const goTo = (target: KioskScreen) => {
+  clearScanTimer();
   closeKeyboard();
   overlay.value = "none";
   if (target !== "swipe") {
@@ -179,10 +187,12 @@ const goTo = (target: KioskScreen) => {
     if (session.wristbandStatus !== "detected") session.wristbandStatus = "idle";
   }
   screen.value = target;
+  if (target === "swipe") openScanDialog();
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
 
 const resetSession = () => {
+  clearScanTimer();
   playerInfoRequestRevision += 1;
   sessionRequestRevision += 1;
   cancelWristbandScan(wristbandScan);
@@ -361,10 +371,7 @@ const submitPhone = async () => {
 };
 
 const confirmExistingMember = () => {
-  cancelWristbandScan(wristbandScan);
-  session.wristbandStatus = "idle";
-  activationError.value = "";
-  screen.value = "swipe";
+  goTo("swipe");
 };
 
 const validateRegistration = () => {
@@ -394,10 +401,7 @@ const submitRegistration = async () => {
     if (requestRevision !== sessionRequestRevision) return;
     foundMember.value = member;
     session.memberId = member.id;
-    cancelWristbandScan(wristbandScan);
-    session.wristbandStatus = "idle";
-    activationError.value = "";
-    screen.value = "swipe";
+    goTo("swipe");
   } catch (error) {
     if (requestRevision !== sessionRequestRevision) return;
     errors.phone = error instanceof Error ? error.message : "会员创建失败";
@@ -502,6 +506,7 @@ const selectGender = (gender: Gender) => {
 };
 
 const openScanDialog = () => {
+  closeKeyboard();
   sessionRequestRevision += 1;
   scanPurpose.value = "bind";
   activationError.value = "";
@@ -510,6 +515,8 @@ const openScanDialog = () => {
 };
 
 const cancelScanDialog = () => {
+  const purpose = scanPurpose.value;
+  clearScanTimer();
   playerInfoRequestRevision += 1;
   sessionRequestRevision += 1;
   cancelWristbandScan(wristbandScan);
@@ -517,9 +524,12 @@ const cancelScanDialog = () => {
   session.wristbandStatus = "idle";
   activationError.value = "";
   playerInfoState.error = "";
+  if (purpose === "bind" && screen.value === "swipe") goTo(profileScreen.value);
+  else if (purpose === "player-info") playerInfoFlow.reset();
 };
 
 const openPlayerInfoScan = () => {
+  playerInfoRequestRevision += 1;
   closeKeyboard();
   playerInfoFlow.reset();
   playerInfoState.mode = "wristband";
@@ -546,8 +556,10 @@ const bindScannedWristband = async (frame: WristbandScanFrame) => {
     session.durationMinutes = activated.durationMinutes == null ? null : Number(activated.durationMinutes);
     session.wristbandUid = frame.uid;
     session.wristbandStatus = "detected";
-    if (scanTimer) window.clearTimeout(scanTimer);
-    scanTimer = window.setTimeout(() => { screen.value = "success"; }, 500);
+    clearScanTimer();
+    scanTimer = window.setTimeout(() => {
+      if (requestRevision === sessionRequestRevision && screen.value === "swipe") screen.value = "success";
+    }, 500);
   } catch (error) {
     if (requestRevision !== sessionRequestRevision) return;
     if (failWristbandScan(wristbandScan, frame.revision)) {
@@ -691,14 +703,12 @@ onBeforeUnmount(() => {
         <div class="tech-panel phone-panel player-info-query-panel">
           <div class="panel-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="player-info-mode-toggle" role="tablist" :aria-label="text('playerInfo')">
-            <button type="button" :class="{ active: playerInfoState.mode === 'phone' }" :aria-selected="playerInfoState.mode === 'phone'" @click="playerInfoState.mode = 'phone'; playerInfoState.error = ''">{{ text('playerInfoModePhone') }}</button>
-            <button type="button" :class="{ active: playerInfoState.mode === 'wristband' }" :aria-selected="playerInfoState.mode === 'wristband'" @click="playerInfoState.mode = 'wristband'; playerInfoState.error = ''">{{ text('playerInfoModeWristband') }}</button>
+            <button type="button" data-testid="kiosk-info-mode-phone" :class="{ active: playerInfoState.mode === 'phone' }" :aria-selected="playerInfoState.mode === 'phone'" @click="playerInfoFlow.reset()">{{ text('playerInfoModePhone') }}</button>
+            <button type="button" data-testid="kiosk-info-mode-wristband" :class="{ active: playerInfoState.mode === 'wristband' }" :aria-selected="playerInfoState.mode === 'wristband'" @click="openPlayerInfoScan">{{ text('playerInfoModeWristband') }}</button>
           </div>
           <label v-if="playerInfoState.mode === 'phone'" class="kiosk-field" :class="{ focused: activeInput === 'infoPhone', invalid: playerInfoState.status === 'error' }"><span>{{ text('playerInfoModePhone') }}</span><div><KioskIcon name="phone" :size="22" /><input data-input="infoPhone" data-testid="kiosk-info-phone" :value="session.infoPhone" inputmode="none" autocomplete="off" :placeholder="text('playerInfoPhonePlaceholder')" :aria-label="text('playerInfoModePhone')" @pointerdown="openInput('infoPhone','numeric')" @focus="openInput('infoPhone','numeric')" @input="handleNativeInput('infoPhone',$event); playerInfoState.error = ''" @keydown.enter.prevent="queryPlayerInfo" /><small>{{ session.infoPhone.length }}/15</small></div></label>
-          <label v-else class="kiosk-field" :class="{ focused: activeInput === 'infoWristbandUid', invalid: playerInfoState.status === 'error' }"><span>{{ text('playerInfoModeWristband') }}</span><div><KioskIcon name="wristband" :size="22" /><input data-input="infoWristbandUid" data-testid="kiosk-info-wristband" :value="session.infoWristbandUid" inputmode="none" autocomplete="off" :placeholder="text('playerInfoWristbandPlaceholder')" :aria-label="text('playerInfoModeWristband')" @pointerdown="openInput('infoWristbandUid','numeric')" @focus="openInput('infoWristbandUid','numeric')" @input="handleNativeInput('infoWristbandUid',$event); playerInfoState.error = ''" @keydown.enter.prevent="queryPlayerInfo" /><small>{{ session.infoWristbandUid.length }}/32</small></div></label>
           <p v-if="playerInfoState.error" class="activation-error" data-testid="kiosk-info-error"><KioskIcon name="info" :size="16" />{{ playerInfoState.error }}</p>
-          <div v-if="playerInfoState.mode === 'wristband'" class="player-info-scan-action"><button class="kiosk-button kiosk-button--secondary" data-testid="kiosk-info-scan" type="button" :disabled="playerInfoState.status === 'loading'" @click="openPlayerInfoScan"><KioskIcon name="signal" :size="18" /> {{ text('playerInfoScan') }}</button><small>{{ text('playerInfoScanDescription') }}</small></div>
-          <div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="resetSession"><KioskIcon name="back" :size="20" /> {{ text('settingsCancel') }}</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-info-submit" type="button" :disabled="playerInfoState.status === 'loading'" @click="queryPlayerInfo">{{ playerInfoState.status === 'loading' ? 'Querying...' : text('playerInfo') }} <KioskIcon name="arrow" :size="20" /></button></div>
+          <div class="panel-actions"><button class="kiosk-button kiosk-button--secondary" type="button" @click="resetSession"><KioskIcon name="back" :size="20" /> {{ text('settingsCancel') }}</button><button v-if="playerInfoState.mode === 'phone'" class="kiosk-button kiosk-button--primary" data-testid="kiosk-info-submit" type="button" :disabled="playerInfoState.status === 'loading'" @click="queryPlayerInfo">{{ playerInfoState.status === 'loading' ? 'Querying...' : text('playerInfo') }} <KioskIcon name="arrow" :size="20" /></button></div>
         </div>
       </div>
     </section>
@@ -757,8 +767,8 @@ onBeforeUnmount(() => {
 
     <section v-else-if="screen === 'swipe'" class="screen screen--swipe">
       <div class="player-chip"><img v-if="session.avatarPhotoDataUrl" class="avatar-photo avatar-photo--mini" :src="session.avatarPhotoDataUrl" alt="Member avatar" /><AvatarArt v-else :avatar="selectedAvatar" size="small" /><span><small>PLAYER</small><strong>{{ session.name }}</strong></span></div>
-      <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? '手环已激活' : 'Scan your charged wristband' }}</h1><p>{{ session.wristbandStatus === 'detected' ? '已开始计时' : '点击下方按钮后，再把柜台已充时的手环放到读卡器上。' }}</p><div class="waiting-status" data-testid="kiosk-bind-status" :data-status="session.wristbandStatus" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? '已激活 · 计时中' : 'Reader is idle' }}</div></div></div>
-      <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo(profileScreen)"><KioskIcon name="back" :size="20" /> Back</button><button class="kiosk-button kiosk-button--primary" data-testid="kiosk-scan-start" type="button" :disabled="session.wristbandStatus === 'detected'" @click="openScanDialog"><KioskIcon name="signal" :size="19" /> {{ text('scanStart') }}</button></div>
+      <div class="swipe-layout"><div class="reader-visual" :class="{ detected: session.wristbandStatus === 'detected' }"><span class="reader-ring reader-ring--one"></span><span class="reader-ring reader-ring--two"></span><span class="reader-ring reader-ring--three"></span><div class="wristband-symbol"><KioskIcon v-if="session.wristbandStatus === 'detected'" name="check" :size="72" /><WristbandArt v-else :size="132" /></div><span class="reader-scan"></span></div><div class="swipe-copy"><p class="eyebrow">STEP 03 · PAIR DEVICE</p><h1>{{ session.wristbandStatus === 'detected' ? '手环已激活' : 'Scan your charged wristband' }}</h1><p>{{ session.wristbandStatus === 'detected' ? '已开始计时' : text('scanDescription') }}</p><div class="waiting-status" data-testid="kiosk-bind-status" :data-status="session.wristbandStatus" :class="{ detected: session.wristbandStatus === 'detected' }"><span></span>{{ session.wristbandStatus === 'detected' ? '已激活 · 计时中' : text('scanWaiting') }}</div></div></div>
+      <div class="swipe-actions"><button class="kiosk-button kiosk-button--secondary" type="button" :disabled="session.wristbandStatus === 'detected'" @click="goTo(profileScreen)"><KioskIcon name="back" :size="20" /> Back</button></div>
     </section>
 
     <section v-else class="screen screen--success" data-testid="kiosk-bind-success">
@@ -807,7 +817,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="scanDialogOpen" class="modal-backdrop scan-modal-backdrop" data-testid="kiosk-scan-dialog">
-      <section class="scan-dialog tech-panel" role="dialog" aria-modal="true" aria-labelledby="scan-dialog-title">
+      <section ref="scanDialog" tabindex="-1" class="scan-dialog tech-panel" role="dialog" aria-modal="true" aria-labelledby="scan-dialog-title">
         <div class="scan-dialog__signal"><span></span><WristbandArt :size="86" /></div>
         <p class="eyebrow">{{ scanPurpose === 'player-info' ? text('playerInfoModeWristband') : text('scanEyebrow') }}</p>
         <h2 id="scan-dialog-title">{{ scanPurpose === 'player-info' ? text('playerInfoScanTitle') : text('scanTitle') }}</h2>

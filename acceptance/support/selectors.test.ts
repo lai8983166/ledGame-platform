@@ -29,7 +29,7 @@ describe("acceptance interaction contracts", () => {
   it("keeps kiosk binding behind an explicit keyboard-wedge scan session", () => {
     const kiosk = source(platformRoot, "apps/registration-kiosk/src/App.vue");
 
-    for (const selector of ["kiosk-member-phone", "kiosk-scan-start", "kiosk-scan-dialog", "kiosk-scan-cancel", "kiosk-bind-success", "kiosk-info-result"]) {
+    for (const selector of ["kiosk-member-phone", "kiosk-existing-continue", "kiosk-scan-dialog", "kiosk-scan-cancel", "kiosk-bind-success", "kiosk-info-result"]) {
       expect(kiosk).toContain(selector);
     }
     expect(kiosk).not.toContain("kiosk-wristband-uid");

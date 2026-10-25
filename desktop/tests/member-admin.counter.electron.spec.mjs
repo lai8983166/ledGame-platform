@@ -168,8 +168,6 @@ test("打包柜台：新会员发卡、失败后更正、取消、还卡保留�
       const operator = await registration.firstWindow();
       await operator.getByTestId("operator-host").fill("127.0.0.1");
       await operator.getByTestId("operator-port").fill(String(port));
-      await operator.getByTestId("operator-save").click();
-      await operator.getByTestId("operator-test").click();
       await expect(operator.getByTestId("operator-launch")).toBeEnabled();
       await operator.getByTestId("operator-launch").click();
       await expect.poll(() => registration.windows().length).toBe(2);

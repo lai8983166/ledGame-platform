@@ -23,8 +23,9 @@ describe("real leaderboard and explicit kiosk scan UI", () => {
     expect(source).toContain('v-if="secondaryScreenPreviewEnabled"');
   });
 
-  it("starts scanning with a button and no customer-editable UID field", () => {
-    expect(kiosk).toContain('data-testid="kiosk-scan-start"');
+  it("starts scanning on entry with no extra button or customer-editable UID field", () => {
+    expect(kiosk).not.toContain('data-testid="kiosk-scan-start"');
+    expect(kiosk).toContain('if (target === "swipe") openScanDialog();');
     expect(kiosk).toContain('data-testid="kiosk-scan-dialog"');
     expect(kiosk).toContain('data-testid="kiosk-scan-cancel"');
     expect(kiosk).not.toContain('data-testid="kiosk-wristband-uid"');
