@@ -1,18 +1,21 @@
 # game-access-entitlement Specification
 
 ## Purpose
-TBD - created by archiving change add-game-access-records-and-player-query. Update Purpose after archive.
-## Requirements
-### Requirement: First valid game swipe activates purchased time
-The platform SHALL activate a `READY` binding on the first valid game-system wristband request and SHALL use platform-server time as the start of the purchased window.
 
-#### Scenario: Activate a ready wristband
-- **WHEN** a game backend submits UID `2283055618` whose open binding is `READY` with a positive purchased duration
-- **THEN** the platform changes the binding and wristband to `ACTIVE`, stores `started_at`, and returns the bound member, expiry, and positive remaining seconds
+按服务端时间验证会员当前已分配的手环权益，遵守发卡或自助激活即连续计时、还卡退回剩余及游戏放行不重置计时的规则。
+
+## Requirements
+
+### Requirement: Allocated access begins at issuance or self-service activation
+The platform SHALL start the allocated entitlement at counter issuance or successful self-service activation using server time. Game admission SHALL only validate this entitlement and SHALL NOT restart timing or consume the unallocated member account.
+
+#### Scenario: Admit an issued wristband
+- **WHEN** a game backend admits an already issued ACTIVE wristband with positive allocated remaining time
+- **THEN** the allocated entitlement is validated and original response fields include member, binding, expiry and allocated remaining seconds without resetting its start
 
 #### Scenario: Activation does not depend on game selection
-- **WHEN** a valid wristband is admitted before the player selects a game
-- **THEN** the purchased timer starts from that admission and continues even if the preparation UI is later cancelled
+- **WHEN** a valid wristband is admitted before game selection
+- **THEN** the existing continuous consumption rule applies until return or expiry, including preparation cancellation
 
 ### Requirement: Active wristband admission is idempotent
 The platform SHALL return the existing active window for an `ACTIVE` binding without resetting or extending its start time.
@@ -37,9 +40,12 @@ The platform SHALL deny game access for wristbands that are unknown, unbound, ex
 - **THEN** the platform changes the binding and wristband to `EXPIRED`, returns `WRISTBAND_EXPIRED`, and reports zero remaining seconds
 
 ### Requirement: Remaining balance is server derived
-The platform SHALL derive remaining play time from persisted start time and duration and SHALL NOT accept a client-supplied balance or start time as authoritative.
+The platform SHALL derive current wristband remaining time from persisted allocation and start, never from client supplied time, unallocated balance or a former holder's entitlement.
 
 #### Scenario: Client requests current balance
-- **WHEN** a caller requests admission or player information for a `READY` or `ACTIVE` binding
-- **THEN** the response returns duration, status, server-derived expiry, and remaining seconds calculated from persisted data
+- **WHEN** a caller requests admission or player information for a READY or ACTIVE binding
+- **THEN** the original access fields report server-derived allocated remaining time, status and expiry without trusting a client balance
 
+#### Scenario: Account queried after return
+- **WHEN** the returned member is queried later or is issued another wristband
+- **THEN** remaining balance is unchanged during the paused period and the old wristband is not entitled to use it

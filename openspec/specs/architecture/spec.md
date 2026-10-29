@@ -1,7 +1,7 @@
 # architecture Specification
 
 ## Purpose
-TBD - created by archiving change add-platform-architecture-foundation. Update Purpose after archive.
+明确单门店 Windows 部署、平台本地 SQLite 持久化、真实 API、操作权限及游戏端通信的边界，使正式架构与后续已交付的桌面端和数据规则一致。
 ## Requirements
 ### Requirement: 单门店独立部署
 系统 SHALL 以"单门店独立部署"为基本运行形态：每家门店拥有完整的 kiosk、member-admin、游戏桌面端、中心后端和数据库实例，门店之间不共享数据，不依赖跨门店的中心服务。
@@ -20,7 +20,7 @@ TBD - created by archiving change add-platform-architecture-foundation. Update P
 - **AND** 不存在跨进程的内部 RPC 或服务间调用
 
 ### Requirement: 不引入 Redis / MQ 等额外中间件
-系统 SHALL 仅依赖 MySQL 与 Spring Boot 内置组件。**禁止**引入 Redis、RabbitMQ、Kafka、RocketMQ 等额外中间件，除非有新的决策项明确推翻此约束（见 `decisions.md` A3）。
+平台 SHALL 使用本地 SQLite 与 Spring Boot 内置组件，不引入 Redis、RabbitMQ、Kafka、RocketMQ 等额外中间件。SQLite SHALL 由会员管理机上的中心后端独占访问，两前端通过 HTTP API 访问业务数据；游戏桌面端及其游戏后端保留独立运行和数据库边界。
 
 #### Scenario: 实时临时数据存放在进程内存
 - **WHEN** 房间状态、硬件状态、当前积分等实时数据被写入或读取
@@ -28,44 +28,43 @@ TBD - created by archiving change add-platform-architecture-foundation. Update P
 - **AND** 进程重启后这部分数据丢失（业务上可接受）
 
 #### Scenario: 跨端可靠事件投递不使用 MQ
-- **WHEN** 中心端需要向游戏桌面端可靠投递事件
-- **THEN** 投递机制基于 MySQL 中的事务消息表 + 应用内 Worker 重试
-- **AND** 不引入 MQ 中间件
+- **WHEN** 游戏端与平台交换房间状态或持久化业务结果
+- **THEN** 房间状态使用已有连接协议，准入与结算通过业务 API 及幂等身份处理
+- **AND** 不引入 MQ，也不由前端直接修改中心数据库
 
-### Requirement: 最低限度认证必须存在
-系统 SHALL 对所有非公开接口要求身份认证，区分三类调用方：管理员（账号密码登录）、kiosk 设备（预置令牌）、游戏桌面端设备（预置令牌）。**禁止**完全匿名调用业务接口（见 `decisions.md` C1）。
+### Requirement: 本地操作账号与权限审计
+会员管理操作 SHALL 使用持久化账号、有效操作员身份和既有角色权限，后端不得仅依赖隐藏按钮授权。自助注册、玩家查询、游戏准入与旧客户端兼容 SHALL 保持各自既有接口契约，不把早期设备令牌设想当成已实现的统一认证协议。账号和业务审计以可信门店局域网部署为边界。
 
 #### Scenario: 未认证请求被拒绝
-- **WHEN** 任一调用方未提供有效身份凭证
-- **THEN** 系统返回 401 Unauthorized
-- **AND** 不执行任何业务逻辑
+- **WHEN** 需要操作账号权限的管理请求缺少有效操作员，或账号被停用、删除、权限不足
+- **THEN** 后端返回稳定的会话或权限错误
+- **AND** 不执行被拒绝的管理操作
 
 #### Scenario: 操作来源可追溯
 - **WHEN** 任意变更类操作（创建、修改、删除、状态转换）发生
-- **THEN** 系统记录 `who`（管理员 ID 或设备 ID）+ `when` + `what` + `from_device`
-- **AND** 审计日志可被 `records` / `audit` 模块消费
+- **THEN** 系统按该操作的已有审计规则保存操作员或业务来源、时间、目标及结果
+- **AND** 重复业务请求仍遵守其幂等约束
 
 ### Requirement: 高可用等级目标
-系统 SHALL 满足营业时段 RTO ≤ 10 分钟、RPO ≤ 24 小时的可用性目标（见 `decisions.md` A6）。
+系统 SHALL 保留营业时段 RTO ≤ 10 分钟、RPO ≤ 24 小时的可用性目标，并通过 Windows 桌面端的后端进程管理、启动检查及既有自动/手动备份规则支持恢复。此目标 SHALL NOT 将未做过的现场断电或恢复演练标记为已验收。
 
 #### Scenario: 进程崩溃自动恢复
-- **WHEN** Spring Boot 进程异常退出
-- **THEN** systemd 或等价监督进程在 1 分钟内自动重启
-- **AND** 已提交的事务不丢失
+- **WHEN** 应用在异常退出后重新启动
+- **THEN** Windows 桌面端按启动流程管理自己的后端、数据和端口，执行既有数据库及备份检查
+- **AND** 不将其他应用的进程或数据库作为可直接替换的恢复目标
 
 #### Scenario: 每日数据备份
-- **WHEN** 到达每日备份时间
-- **THEN** 系统自动执行 MySQL 全量 dump
-- **AND** 同时归档自上次备份以来的 binlog
-- **AND** 备份保留期不少于 30 天
+- **WHEN** 到达既有自动备份时机或操作员明确导出全量备份
+- **THEN** 按 SQLite 一致性快照和已确认的备份目录、身份、版本及原子发布规则执行
+- **AND** 临时测试数据库不得读写正式备份，失败不得把旧可恢复文件替换为不完整内容
 
 ### Requirement: 实时推送走 WebSocket
-系统 SHALL 使用 WebSocket 作为中心端到游戏桌面端的实时事件推送通道。HTTP 用于请求/响应式通信（见 `decisions.md` B1、B3）。
+系统 SHALL 使用既有 WebSocket 连接交换新游戏端房间快照与运行状态，HTTP 用于业务请求/响应；旧游戏端 SHALL 通过固定兼容 HTTP 回调上报其可提供的信息。
 
-#### Scenario: 中心向桌面端推送实时事件
-- **WHEN** 中心端产生需要实时通知桌面端的事件（如手环激活、立即生效的状态变更）
-- **THEN** 事件通过 WebSocket 推送至已连接的桌面端
-- **AND** 推送失败时回退到消息表 + Worker 重试
+#### Scenario: 房间连接后恢复运行快照
+- **WHEN** 新游戏端连接或重连并上报当前房间快照
+- **THEN** 平台按来源和当前连接会话更新可观测房间状态
+- **AND** 连接断开不冒充游戏结算，持久化积分仍通过结算 API 确认
 
 ### Requirement: API 风格统一为 RESTful + JSON
 系统 SHALL 对外暴露 RESTful HTTP API，请求/响应体使用 JSON。所有时间字段使用 ISO 8601 格式（见 `decisions.md` B1、B5）。
@@ -76,7 +75,7 @@ TBD - created by archiving change add-platform-architecture-foundation. Update P
 - **AND** 响应体为 JSON
 
 ### Requirement: 字符集与编码
-系统数据库 SHALL 使用 `utf8mb4` 字符集与 `utf8mb4_unicode_ci` 排序规则。所有 API 字符串使用 UTF-8 编码（见 `decisions.md` D1）。
+系统 SHALL 使用 SQLite 支持的 Unicode 文本持久化中文及其他多字节字符，API 和文档数据使用 UTF-8；不得要求 SQLite 配置 MySQL 专用字符集或排序规则。
 
 #### Scenario: 存储与传输 Unicode 字符
 - **WHEN** 任意中文字符、emoji 或多字节字符进入系统
@@ -84,10 +83,10 @@ TBD - created by archiving change add-platform-architecture-foundation. Update P
 - **AND** API 正确序列化与反序列化
 
 ### Requirement: 数据库迁移版本化
-系统 SHALL 使用版本化迁移工具（Flyway）管理数据库 schema 变更，禁止手工直接修改生产 schema（见 `decisions.md` D6）。
+平台 SHALL 使用已实现的版本化 SQLite 启动迁移管理 schema 变更，迁移须幂等并保留会员、时长、积分及业务历史，禁止为测试直接修改日常数据库。
 
 #### Scenario: 部署时自动执行迁移
 - **WHEN** 应用启动
-- **THEN** Flyway 自动检查并应用未执行的迁移脚本
-- **AND** 迁移历史保留在专用表中
+- **THEN** 后端检查已有结构和迁移版本，只执行尚未完成的必要转换
+- **AND** 重复启动不重复发放权益，失败不留下假完成状态
 

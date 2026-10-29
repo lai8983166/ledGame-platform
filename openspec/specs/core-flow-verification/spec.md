@@ -1,7 +1,7 @@
 # core-flow-verification Specification
 
 ## Purpose
-TBD - created by archiving change add-game-access-records-and-player-query. Update Purpose after archive.
+用隔离 SQLite、可注入时钟和可重复的跨端命令验证会员、手环、权益、游玩结算及查询规则，避免自动化读写日常业务数据。
 ## Requirements
 ### Requirement: Platform business rules have real-SQLite integration tests
 The project SHALL verify member, wristband, timer, play-record, points, ranking, and player-query behavior against an isolated SQLite database.
