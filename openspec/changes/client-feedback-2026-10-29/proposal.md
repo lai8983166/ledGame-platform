@@ -13,8 +13,11 @@
 - 复制指定颜色到所有帧的四个按钮恢复对应的绿、蓝、红、紫色，悬停时保持对应颜色。
 - 重做对象工具：保留选择对象并增加提示；提供互斥的选择/添加/删除，以及添加或删除下互斥的单点/区域编辑。添加用加号和Alt+A，删除用减号和Alt+D，单点用画笔，区域用四角框图标。
 - 单点添加只放单点或精灵，区域添加仅框选普通对象；单点删除只去顶部一点，区域删除所有相交的整个对象。
+- 系统待机及准备动画改为媒体库`彩虹效果16x36.gif`循环，调试界面也显示此实时待机帧，并在运行时切回游戏画面。
 
 ## Capabilities
+
+后续七项反馈：所有封面容器按图片比例完整适配；空分类用加号选择已有游戏加入；全局配置去掉未知历史分类原值的乱码选项；进入游戏流程中的操作刷新返首页倒计时；Simple新增帧继承前帧重复次数；新建游戏首次进入先打开全局配置；循环n次显示次数输入。
 
 ### New Capabilities
 
@@ -23,7 +26,11 @@
 ### Modified Capabilities
 
 - `simple-editor-toolbar-simplification`：采用甲方指定图标、恢复颜色复制配色，并重做对象添加删除及单点/区域编辑。
+- `game-catalog-maintenance`、`game-catalog-card-management`：封面适配及空分类加入已有游戏、有效分类选项。
+- `touch-game-preparation-presentation`：互动刷新准备流程超时。
+- `game-creation`：新建后自动打开全局配置。
+- `game-debug-playback-control`：媒体GIF待机及调试预览。
 
 ## Impact
 
-修改`F:/project/ledGame`的共用图标组件、编辑器工具与RGB编辑交互、国际化词条及相关验证脚本。规划与记录保存在platform仓库。交付更新游戏端原release的win-unpacked和ZIP。
+修改`F:/project/ledGame`的图标、编辑器、分类与触屏交互及相关验证脚本；`F:/project/ledGame-backend`调整系统待机GIF和调试准备入口。规划与记录保存在platform仓库。交付更新游戏端原release的win-unpacked和ZIP，包含重建的后端。
