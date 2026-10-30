@@ -17,6 +17,8 @@
 
 ## Capabilities
 
+本轮新增：特效增加从当前帧开始覆盖和步长增减单位1；精灵库选中卡片悬停底部维护、改名及增删改自动刷新；编辑器颜色筛选显示该颜色全部精灵；媒体图像和音频预览随空间等比适配。涉及game-editor-effect-configuration、spirit-thumbnail-browser、simple-editor-toolbar-simplification和media-library-import；精灵更新接口增加可选name兼容旧调用。
+
 后续七项反馈：所有封面容器按图片比例完整适配；空分类用加号选择已有游戏加入；全局配置去掉未知历史分类原值的乱码选项；进入游戏流程中的操作刷新返首页倒计时；Simple新增帧继承前帧重复次数；新建游戏首次进入先打开全局配置；循环n次显示次数输入。
 
 ### New Capabilities
