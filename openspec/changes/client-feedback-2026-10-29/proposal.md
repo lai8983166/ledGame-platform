@@ -6,6 +6,8 @@
 
 ## What Changes
 
+- 2026-10-31调试页去掉起始关卡输入、关卡总数及已选文本、切换关卡按钮、运行状态和当前关卡提示，继续通过完整关卡列表选关。
+
 - 导出关卡使用蓝色向上箭头、灰色关卡容器及旗帜图形。
 - 导入关卡使用蓝色向下箭头、灰色关卡容器及旗帜图形。
 - 导出GIF使用蓝紫渐变圆角图形、白色向上箭头及GIF标识。
@@ -23,7 +25,7 @@
 
 ### New Capabilities
 
-无。
+- `customer-feedback-application-lifecycle`：本轮启动退出、编辑保护、设置可用性及场地校验的增量约束。
 
 ### Modified Capabilities
 
@@ -32,7 +34,12 @@
 - `touch-game-preparation-presentation`：互动刷新准备流程超时。
 - `game-creation`：新建后自动打开全局配置。
 - `game-debug-playback-control`：媒体GIF待机及调试预览。
+- `game-secondary-display-startup`、`game-touch-catalog-visibility`：2026-10-30决策取代自动副屏和未分类展示规则，改为全部手动全屏及有效分类可见。
 
 ## Impact
+
+2026-10-31用户确认按旧版移植共用Simple/Normal/Diffcult公共开场：每关播放按场地尺寸选择的321（三帧各1秒），再播放原关卡startGIF；ReadyGo.mp3仅首关开始时并行触发，不因选择非首关启动而播放。未配置新选项，不改迁移数据和Rank、Touch自己的准备倒数。此授权纳入Tasks第8组，取代此前对此开场事项暂不实施的范围记录。
+
+2026-10-30追加23项：启动和退出生命周期、所有副屏手动全屏、编辑器未保存保护、完整调试选关、设置校验及准备超时、副屏字号、品牌及可读性、有效分类、场地50×50限制、整数步长和清晰错误。用户已确认主窗关闭全部退出、副屏均手动、未分配游戏隐藏、宽高各50、准备超时1～3600秒默认20不可关闭。详见Tasks第7组。音频完整流程重做、封面/颜色差异重现及整段特效撤销等单独待确认事项不纳入本轮。
 
 修改`F:/project/ledGame`的图标、编辑器、分类与触屏交互及相关验证脚本；`F:/project/ledGame-backend`调整系统待机GIF和调试准备入口。规划与记录保存在platform仓库。交付更新游戏端原release的win-unpacked和ZIP，包含重建的后端。
