@@ -16,6 +16,7 @@ for (const entry of asar.listPackage(archive)) {
   if (!allowed.has(relative) || stat.link || stat.unpacked) throw new Error(`签发工具包含意外文件：${relative}`);
   const content = asar.extractFile(archive, nativeEntry).toString('utf8');
   if (/(?:^|\n)-----BEGIN (?:ENCRYPTED |RSA |EC )?PRIVATE KEY-----/.test(content)) throw new Error(`发现私钥内容：${relative}`);
+  if (relative !== 'package.json' && content !== fs.readFileSync(path.resolve(__dirname, '..', relative), 'utf8')) throw new Error(`签发工具未包含最新源码：${relative}`);
   count++;
 }
 if (count !== allowed.size) throw new Error('签发工具文件缺失');

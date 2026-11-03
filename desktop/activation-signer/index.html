@@ -20,7 +20,8 @@
   <input id="key-path" readonly placeholder="请选择厂家私钥 txt 或 pem 文件">
   <button id="choose">选择私钥</button>
   <label for="machine">2. 粘贴客户机器码</label>
-  <textarea id="machine" maxlength="256" spellcheck="false" placeholder="LGM1-…（支持 Ctrl+V）"></textarea>
+  <textarea id="machine" maxlength="256" spellcheck="false" placeholder="LGM1-… / LGG1-…（支持 Ctrl+V）"></textarea>
+  <p id="product" aria-live="polite"></p>
   <button id="issue">生成激活码</button>
   <label for="result">3. 将完整激活码发给客户</label>
   <textarea id="result" readonly spellcheck="false" placeholder="生成后显示在这里"></textarea>

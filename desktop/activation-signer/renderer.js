@@ -1,5 +1,9 @@
 const field = id => document.getElementById(id);
 let busy = false;
+function machineProduct(machine) {
+  if (!/^(LGM1|LGG1)-[0-9A-F]{64}$/.test(machine)) return '';
+  return machine.startsWith('LGM1-') ? '会员管理端' : '游戏端';
+}
 function clearResult() { field('result').value = ''; field('copy').disabled = true; }
 async function action(work) {
   if (busy) return;
@@ -13,7 +17,11 @@ async function action(work) {
   }
 }
 async function unwrap(promise) { const result = await promise; if (!result.ok) throw new Error(result.message); return result.value; }
-field('machine').addEventListener('input', clearResult);
+field('machine').addEventListener('input', () => {
+  clearResult(); field('status').textContent = '';
+  const product = machineProduct(field('machine').value.replace(/[ \t\r\n]/g, ''));
+  field('product').textContent = product ? `授权产品：${product}` : '';
+});
 field('choose').onclick = () => action(async () => {
   clearResult(); const result = await unwrap(window.signer.chooseKey());
   if (result) { field('key-path').value = result.keyPath; field('status').textContent = '私钥已选择，可以生成激活码'; }
@@ -21,7 +29,7 @@ field('choose').onclick = () => action(async () => {
 field('issue').onclick = () => action(async () => {
   clearResult();
   const machine = field('machine').value.replace(/[ \t\r\n]/g, '');
-  if (!/^LGM1-[0-9A-F]{64}$/.test(machine)) throw new Error('请粘贴完整客户机器码：LGM1- 开头，后接 64 位大写字母或数字');
+  if (!machineProduct(machine)) throw new Error('请粘贴完整客户机器码：LGM1- 或 LGG1- 开头，后接 64 位十六进制大写字符');
   field('machine').value = machine;
   const code = await unwrap(window.signer.issue(machine));
   if (field('machine').value !== machine) throw new Error('机器码已改变，请重新生成');

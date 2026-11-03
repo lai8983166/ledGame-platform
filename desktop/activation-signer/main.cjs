@@ -54,7 +54,8 @@ app.whenReady().then(async () => {
     if (!keyPath) throw new Error('请先选择厂家私钥');
     if (typeof machine !== 'string' || machine.length > 256) throw new Error('机器码格式不正确');
     const normalized = machine.replace(/[ \t\r\n]/g, '');
-    const { issueCode } = await import('../../scripts/activation-tool.mjs');
+    const { issueCode, getMachineProduct } = await import('../../scripts/activation-tool.mjs');
+    getMachineProduct(normalized);
     lastCode = issueCode(await readKey(keyPath), normalized);
     return lastCode;
   });

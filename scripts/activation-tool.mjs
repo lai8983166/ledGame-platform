@@ -3,11 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+export function getMachineProduct(machineCode) {
+  if (typeof machineCode !== 'string' || !/^(LGM1|LGG1)-[0-9A-F]{64}$/.test(machineCode)) throw new Error('机器码格式不正确，请复制完整机器码');
+  return machineCode.startsWith('LGM1-') ? 'ledgame-member-admin' : 'ledgame-game';
+}
+
 export function issueCode(privateKey, machineCode, licenseId = randomUUID()) {
-  if (!/^LGM1-[0-9A-F]{64}$/.test(machineCode)) throw new Error('机器码格式不正确，请复制完整机器码');
+  const product = getMachineProduct(machineCode);
   const key = createPrivateKey(privateKey);
   if (key.asymmetricKeyType !== 'ed25519') throw new Error('私钥必须是 Ed25519');
-  const payload = Buffer.from(JSON.stringify({ formatVersion: 1, product: 'ledgame-member-admin', machineCode, licenseId, issuedAt: new Date().toISOString() }));
+  const payload = Buffer.from(JSON.stringify({ formatVersion: 1, product, machineCode, licenseId, issuedAt: new Date().toISOString() }));
   return `LGACT1.${payload.toString('base64url')}.${sign(null, payload, key).toString('base64url')}`;
 }
 
