@@ -49,3 +49,11 @@ Simple、Normal和Diffcult共用default玩法 SHALL 在每关启动时先播放�
 #### Scenario: 取消或停止输出
 - **WHEN** 取消准备恢复待机，或停止/切换输出
 - **THEN** 恢复或清理对应GIF循环，旧循环迟到tick不影响新阶段，监听及执行器按原生命周期释放
+
+### Requirement: 调试界面隐藏暂不使用的启动方式和内部结束码
+
+调试页 SHALL 默认直接启动，启动方式控件以注释保留且不展示；原手环实现 SHALL 保留。结束时 SHALL 仅展示本地化“本局已结束”，不拼接terminationReason。
+
+#### Scenario: 直接调试并结束
+- **WHEN** 进入调试并启动游戏，随后本局结束
+- **THEN** 无启动方式选择，按直接启动执行，结束提示不含NATURAL_SUCCESS等内部代码
