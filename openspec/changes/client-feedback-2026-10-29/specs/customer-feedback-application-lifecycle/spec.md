@@ -1,5 +1,13 @@
 ## ADDED Requirements
 
+### Requirement: 类型与禁用按钮反馈明确
+
+编辑器全局类型字段 SHALL 禁止修改并显示深色背景、灰色文字及禁止游标。普通禁用按钮 SHALL 使用not-allowed游标，不能仅因disabled显示等待；实际保存等进行中等待 SHALL 保留原等待反馈。
+
+#### Scenario: 游戏已运行与全局类型
+- **WHEN** 调试游戏启动成功或查看全局类型字段
+- **THEN** 不可用启动按钮和类型字段显示禁止游标，类型不可改
+
 ### Requirement: 缩放编辑器右键菜单位置一致
 
 Simple、Normal和Diffcult全景矩阵右键菜单 SHALL 在鼠标视口位置显示，不受编辑器缩放祖先的位置与比例影响；菜单操作及关闭逻辑 SHALL 保持。

@@ -1,5 +1,13 @@
 ## ADDED Requirements
 
+### Requirement: 关卡导入在末尾新增
+
+共用Simple、Normal、Diffcult编辑器 SHALL 验证导入JSON后在关卡列表末尾新增关卡并选中，保留已有全部关卡，不弹覆盖当前关卡确认；取消、非法资源或文档已切换 SHALL 不追加，不自动保存游戏。原统一保存 SHALL 持久化新增关卡及其他草稿。
+
+#### Scenario: 多关卡中导入
+- **WHEN** 当前游戏已有多个关卡，用户从任意关卡导入合法关卡
+- **THEN** 新关位于末尾且选中，原关卡数据不变，保存重开后新增关卡保持
+
 ### Requirement: RGB视图重置
 
 Simple、Normal、Diffcult共用编辑器 SHALL 在区域编辑按钮后紧接提供重置视图图标按钮，带对应名称和tooltip。点击 SHALL 取消尚未执行的滚轮缩放、恢复默认缩放及RGB滚动位置，沿用原自动适配和居中布局；全景模式、当前工具、帧/关卡选择、对象、文档及撤销/重做历史 SHALL 保持不变，不新增快捷键或确认。无关卡或保存忙碌时 SHALL 禁用。
