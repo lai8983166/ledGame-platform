@@ -1,3 +1,13 @@
+## ADDED Requirements
+
+### Requirement: 缩放布线画布坐标一致
+
+布线画布 SHALL 按实际显示比例把鼠标坐标换算到绘制逻辑坐标，点选、框选预览、增加及删除 SHALL 使用一致格距与原点；小窗口编辑器自动缩放及高DPI SHALL 不改变命中格子。
+
+#### Scenario: 笔记本缩放编辑器中框选
+- **WHEN** 编辑器在小窗口自动缩小，用户点选或正反向框选布线格子
+- **THEN** 实际增删范围与鼠标所指格子一致，首末格可操作
+
 ## MODIFIED Requirements
 
 ### Requirement: 每个游戏独立编辑保存布线
