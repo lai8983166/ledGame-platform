@@ -36,4 +36,4 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 
 ## 提交记录
 
-游戏端实现提交 `035fc57` 已 push 至 `lai8983166/ledgame` 的 `main`。规划与验收以本文件所在的 `client-feedback-2026-11-16` change 提交为准；change 保持活跃，不自动归档。
+游戏端实现提交 `035fc57` 已 push 至 `lai8983166/ledgame` 的 `main`。规划与验收提交 `feac099` 已 push 至 `lai8983166/ledGame-platform` 的 `main`，本次后续提交回写全部任务完成状态；change 保持活跃，不自动归档。
