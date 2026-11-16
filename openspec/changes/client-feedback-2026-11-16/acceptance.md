@@ -37,3 +37,20 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 ## 提交记录
 
 游戏端实现提交 `035fc57` 已 push 至 `lai8983166/ledgame` 的 `main`。规划与验收提交 `feac099` 已 push 至 `lai8983166/ledGame-platform` 的 `main`，本次后续提交回写全部任务完成状态；change 保持活跃，不自动归档。
+
+## 11月17日追加：每份包独立数据与配置资源
+
+正式包在单实例锁前选择 EXE 同级 `data`，数据库、配置、语言、备份、branding、授权和会话由该根派生；开发及显式隔离目录保留。不可写时明确提示并退出。配置资源经原有安装流程复制到 `data/branding`，JSON 存相对路径，运行时只解析当前包资源，旧受管绝对路径重定位。新包使用随包种子和默认配置；旧共享数据保留，迁移及升级步骤见游戏端 `docs/portable-data.md` 与随包软件介绍。
+
+本轮验证：
+
+- `npm test`：567项全部通过（含国际化）。新增10项覆盖目录、启动失败、锁前初始化、三类资源复制、预览与保存、相对路径、旧路径重定位、越界及复制/移动后的独立性。
+- `portable:prepare`、`pnpm build` 及目录/ZIP打包成功。继续使用本地同版本 Electron 分发文件复制打包，并保留原始 beforePack 和五个 fuse。
+- `pnpm portable:smoke-data`：实际发行包 A/B 同时启动，从无关 cwd 启动各自 EXE，后端日志确认 Hikari 连接到各自 `data/database/runtime/ledgame`，独立端口，同包二开退出；分别写入 H2 标记后两轮重启仍保留不同值，B 修改不影响 A；停机复制 A 至 C 后 C 资源归属当前目录，C 配置与数据库修改不影响 A，C 再次重启保留。证据为 `.build/portable-data-smoke-1PDJq8/result.json` 及 `database-queries.log`。
+- 配置读取使用发行 ASAR 中的实际设置存储模块，检查主进程 resourceRoot 接入及目录配置早于单实例锁。未通过已激活 UI IPC 做配置操作；没有复制真实授权或添加绕过。两包均保持未激活业务403门禁，真实硬件连接禁用。
+- `portable:verify-protection`、`portable:smoke-protection` 均通过，后者证据为 `.build/protection-smoke-Wgndzs/result.json`，原四类保护未退化。
+- 独立逐字节核对发行 ASAR 六个相关运行模块与源文件相同；ZIP共978项，无 `data`、测试脚本或验收数据。证据 `.build/portable-data-artifact-verification.json`。
+
+本轮 ZIP 替代上节历史输入修复包，仍位于 `release/LED Game-0.1.0-win.zip`：933832615字节，SHA-256 `e9e53bcfc328ab17f9fe6c63e1be331aedf918884087dd177a589dab0d77826e`。目录版为 `release/win-unpacked`。后端业务代码、数据库结构及授权签名算法均未修改。
+
+本轮游戏端提交 `5898157` 已 push 到 `lai8983166/ledgame` 的 main。规划同步记录追加需求及验收，全部15项任务完成，change 继续保持活跃。
