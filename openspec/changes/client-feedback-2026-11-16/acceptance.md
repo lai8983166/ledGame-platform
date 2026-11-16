@@ -54,3 +54,23 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 本轮 ZIP 替代上节历史输入修复包，仍位于 `release/LED Game-0.1.0-win.zip`：933832615字节，SHA-256 `e9e53bcfc328ab17f9fe6c63e1be331aedf918884087dd177a589dab0d77826e`。目录版为 `release/win-unpacked`。后端业务代码、数据库结构及授权签名算法均未修改。
 
 本轮游戏端提交 `5898157` 已 push 到 `lai8983166/ledgame` 的 main。规划同步记录追加需求及验收，全部15项任务完成，change 继续保持活跃。
+
+## 后续验收：重新打包继承和本机授权
+
+按用户明确要求，正式三个打包入口统一使用 `scripts/portable-rebuild.cjs`。先预检停机、快照旧发行 `data`/媒体/控制器并记录摘要，在独立暂存目录完成构建与保护/保留校验，再发布程序和新 ZIP；原目录 data 原位保留。新 ZIP 带入数据库及备份、应用配置/语言、branding、游戏媒体及控制器设置，排除授权/日志/会话。ZIP通过同目录临时文件复制完成再替换，构建失败或来源变动拒绝发布；快照及暂存文件保留。
+
+授权改为固定 `%APPDATA%/led-game/activation`（同机同 Windows 用户），各包仍独立数据库/配置。旧包和历史 Java 默认授权候选先验签、验产品及真实机器身份，再用文件锁和原子替换迁移；有效固定授权优先，保存失败不报激活，旧文件保留。显式 LED_USER_DATA_DIR 仍完整隔离，不读取正式授权。不改变机器码、激活码格式、公钥和业务门禁。
+
+验证结果：
+
+- 前端 `npm test`：587项全部通过，含国际化、授权路径及15项重打包真实文件系统测试；后端全量 `mvn test`：776项通过，最终11项授权核心用例复核通过。
+- 首次暂存构建发现 builder JS 对象配置与磁盘配置再次合并，导致媒体重复复制 EBUSY。原目录681项摘要确认全部不变。改用唯一生成配置文件及独立 Node CLI 子进程；新增真实配置加载和失败退出传播验证。失败工作目录 `.build/portable-rebuild-VdUGHX` 保留。
+- 最终 `pnpm portable:dist` 成功。快照/暂存/摘要/结果：游戏端 `.build/portable-rebuild-yRHqgC`。该入口继续执行原 beforePack、五个 fuse、ASAR/JAR 完整性校验；不会清理原发行 data。
+- 独立对比打包前原目录、新目录版及新ZIP：681项持久文件、826307350字节全部 SHA-256 一致。4个相关运行模块在ASAR中与源文件逐字节一致；ZIP无 data/activation、logs 或 session。证据 `.build/rebuild-preservation-artifact-result.json`，打包前清单 `.build/rebuild-user-state-before.json`。
+- `portable:smoke-data`：A/B/C实际发行副本使用各自H2及配置，重启后保留独立SQL标记；不携带包内授权，真实本机授权结果均 `machineActivated:true`，业务API200；复制后的独立资源路径、修改不影响原包均通过。证据 `.build/portable-data-smoke-Bi0Iwo/result.json`。
+- 实际完整解压最终ZIP到新目录，验证完整性后从无关cwd启动；包内无授权文件，本机自动激活且业务API200，所继承的设置文件启动前后不变。真实硬件及会员房间连接禁用，未修改原发行数据库。证据 `.build/zip-activation-smoke-sx9Zh7/result.json`。
+- `portable:smoke-protection`：显式隔离授权仍未激活、业务403；环境注入、JAR/ASAR篡改及解包替换四类验收全部通过。证据 `.build/protection-smoke-ywEhyZ/result.json`。
+
+最终交付仍为 `release/win-unpacked` 和 `release/LED Game-0.1.0-win.zip`。ZIP大小934986977字节，SHA-256 `a4a68876eaf095bc834aa859288b35acfea9806f4fe5799aa34bc543a7bcfdff`，替代前述历史包。当前机器原有效授权未进入发行ZIP、Git或日志；本轮真实测试无需私钥或重新签发授权。
+
+本轮游戏端提交 `5a7a429`、后端提交 `6be245c` 均已 push 至各自 main。当前共19项任务全部完成，规划与验收同步提交，change 保持活跃、不自动归档。
