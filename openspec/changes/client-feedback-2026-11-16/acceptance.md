@@ -74,3 +74,15 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 最终交付仍为 `release/win-unpacked` 和 `release/LED Game-0.1.0-win.zip`。ZIP大小934986977字节，SHA-256 `a4a68876eaf095bc834aa859288b35acfea9806f4fe5799aa34bc543a7bcfdff`，替代前述历史包。当前机器原有效授权未进入发行ZIP、Git或日志；本轮真实测试无需私钥或重新签发授权。
 
 本轮游戏端提交 `5a7a429`、后端提交 `6be245c` 均已 push 至各自 main。当前共19项任务全部完成，规划与验收同步提交，change 保持活跃、不自动归档。
+
+## 后续验收：游戏首页返回分类根页
+
+问题来自分类详情沿用父层 home section，相同值重复赋值不触发清除分类；KeepAlive继续保留详情。成功通过编辑离开保护后的显式游戏导航现在增加请求序号，目录同时监听 section/请求，退出分类详情和选择器。分类点击仅改变内部选择；从编辑器正常返回不发导航请求，仍保留原分类。
+
+- 对 `5a7a429` 中真实 App/GameListView 运行同一浏览器用例，进入分类并点击游戏/首页后等待分类卡片失败，复现原问题，页面错误0。证据 `.build/game-home-navigation-A7XbVk/result.json`，不是最初开发服务器加载超时的那次尝试。
+- `pnpm test:game-home-navigation` 最终五组真实组件交互通过：连续进入A/B/A分类后首页返回；Escape/外部点击关闭菜单保留分类；普通编辑返回保留分类；取消未保存离开不改变页面，确认首页才重置；其他Tab与游戏列表返回首页。页面错误0，证据 `.build/game-home-navigation-SJC8AB/result.json`。
+- `npm test`：587项全部通过（含国际化）。业务数据库、后端代码及授权路径未修改。
+- `pnpm portable:dist` 通过，快照及暂存位于 `.build/portable-rebuild-BJeRrh`。独立核对原发行完整运行数据摘要不变，ZIP内683个持久文件匹配打包前当前数据，19个renderer文件与新dist逐字节一致，ZIP不含授权/日志/会话。证据 `.build/game-home-package-verification.json`。
+- `portable:smoke-protection` 四类验收全部通过，证据 `.build/protection-smoke-TzOeHD/result.json`。
+
+最新 ZIP `release/LED Game-0.1.0-win.zip` 大小946441493字节，SHA-256 `699707c838841fefac141e994b15eef3cbfcd5a5e76122a3ffdced2de8233de4`。游戏端提交 `8935e98` 已 push 到 main，全部21项任务完成；规划仓库同步提交，change保持活跃。
