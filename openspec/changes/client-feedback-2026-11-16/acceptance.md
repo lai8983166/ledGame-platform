@@ -86,3 +86,11 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 - `portable:smoke-protection` 四类验收全部通过，证据 `.build/protection-smoke-TzOeHD/result.json`。
 
 最新 ZIP `release/LED Game-0.1.0-win.zip` 大小946441493字节，SHA-256 `699707c838841fefac141e994b15eef3cbfcd5a5e76122a3ffdced2de8233de4`。游戏端提交 `8935e98` 已 push 到 main，全部21项任务完成；规划仓库同步提交，change保持活跃。
+
+## 11月18日：全局配置板块样式微调
+
+按反馈保留原有字段、板块顺序和列布局，在共用 GameGlobalConfigDialog 的板块上增加14px/16px内边距、1px细边框、10px圆角和主题 surface 底色；保留18px分区间距。普通编辑和排行编辑共用此样式，深色编辑页略深、浅色弹窗使用浅灰分区，无新业务规格或配置字段。
+
+`npm test` 的587项全部通过。使用真实组件在普通编辑、排行编辑、浅色弹窗及1024×768较窄视口检查，板块非透明、边框1px、间距18px、无横向溢出且页面错误0；已目视复核深色页面与浅色弹窗截图。证据与截图位于游戏端 `.build/global-config-panels-Nhk7cz`。此次未添加低影响样式的实现镜像测试，后端代码未修改。
+
+`pnpm portable:dist` 成功，快照及构建位于 `.build/portable-rebuild-OsuG8w`。独立核对原运行数据摘要不变、新ZIP保留683个持久文件、19个renderer文件与新dist逐字节一致；ZIP无授权/日志/会话。证据 `.build/global-config-panels-package-verification.json`。最新ZIP为946459007字节，SHA-256 `669bf5f0f1cef167c5774fb07a07ed92ec048d6100adb496f5cbae7fe5356f77`，仍交付 `release/LED Game-0.1.0-win.zip` 与 `release/win-unpacked`。游戏端提交 `b786e98` 已push至main。
