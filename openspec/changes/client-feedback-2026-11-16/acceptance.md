@@ -115,3 +115,11 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 - `pnpm portable:dist` 已生成目录和 ZIP，快照在 `.build/portable-rebuild-dRJytR`。原目录数据摘要不变，ZIP 内 683 个持久文件匹配打包前数据，两个 EXE、其图标和完整性通过校验，19 个渲染文件匹配构建。验收记录在 `.build/game-controller-package-verification.json`，保护冒烟记录在 `.build/protection-smoke-iheooF/result.json`。
 
 游戏端 `8667513`、后端 `729e1de` 已推送到各自的 main。当前 ZIP 为 1027367690 字节，SHA-256 为 `110b39a9124f28d0a1ca10c636291279467ca01dc3a81dfa167da31f43c8edbe`。
+
+## 11月18日 窗口、副屏、分类与编辑器
+
+- 管理窗口标题栏仅显示标题。配置页可实时预览三种副屏下标题样式，上下标题间距从 3vh 调为 4.5vh。
+- 普通游戏和排行游戏保存成功时在顶部提示 3 秒，连续保存重新计时。布线矩阵四边预留 12px，在三种窗口尺寸下验证缩放、末格点击和框选。
+- 发行包实测导出带分类的游戏、导入后生成新分类卡片并查看所属游戏。普通和排行编辑器能保存独立布线，重启后读取成功。记录位于游戏端 `.build/game-controller-package-Dauvk2/result.json`。
+- 游戏端 597 项、后端 797 项测试通过。新版 ZIP 含两个 EXE，逐项核对 683 个持久文件，打包前后原目录数据摘要一致。记录位于游戏端 `.build/feedback-nov18-package.json`。
+- 游戏端提交 `041353c`，后端提交 `947d9da`。发行包 SHA-256 为 `1f8188179435136261f43194108b1dc5afc79205e951b1218c2bc9debdb7b1af`。
