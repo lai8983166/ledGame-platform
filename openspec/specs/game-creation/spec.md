@@ -31,3 +31,11 @@ The game list SHALL offer game creation with 娱乐挑战, 排位赛 and unavail
 #### Scenario: Creation fails
 - **WHEN** persistence fails
 - **THEN** a visible error is shown, the draft remains editable for retry, and no nonexistent game card is displayed
+
+### Requirement: 新建后首次打开全局配置
+
+用户新建游戏进入对应编辑器后 SHALL 首先显示全局配置页面，覆盖娱乐挑战与排位赛创建入口；普通编辑已有游戏不自动打开。配置、布线及关卡编辑 SHALL 共用顶部保存，切页保留草稿，保存前不提前创建游戏记录。
+
+#### Scenario: 新建与普通编辑
+- **WHEN** 新建游戏进入编辑器，或从列表编辑已有游戏
+- **THEN** 前者首次加载完成后进入配置页，后者直接进入关卡编辑页面
