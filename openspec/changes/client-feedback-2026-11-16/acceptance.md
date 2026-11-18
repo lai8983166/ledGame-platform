@@ -105,3 +105,13 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 - 快捷入口通过原有保护验收的四组检查，证据位于 `.build/protection-smoke-x6SMA5/result.json`。原运行数据摘要不变，ZIP 保留 683 个持久文件，19 个渲染文件匹配构建产物，授权、日志和会话文件未带入 ZIP。证据位于 `.build/dual-exe-package-verification.json`。
 
 游戏端提交为 `3474593`。本轮交付 `release/win-unpacked` 和 `release/LED Game-0.1.0-win.zip`。ZIP 大小 1027361664 字节，SHA-256 为 `619181839b46628fee3f3029aa91fb75b6008d95d50b4474f1a87758a741dc2a`。
+
+## 11月18日 逐游戏控制器通道数
+
+逐游戏布线增加沿用包配置和 1、2、4、8 路选择，线路列表显示其分控及端口。通过 `wiringData.controlChannel` 保存和迁移，缺省继续依包内型号分组。运行时按游戏选择覆盖型号，搜索、发帧与踩踏解析使用同一配置。编辑器打开调试时按该游戏的型号探测，保持待机映射。退出恢复包内配置。
+
+- 前端 596 项与后端 796 项测试通过。后端使用旧版搜索报文和模拟 UDP 测试 HC01/HC02，并验证普通与排行数据持久化、全局恢复和独立调试探测。本轮未接真实分控。
+- 真正的 Windows 发行程序使用隔离的包目录和本机有效授权。普通游戏选 2 路，排行游戏选 1 路，通过原有保存入口落入 H2，导出保留通道数，重启后各自读回且线路空槽完整。包内硬件配置摘要不变。证据在游戏端 `.build/game-controller-package-Wf0STF/result.json`。
+- `pnpm portable:dist` 已生成目录和 ZIP，快照在 `.build/portable-rebuild-dRJytR`。原目录数据摘要不变，ZIP 内 683 个持久文件匹配打包前数据，两个 EXE、其图标和完整性通过校验，19 个渲染文件匹配构建。验收记录在 `.build/game-controller-package-verification.json`，保护冒烟记录在 `.build/protection-smoke-iheooF/result.json`。
+
+游戏端 `8667513`、后端 `729e1de` 已推送到各自的 main。当前 ZIP 为 1027367690 字节，SHA-256 为 `110b39a9124f28d0a1ca10c636291279467ca01dc3a81dfa167da31f43c8edbe`。
