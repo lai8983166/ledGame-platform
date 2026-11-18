@@ -94,3 +94,14 @@ Windows Electron 自动化使用真实渲染控件的点击与键盘事件，不
 `npm test` 的587项全部通过。使用真实组件在普通编辑、排行编辑、浅色弹窗及1024×768较窄视口检查，板块非透明、边框1px、间距18px、无横向溢出且页面错误0；已目视复核深色页面与浅色弹窗截图。证据与截图位于游戏端 `.build/global-config-panels-Nhk7cz`。此次未添加低影响样式的实现镜像测试，后端代码未修改。
 
 `pnpm portable:dist` 成功，快照及构建位于 `.build/portable-rebuild-OsuG8w`。独立核对原运行数据摘要不变、新ZIP保留683个持久文件、19个renderer文件与新dist逐字节一致；ZIP无授权/日志/会话。证据 `.build/global-config-panels-package-verification.json`。最新ZIP为946459007字节，SHA-256 `669bf5f0f1cef167c5774fb07a07ed92ec048d6100adb496f5cbae7fe5356f77`，仍交付 `release/LED Game-0.1.0-win.zip` 与 `release/win-unpacked`。游戏端提交 `b786e98` 已push至main。
+
+## 11月18日 Windows 双入口发行
+
+`LED Game.exe` 使用用户提供的彩色方块图标，打开原有管理界面。`LED Game Play.exe` 使用霓虹游戏人物图标，授权及初始化完成后直达现有全屏「开始游戏」界面。两份图标各含 16–256px 九种尺寸。两个 EXE 位于同一个目录，共用该目录的数据、配置和单实例锁。全屏退出沿用包内退出密码，成功后返回管理界面。
+
+- `pnpm test` 的 594 项全部通过。Chrome 真实渲染补充覆盖授权成功后继续进入、运行中编辑草稿离开选择以及启动失败显示。证据位于游戏端 `.build/dual-launch-renderer-rxBuJu/result.json`。
+- 实际 Windows 发行版使用本机授权启动。验证管理入口、快捷入口唤起同包全屏界面、重复打开仍只有一个后台和一个游戏窗口、快捷入口冷启动只显示全屏窗口、退出密码与管理入口唤回，以及隔离授权后显示激活窗。证据及截图位于 `.build/dual-exe-ui-Xu8dQz`。
+- `pnpm portable:dist` 成功，快照位于 `.build/portable-rebuild-5VRNrX`。两份 PE 的图标、五项 Electron fuse 和 ASAR 完整性分别通过检查，ZIP 内两个 EXE 的摘要与验证过的文件一致。独立目录构建也生成并验证两个 EXE，证据位于 `.build/dual-exe-dir-only-WxxBtg/result.json`。
+- 快捷入口通过原有保护验收的四组检查，证据位于 `.build/protection-smoke-x6SMA5/result.json`。原运行数据摘要不变，ZIP 保留 683 个持久文件，19 个渲染文件匹配构建产物，授权、日志和会话文件未带入 ZIP。证据位于 `.build/dual-exe-package-verification.json`。
+
+游戏端提交为 `3474593`。本轮交付 `release/win-unpacked` 和 `release/LED Game-0.1.0-win.zip`。ZIP 大小 1027361664 字节，SHA-256 为 `619181839b46628fee3f3029aa91fb75b6008d95d50b4474f1a87758a741dc2a`。
