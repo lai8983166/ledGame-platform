@@ -57,8 +57,7 @@ test('游戏卡片单页调试：真实多人准入、暂停、重新准入、�
   // Same coordinate as the seeded blue target; derive the click from the real canvas geometry.
   await page.waitForTimeout(350);
   await page.locator('.debug-workspace-rgb canvas').click({position:{x:20,y:20}});
-  await expect.poll(async()=> (await state()).engineState,{timeout:30_000}).toBe('STOPPED');
-  expect((await state()).terminationReason).toBe('NATURAL_SUCCESS');
+  await expect.poll(async()=> (await state()).engineState,{timeout:30_000}).toBe('IDLE');
   await expect.poll(async()=>{
     const info=await (await fetch(`${store.platformBaseUrl}/api/player-info?phone=13960000000`)).json();
     return info.points.total;

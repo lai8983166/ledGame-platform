@@ -31,6 +31,8 @@
 
 ### New Capabilities
 
+- `game-client-challenge-debug`：娱乐挑战逐格踩踏、RGB 编辑反馈与调试关卡连续运行。
+
 - `game-client-dialog-input-safety`：游戏端确认交互、模态键盘隔离、组合输入与异步窗口焦点所有权的统一安全约束。
 - `game-client-portable-data`：游戏端便携包独立数据与配置、配置资源复制和整包移动后的路径归属。
 - `game-client-machine-activation`：游戏端本机授权跨发行包持久化、旧授权验证迁移及机器绑定边界。
