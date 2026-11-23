@@ -67,9 +67,9 @@ test('游戏卡片单页调试：真实多人准入、暂停、重新准入、�
     return info.points.total;
   }).toBe(3);
   await page.screenshot({path:testInfo.outputPath('多人调试自然结算.png')});
-  await button('退出调试，返回游戏列表').click();await enter(simple.gameId);
+  await button('返回游戏列表').click();await enter(simple.gameId);
   await workspace.waitFor();await workspace.locator('select').first().selectOption('debug');await button('启动游戏').click();
-  await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');await button('退出调试，返回游戏列表').click();
+  await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');await button('返回游戏列表').click();
   await enter(rank.gameId);await button('启动游戏').click();
   // Real seeded startup voice/animation must finish; do not apply the 15s UI-action timeout to media playback.
   await expect.poll(async()=> (await state()).engineState,{timeout:60_000}).toBe('RUNNING');
@@ -82,7 +82,7 @@ test('游戏卡片单页调试：真实多人准入、暂停、重新准入、�
     : rankPaused.gameplay.remainingMillis;
   await expect(workspace.locator('dl dd').nth(4)).toHaveText(String(Math.ceil(rankRemaining/1000)));
   await page.screenshot({path:testInfo.outputPath('Rank调试暂停.png')});
-  await button('退出调试，返回游戏列表').click();await expect(workspace).toHaveCount(0);
+  await button('返回游戏列表').click();await expect(workspace).toHaveCount(0);
   await expect(page.locator(`.game-card[data-id="${rank.gameId}"]`)).toBeVisible();
   await expect.poll(async()=> (await state()).engineState).toBe('STOPPED');
   expect((await request(`/game-editor/${simple.gameId}`)).wiringData.lines).toEqual([[[0,0],[1,0]]]);
