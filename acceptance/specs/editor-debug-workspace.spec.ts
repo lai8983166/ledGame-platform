@@ -37,21 +37,25 @@ test('游戏卡片单页调试：真实多人准入、暂停、重新准入、�
     expect(store.gameWindows.filter(w=>/window=(touch|debug)/.test(w.url()))).toHaveLength(0);
   }
   await enter(simple.gameId);
+  await expect(button('开始游戏')).toBeEnabled();
+  await expect(button('结束游戏')).toBeDisabled();
   await workspace.locator('select').first().selectOption('wristband');
   await workspace.locator('input').first().fill('2');
   async function scan(uid:string){await button('请刷手环').click();await page.locator('.debug-scan-backdrop').waitFor();await expect(button('取消')).toBeEnabled();await page.keyboard.type(uid);await page.keyboard.press('Enter');await page.locator('.debug-scan-backdrop').waitFor({state:'hidden'});}
   await scan('810000001');expect((await state()).playerAccesses).toHaveLength(1);
-  await button('启动游戏').click();await page.locator('.debug-scan-backdrop').waitFor();
+  await button('开始游戏').click();await page.locator('.debug-scan-backdrop').waitFor();
   expect((await state()).engineState).toBe('PREPARING');await button('取消').click();
-  await scan('810000002');await button('启动游戏').click();
+  await scan('810000002');await button('开始游戏').click();
   await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');
+  await expect(button('开始游戏')).toBeDisabled();
+  await expect(button('结束游戏')).toBeEnabled();
   const first=await state();expect(first.runtimeMode).toBe('SIMULATION');expect(first.userCount).toBe(2);expect(first.playerAccesses).toHaveLength(2);
   await button('暂停').click();const frozen=await state();
   await page.waitForTimeout(1200);expect((await state()).gameTime.remainingMillis).toBe(frozen.gameTime.remainingMillis);
   await button('继续').click();await button('重新开始').click();
   await page.locator('.debug-scan-backdrop').waitFor();await button('取消').click();
   expect((await state()).sessionId).not.toBe(first.sessionId);expect((await state()).playerAccesses).toHaveLength(0);
-  await scan('810000001');await scan('810000002');await button('启动游戏').click();
+  await scan('810000001');await scan('810000002');await button('开始游戏').click();
   await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');
   await expect.poll(async()=>page.locator('.debug-workspace-rgb canvas').evaluate((canvas:HTMLCanvasElement)=>canvas.width)).toBeGreaterThan(0);
   // Same coordinate as the seeded blue target; derive the click from the real canvas geometry.
@@ -68,9 +72,9 @@ test('游戏卡片单页调试：真实多人准入、暂停、重新准入、�
   }).toBe(3);
   await page.screenshot({path:testInfo.outputPath('多人调试自然结算.png')});
   await button('返回游戏列表').click();await enter(simple.gameId);
-  await workspace.waitFor();await workspace.locator('select').first().selectOption('debug');await button('启动游戏').click();
+  await workspace.waitFor();await workspace.locator('select').first().selectOption('debug');await button('开始游戏').click();
   await expect.poll(async()=> (await state()).engineState).toBe('RUNNING');await button('返回游戏列表').click();
-  await enter(rank.gameId);await button('启动游戏').click();
+  await enter(rank.gameId);await button('开始游戏').click();
   // Real seeded startup voice/animation must finish; do not apply the 15s UI-action timeout to media playback.
   await expect.poll(async()=> (await state()).engineState,{timeout:60_000}).toBe('RUNNING');
   expect((await state()).gameplay.players).not.toHaveLength(0);
